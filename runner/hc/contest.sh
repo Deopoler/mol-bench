@@ -8,6 +8,7 @@
 # Env: AGY_BIN, CODEX_BIN (paths), MOLBENCH_RUNS (runs root), CONTEST_LOG (tsv registry)
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+if command -v cygpath >/dev/null; then REPO_N="$(cygpath -m "$REPO")"; else REPO_N="$REPO"; fi  # path form node understands
 agent=$1; model=$2; effort=$3; label=$4; room=$5; rev=${6:-}
 AGY_BIN=${AGY_BIN:-agy}
 CODEX_BIN=${CODEX_BIN:-codex}
@@ -19,13 +20,13 @@ rid="${room}${rev:+-$rev}__${slug}"
 prep=(runner/prepare.mjs "$room" --run-id "$rid")
 [ -n "$rev" ] && prep+=(--renovation "$rev")
 if [ "$room" = restoration ] && [ -z "$rev" ]; then
-  seed=$(node -e "console.log(require('$REPO/hidden/restoration/grade.json').contest_seed)")
+  seed=$(node -e "console.log(require('$REPO_N/hidden/restoration/grade.json').contest_seed)")
   prep+=(--seed "$seed")
 fi
 dir=$(cd "$REPO" && node "${prep[@]}" | tail -1 | tr -d '\r')
 [ -d "$dir" ] || { echo "prepare failed: $dir" >&2; exit 1; }
 
-spec="$REPO/rooms/$room/spec.json"; [ -n "$rev" ] && spec="$REPO/rooms/$room/renovation/$rev.json"
+spec="$REPO_N/rooms/$room/spec.json"; [ -n "$rev" ] && spec="$REPO_N/rooms/$room/renovation/$rev.json"
 limit=$(node -e "console.log(require('$spec').time_limit_min || 60)")
 
 PROMPT="Your complete task is described in PROMPT.md in the current directory. Read it fully and carry it out to completion on your own. You will receive no further messages and nobody will answer questions."
