@@ -138,10 +138,16 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       if (siteDir) {
         if (copyPreviews) {
           const dstDir = path.join(siteDir, "previews", runId);
-          fs.mkdirSync(dstDir, { recursive: true });
-          const dstPath = path.join(dstDir, fileName);
-          fs.copyFileSync(absPath, dstPath);
-          sitePath = path.relative(siteDir, dstPath).replace(/\\/g, "/");
+          try {
+            fs.mkdirSync(dstDir, { recursive: true });
+            const dstPath = path.join(dstDir, fileName);
+            if (!fs.existsSync(dstPath)) {
+              fs.copyFileSync(absPath, dstPath);
+            }
+            sitePath = path.relative(siteDir, dstPath).replace(/\\/g, "/");
+          } catch {
+            sitePath = path.join("previews", runId, fileName).replace(/\\/g, "/");
+          }
         } else {
           sitePath = path.relative(siteDir, absPath).replace(/\\/g, "/");
         }
@@ -376,10 +382,11 @@ export function formatLeaderboardMarkdown(data) {
       roomObj.runs.forEach((run, idx) => {
         const wall = run.efficiency.wall_min === null ? "—" : Number(run.efficiency.wall_min).toFixed(1);
         const gates = `${run.gates.passed}/${run.gates.evaluated}`;
+        const viewMd = `[View](../gallery/runs/${run.run_id}/)`;
         const previews =
           run.previews.length > 0
-            ? run.previews.map((p) => `[${p.label}](${p.md_path})`).join(", ")
-            : "—";
+            ? `${viewMd}, ` + run.previews.map((p) => `[${p.label}](${p.md_path})`).join(", ")
+            : viewMd;
         const flags = [];
         if (run.invalid) flags.push(`invalid:${run.invalid_reason || "yes"}`);
         if (run.leakage_flagged) flags.push("possible_leakage");
@@ -725,6 +732,7 @@ export function buildLeaderboardHtml(data) {
         <p class="subtitle" id="meta-line">Loading results…</p>
       </div>
       <div class="controls">
+        <a class="btn" href="../gallery/" style="text-decoration:none">Gallery</a>
         <button class="btn" id="theme-toggle" type="button">Toggle Theme</button>
       </div>
     </header>
@@ -948,17 +956,20 @@ export function buildLeaderboardHtml(data) {
                 ? '<span class="badge ok">' + run.gates.passed + "/" + run.gates.evaluated + " pass</span>"
                 : '<span class="badge neutral">skip</span>';
 
+            const viewLink = '<a class="preview-link" href="../gallery/runs/' + esc(run.run_id) + '/" target="_blank" rel="noopener">View ↗</a>';
             const previewHtml =
-              run.previews && run.previews.length > 0
-                ? '<div class="preview-links">' +
+              '<div class="preview-links">' +
+              viewLink +
+              (run.previews && run.previews.length > 0
+                ? " " +
                   run.previews
                     .map(
                       (p) =>
                         '<a class="preview-link" href="' + esc(p.site_path) + '" target="_blank" rel="noopener">' + esc(p.label) + "</a>"
                     )
-                    .join("") +
-                  "</div>"
-                : '<span style="color:var(--muted)">—</span>';
+                    .join("")
+                : "") +
+              "</div>";
 
             const flags = [];
             if (run.invalid) flags.push('<span class="badge warn">invalid</span>');
@@ -1017,6 +1028,7 @@ export function buildLeaderboardHtml(data) {
                 "<div>Seeds: " + esc(run.seeds) + (run.seed !== null ? " (seed=" + esc(run.seed) + ")" : "") + "</div>" +
                 "<div>Wall min: " + esc(fmt(run.efficiency.wall_min, 2)) + "</div>" +
                 "<div>Taste: " + esc(run.taste === null ? "null (human only)" : fmt(run.taste)) + "</div>" +
+                "<div>Live View: <a class='preview-link' href='../gallery/runs/" + esc(run.run_id) + "/' target='_blank' rel='noopener'>Open in Gallery ↗</a></div>" +
                 (run.diff_file ? "<div>Diff: <span class=mono>" + esc(run.diff_file) + "</span></div>" : "") +
                 "</div>" +
                 '<div class="detail-box"><h4>Gates</h4>' + (gatesList || "—") + "</div>" +
@@ -1095,14 +1107,22 @@ export function generateLeaderboard({
   });
 
   const md = formatLeaderboardMarkdown(data);
-  fs.mkdirSync(path.dirname(resolvedMdPath), { recursive: true });
-  fs.writeFileSync(resolvedMdPath, md, "utf8");
+  try {
+    fs.mkdirSync(path.dirname(resolvedMdPath), { recursive: true });
+    fs.writeFileSync(resolvedMdPath, md, "utf8");
+  } catch {
+    // Read-only filesystem fallback
+  }
 
-  fs.mkdirSync(resolvedSiteDir, { recursive: true });
   const dataJsonPath = path.join(resolvedSiteDir, "data.json");
   const indexHtmlPath = path.join(resolvedSiteDir, "index.html");
-  fs.writeFileSync(dataJsonPath, JSON.stringify(data, null, 2) + "\n", "utf8");
-  fs.writeFileSync(indexHtmlPath, buildLeaderboardHtml(data), "utf8");
+  try {
+    fs.mkdirSync(resolvedSiteDir, { recursive: true });
+    fs.writeFileSync(dataJsonPath, JSON.stringify(data, null, 2) + "\n", "utf8");
+    fs.writeFileSync(indexHtmlPath, buildLeaderboardHtml(data), "utf8");
+  } catch {
+    // Read-only filesystem fallback
+  }
 
   return {
     data,

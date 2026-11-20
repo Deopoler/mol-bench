@@ -55,7 +55,7 @@ case "$agent" in
 esac
 
 term="c$(printf %s "$rid" | md5sum | cut -c1-5)-$(echo "$rid" | cut -c1-25)"   # hc names: <= 32 chars, unique
-hc run --bg --name "$term" --cwd "$dir" -- "${cmd[@]}" >/dev/null
+hc run --bg --outlive-parent --name "$term" --cwd "$dir" -- "${cmd[@]}" >/dev/null
 # Auto-accept the first-run folder trust dialog of codex/claude (this is our own freshly prepared folder).
 for _ in $(seq 1 30); do
   screen=$(hc read --lines 0 "$term" 2>/dev/null || true)
