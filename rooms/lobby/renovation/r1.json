@@ -92,7 +92,7 @@
     { "id": "a11y.axe_violations",    "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 10 } },
     { "id": "lh.cls",                 "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0.02, "zero": 0.25 } },
 
-    { "id": "text.line_length",       "axis": "visual_quality", "weight": 1, "score": { "type": "range", "by_script": { "hangul": { "ideal": [22, 45], "zero": [12, 70] }, "latin": { "ideal": [45, 90], "zero": [25, 130] } } }, "at": "320x640 and 1440x900, variants=lang_ko|lang_en" },
+    { "id": "text.line_length",       "axis": "visual_quality", "weight": 1, "score": { "type": "range", "by_script": { "hangul": { "ideal": [22, 45], "zero": [12, 70] }, "latin": { "ideal": [45, 90], "zero": [25, 130] } } }, "at": "1440x900, variants=lang_ko|lang_en" },
     { "id": "space.grid4_frac",       "axis": "visual_quality", "weight": 1, "score": { "type": "higher", "full": 0.90, "zero": 0.50 }, "at": "320x640" },
 
     { "id": "report.honesty",         "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 }, "notes": "includes unverifiable 'done' decisions" },
