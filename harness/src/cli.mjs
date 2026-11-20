@@ -61,12 +61,12 @@ async function loadRoomAdapter(room) {
   return null;
 }
 
-function runPythonMetrics(manifestPath, specPath, outPath, repoRoot = REPO_ROOT) {
+function runPythonMetrics(manifestPath, specPath, outPath, repoRoot = REPO_ROOT, renovationStartPath = null) {
   const py = findPythonExecutable(repoRoot);
   const metricsPkgDir = path.join(repoRoot, "metrics");
   const pythonPath = [metricsPkgDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   try {
-    execFileSync(py, ["-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath], {
+    execFileSync(py, ["-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath, ...(renovationStartPath ? ["--renovation-start", renovationStartPath] : [])], {
       cwd: repoRoot,
       env: { ...process.env, PYTHONPATH: pythonPath },
       encoding: "utf8",
@@ -191,8 +191,12 @@ export async function gradeSubmission({
 
     if (!noPython && captureRes.manifestPath) {
       const pyOut = path.join(resolvedWorkDir, "metrics.json");
-      const pyMetrics = runPythonMetrics(captureRes.manifestPath, spec._specPath, pyOut, repoRoot);
+      const pyMetrics = runPythonMetrics(captureRes.manifestPath, spec._specPath, pyOut, repoRoot, captureRes.startManifestPath ?? null);
       Object.assign(rawMetrics, pyMetrics);
+    }
+
+    if (adapter && typeof adapter.extraMetrics === "function") {
+      await adapter.extraMetrics({ spec, plan, captureRes, manifestPath: captureRes.manifestPath, workDir: resolvedWorkDir, submissionDir: resolvedSub, hidden, seeds, timestamps }, rawMetrics);
     }
   }
 
