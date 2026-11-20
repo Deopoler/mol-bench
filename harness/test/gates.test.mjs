@@ -1,0 +1,138 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { validateReportGate, validateDecisionsGate, checkScope, combineGates } from "../src/gates.mjs";
+import { loadSpec } from "../src/spec.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+
+function makeTmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "mol-gates-"));
+}
+
+test("G-report validates schemas/report.schema.json", () => {
+  const dir = makeTmpDir();
+  try {
+    assert.equal(validateReportGate(dir, REPO_ROOT).gate.pass, false);
+
+    fs.writeFileSync(path.join(dir, "report.json"), "{ bad json");
+    assert.equal(validateReportGate(dir, REPO_ROOT).gate.pass, false);
+
+    // blocked: true without blocked_reason fails schema
+    fs.writeFileSync(
+      path.join(dir, "report.json"),
+      JSON.stringify({
+        schema_version: 1,
+        summary: "stuck",
+        deliverables: [],
+        claims: [],
+        blocked: true
+      })
+    );
+    assert.equal(validateReportGate(dir, REPO_ROOT).gate.pass, false);
+
+    // valid report passes
+    fs.writeFileSync(
+      path.join(dir, "report.json"),
+      JSON.stringify({
+        schema_version: 1,
+        summary: "Built aurora",
+        deliverables: ["room/index.html", "report.json"],
+        claims: [{ metric_id: "lum.mean", status: "verified", meets_target: true, measured_value: 0.2 }],
+        blocked: false
+      })
+    );
+    assert.equal(validateReportGate(dir, REPO_ROOT).gate.pass, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("G-decisions validates schemas/decisions.schema.json and exact request_id set", () => {
+  const spec = loadSpec("aurora", { renovation: "r1", repoRoot: REPO_ROOT });
+  const dir = makeTmpDir();
+  try {
+    assert.equal(validateDecisionsGate(dir, spec, REPO_ROOT).gate.pass, false);
+
+    // missing request_id A-R4
+    fs.writeFileSync(
+      path.join(dir, "decisions.json"),
+      JSON.stringify({
+        schema_version: 1,
+        requests: [
+          { request_id: "A-R1", status: "done" },
+          { request_id: "A-R2", status: "done" },
+          { request_id: "A-R3", status: "done" }
+        ]
+      })
+    );
+    const missingRes = validateDecisionsGate(dir, spec, REPO_ROOT);
+    assert.equal(missingRes.gate.pass, false);
+    assert.match(missingRes.gate.detail, /missing: A-R4/);
+
+    // partial without reason fails schema
+    fs.writeFileSync(
+      path.join(dir, "decisions.json"),
+      JSON.stringify({
+        schema_version: 1,
+        requests: [
+          { request_id: "A-R1", status: "done" },
+          { request_id: "A-R2", status: "done" },
+          { request_id: "A-R3", status: "done" },
+          { request_id: "A-R4", status: "partial" }
+        ]
+      })
+    );
+    assert.equal(validateDecisionsGate(dir, spec, REPO_ROOT).gate.pass, false);
+
+    // valid decisions
+    fs.writeFileSync(
+      path.join(dir, "decisions.json"),
+      JSON.stringify({
+        schema_version: 1,
+        requests: [
+          { request_id: "A-R1", status: "done" },
+          { request_id: "A-R2", status: "done" },
+          { request_id: "A-R3", status: "done" },
+          { request_id: "A-R4", status: "done" }
+        ]
+      })
+    );
+    assert.equal(validateDecisionsGate(dir, spec, REPO_ROOT).gate.pass, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("checkScope counts diff.out_of_scope_files across globs and path separators", () => {
+  const res = checkScope(
+    ["room/index.html", "room\\src\\shader.glsl", "tests/a.test.mjs", "report.json", "package.json", "docs/notes.md"],
+    ["room/**", "tests/**", "report.json"]
+  );
+  assert.equal(res.outOfScopeCount, 2);
+  assert.deepEqual(res.outOfScopeFiles, ["package.json", "docs/notes.md"]);
+  assert.equal(res.inScopeFiles.length, 4);
+});
+
+test("combineGates merges static and capture gates and marks skipped capture gates as null", () => {
+  const skipped = combineGates(
+    ["G-load", "G-report"],
+    { "G-report": { pass: true, detail: "ok" } },
+    {},
+    { captureSkipped: true }
+  );
+  assert.equal(skipped["G-load"].pass, null);
+  assert.equal(skipped["G-report"].pass, true);
+
+  const missing = combineGates(
+    ["G-load", "G-report"],
+    { "G-report": { pass: true, detail: "ok" } },
+    {},
+    { captureSkipped: false }
+  );
+  assert.equal(missing["G-load"].pass, false);
+});

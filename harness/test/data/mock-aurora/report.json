@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "summary": "Mock aurora submission for harness tests.",
+  "deliverables": ["room/index.html", "report.json"],
+  "claims": [
+    {
+      "metric_id": "lum.mean",
+      "status": "not_verified"
+    }
+  ],
+  "blocked": false
+}

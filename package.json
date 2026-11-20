@@ -6,7 +6,7 @@
   "description": "Museum of Light: one-shot, auto-graded visual agent benchmark",
   "bin": { "bench": "harness/src/cli.mjs" },
   "scripts": {
-    "test": "node --test harness/test/",
+    "test": "node --test \"harness/test/**/*.test.mjs\"",
     "bench": "node harness/src/cli.mjs"
   },
   "engines": { "node": ">=22" },
