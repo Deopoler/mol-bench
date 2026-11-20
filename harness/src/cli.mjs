@@ -231,8 +231,7 @@ export async function gradeSubmission({
               if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
               rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
             }
-          }
-        } else if (val && typeof val === "object") {
+          } else if (val && typeof val === "object") {
           // Probe groups such as layout/text/type return metric ids at the top
           // level, while room-specific probes may wrap them in `metrics`.
           // Preserve the direct form so registry probes are actually scored.
@@ -240,6 +239,7 @@ export async function gradeSubmission({
             if (!submittedMetricIds.has(mId)) continue;
             if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
             rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
+          }
           }
         }
       }
