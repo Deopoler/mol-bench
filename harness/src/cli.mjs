@@ -146,6 +146,10 @@ export async function gradeSubmission({
   const staticRes = evaluateStaticGates(resolvedSub, spec, { repoRoot, changedFiles });
 
   const rawMetrics = {};
+  const submittedMetricIds = new Set([
+    ...(spec.metrics || []).map((metric) => metric.id),
+    ...(spec.requests || []).flatMap((request) => (request.metrics || []).map((metric) => metric.id)),
+  ]);
   if (staticRes.scopeCheck) {
     rawMetrics["diff.out_of_scope_files"] = staticRes.scopeCheck.outOfScopeCount;
   } else if (spec.metrics.some((m) => m.id === "diff.out_of_scope_files")) {
@@ -208,6 +212,15 @@ export async function gradeSubmission({
           rawMetrics[val.metricId].push({ key, ...val });
         } else if (val && typeof val === "object" && val.metrics) {
           for (const [mId, mVal] of Object.entries(val.metrics)) {
+            if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
+            rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
+          }
+        } else if (val && typeof val === "object") {
+          // Probe groups such as layout/text/type return metric ids at the top
+          // level, while room-specific probes may wrap them in `metrics`.
+          // Preserve the direct form so registry probes are actually scored.
+          for (const [mId, mVal] of Object.entries(val)) {
+            if (!submittedMetricIds.has(mId)) continue;
             if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
             rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
           }
@@ -316,6 +329,8 @@ export async function gradeSubmission({
     ...(finalScored.requests ? { requests: finalScored.requests } : {}),
     axes: finalScored.axes,
     composite: finalScored.composite,
+    completeness: finalScored.completeness,
+    completeness_multiplier: finalScored.completeness_multiplier,
     taste: null,
     efficiency: { wall_min: null },
     ...(autonomyRes.invalid ? { invalid: true, invalid_reason: autonomyRes.outcome } : {}),

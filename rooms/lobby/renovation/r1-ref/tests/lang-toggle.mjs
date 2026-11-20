@@ -1,0 +1,1 @@
+export default [{id:"lang-switch",title:"Language switch updates locale",async run({page}){await page.locator('[data-bench="lang-toggle"]').click();return{pass:await page.evaluate(()=>document.documentElement.lang==='en'&&window.__bench.state().lang==='en'),detail:"English locale is active"}}}];

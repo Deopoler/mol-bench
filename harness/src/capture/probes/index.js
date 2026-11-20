@@ -4,6 +4,7 @@ import { probeType } from './type.js';
 import { probeSpaceAndAlign } from './space.js';
 import { probeA11y, probeAxe, probeKeyboardReach, probeFocusVisible } from './a11y.js';
 import { probeNavRoutes, probeNavTransitionMs, probeThemeBothValid } from './nav.js';
+import { probeLobbyData, probeLobbyLanguage } from './lobby.js';
 
 export {
   probeLayout,
@@ -44,9 +45,10 @@ export async function runProbe(probeName, pageHandle, args = {}) {
     case 'type.size_steps':
     case 'type.scale_ratio_min':
     case 'type.hero_serif':
+    case 'type_hero_serif':
       return probeType(page, {
         ...args,
-        checkHeroSerif: args.checkHeroSerif ?? probeName === 'type.hero_serif',
+        checkHeroSerif: args.checkHeroSerif ?? (probeName === 'type.hero_serif' || probeName === 'type_hero_serif'),
       }, cdp);
 
     case 'space':
@@ -92,6 +94,12 @@ export async function runProbe(probeName, pageHandle, args = {}) {
     case 'theme':
     case 'theme.both_valid':
       return probeThemeBothValid(pageHandle);
+
+    case 'data':
+      return probeLobbyData(page);
+
+    case 'lang_toggle':
+      return probeLobbyLanguage(page);
 
     case 'all': {
       const layout = await probeLayout(page, args);

@@ -363,6 +363,46 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
     axes.reliability = 0;
   }
 
+  const ratioValue = (value) => {
+    if (value === null || value === undefined) return null;
+    if (value && typeof value === "object" && "passed" in value && "total" in value) {
+      const passed = Number(value.passed);
+      const total = Number(value.total);
+      return Number.isFinite(passed) && Number.isFinite(total) && total > 0
+        ? clamp(passed / total, 0, 1)
+        : null;
+    }
+    const scalar = Number(value);
+    return Number.isFinite(scalar) && scalar >= 0 && scalar <= 1 ? scalar : null;
+  };
+
+  let completeness = null;
+  if (typeof spec.completeness_metric === "string") {
+    const metricResult = metricsOut[spec.completeness_metric];
+    if (metricResult?.score !== null && metricResult?.score !== undefined) {
+      completeness = clamp(metricResult.score / 10, 0, 1);
+    } else {
+      completeness = ratioValue(effectiveRaw[spec.completeness_metric]);
+    }
+  } else {
+    completeness = ratioValue(effectiveRaw["tests.hidden"]);
+    const hiddenTests = metricsOut["tests.hidden"];
+    if (completeness === null && hiddenTests?.score !== null && hiddenTests?.score !== undefined) {
+      completeness = clamp(hiddenTests.score / 10, 0, 1);
+    }
+  }
+
+  const completenessMultiplier = completeness !== null && completeness < 0.8
+    ? completeness / 0.8
+    : 1;
+  if (completenessMultiplier < 1) {
+    for (const axis of ["craft", "visual_quality"]) {
+      if (axes[axis] !== null && axes[axis] !== undefined) {
+        axes[axis] *= completenessMultiplier;
+      }
+    }
+  }
+
   // 6. Composite score
   let composite = null;
   const compEntries = Object.entries(spec.composite || {});
@@ -385,6 +425,8 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
     requests: Object.keys(requestsOut).length > 0 ? requestsOut : undefined,
     axes,
     composite,
+    completeness,
+    completeness_multiplier: completenessMultiplier,
     warnings
   };
 }

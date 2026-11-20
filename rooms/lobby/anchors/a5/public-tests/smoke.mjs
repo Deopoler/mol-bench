@@ -1,0 +1,1 @@
+export default [{id:"lobby-dom",title:"Required lobby landmarks exist",async run({page}){const missing=await page.evaluate(()=>["header","hero-title","body","footer","empty-state"].filter(x=>!document.querySelector(`[data-bench="${x}"]`)));return{pass:missing.length===0,detail:missing.join(",")}}}];

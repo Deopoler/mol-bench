@@ -73,6 +73,8 @@ axis_score  = Σ(weight_i × score_i) / Σ weight_i        over metrics in that 
 composite   = Σ(axis_weight_k × axis_score_k)             over axes listed in spec.composite
 ```
 
+If `spec.completeness_metric` is set, use that metric's normalized value for completeness `C`; otherwise use the `tests.hidden` passed/total ratio. When `C < 0.8`, multiply the `craft` and `visual_quality` axis scores by `C / 0.8` before computing the composite; leave other axes unchanged. If completeness was not computed, leave all axis scores unchanged.
+
 Rounding to 0.1 happens only on the final displayed numbers. Raw per-metric values are always published in
 `results/<run>/<room>.json` so others can re-weight.
 
