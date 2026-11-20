@@ -1,0 +1,22 @@
+{
+  "room": "aurora",
+  "spec_version": "0.1.0-draft",
+  "track": "build",
+  "metrics": [
+    { "id": "color.palette_fidelity", "axis": "craft", "weight": 3, "score": { "type": "higher", "full": 0.85, "zero": 0.40 }, "at": "1440x900, all timestamps" },
+    { "id": "color.palette_coverage", "axis": "craft", "weight": 2, "score": { "type": "higher", "full": 1.0, "zero": 0.33 }, "at": "1440x900, all timestamps", "agg": "median" },
+    { "id": "color.chroma_mean",      "axis": "craft", "weight": 1, "score": { "type": "higher", "full": 0.15, "zero": 0.02 }, "at": "1440x900, t=0" },
+    { "id": "color.hue_shift",        "axis": "revision", "weight": 1, "score": { "type": "lower", "full": 15, "zero": 45 }, "at": "1440x900, t=0" },
+    { "id": "lum.mean",               "axis": "craft", "weight": 2, "score": { "type": "range", "ideal": [0.12, 0.28], "zero": [0.03, 0.50] }, "at": "all viewports, all timestamps" },
+    { "id": "lum.highlight_frac",     "axis": "craft", "weight": 1, "score": { "type": "range", "ideal": [0.003, 0.06], "zero": [0.0, 0.20] }, "at": "1440x900, all timestamps" },
+    { "id": "lum.floor",              "axis": "craft", "weight": 1, "score": { "type": "pass" }, "at": "1440x900, t=0" },
+    { "id": "scene.star_count",       "axis": "craft", "weight": 1, "score": { "type": "range", "ideal": [80, 600], "zero": [0, 3000] }, "at": "1440x900, t=0" },
+    { "id": "scene.silhouette",       "axis": "craft", "weight": 1, "score": { "type": "pass" }, "at": "1440x900, t=0", "agg": "worst" },
+    { "id": "render.banding",         "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.005, "zero": 0.05 }, "at": "all viewports, all timestamps" },
+    { "id": "time.motion",            "axis": "visual_quality", "weight": 2, "score": { "type": "range", "ideal": [0.002, 0.015], "zero": [0.0, 0.06] }, "at": "1440x900" },
+    { "id": "time.flicker",           "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.15, "zero": 0.50 }, "at": "1440x900, t0=2500" },
+    { "id": "visual.congestion",      "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 1.0, "zero": 5.0 }, "at": "1440x900 first viewport" },
+    { "id": "visual.edge_density",    "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.2, "zero": 0.8 }, "at": "1440x900, t=0" },
+    { "id": "perf.frame_p95_norm_ms", "axis": "craft", "weight": 3, "score": { "type": "lower", "full": 16.7, "zero": 50 }, "at": "1440x900" }
+  ]
+}

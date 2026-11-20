@@ -1,0 +1,25 @@
+{
+  "room": "aurora",
+  "viewport_default": "1440x900",
+  "samples": [
+    {
+      "key": "s1_t0_1440x900_light",
+      "seed": 1,
+      "t": 0,
+      "viewport": "1440x900",
+      "scheme": "light",
+      "variant": "normal",
+      "file": "start_frames/s1_t0.png"
+    }
+  ],
+  "sequences": [],
+  "params": {
+    "1": {
+      "palette": [
+        [0.78, 0.17, 160],
+        [0.62, 0.15, 300],
+        [0.70, 0.14, 350]
+      ]
+    }
+  }
+}
