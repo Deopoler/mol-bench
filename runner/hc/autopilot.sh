@@ -16,6 +16,7 @@ MAXPAR=${MAXPAR:-3}
 INTERVAL=${INTERVAL:-300}
 QUOTA=${QUOTA:-$HOME/.claude/orchestra/quota.py}
 export AGY_BIN=${AGY_BIN:-agy} CODEX_BIN=${CODEX_BIN:-codex}
+last_launch=$(date +%s)
 log() { echo "[$(date '+%m-%d %H:%M')] $*" | tee -a "$LOG"; }
 
 summary() {
@@ -69,7 +70,7 @@ while true; do
       if [ "$running" -lt "$MAXPAR" ] && python "$QUOTA" "$qkey" --need "$need" >/dev/null 2>&1; then
         [ "$rev" = "-" ] && rev=""
         out=$(bash runner/hc/contest.sh "$agent" "$model" "$effort" "$label" "$room" $rev 2>&1 | tail -1)
-        log "launched: $label on $room${rev:+-$rev} -> $out"; running=$((running + 1))
+        log "launched: $label on $room${rev:+-$rev} -> $out"; running=$((running + 1)); last_launch=$(date +%s)
       else
         echo -e "$agent\t$model\t$effort\t$label\t$room\t$rev\t$qkey\t$need" >> "$QUEUE.next"
       fi
@@ -78,5 +79,19 @@ while true; do
   fi
 
   [ "$changed" = 1 ] && publish
+
+  # 3) optional: put the machine to sleep when there is nothing left to do.
+  #    Done = no running runs AND (no active queue jobs OR nothing could launch for STUCK_HOURS after NOT_BEFORE).
+  if [ "${SLEEP_WHEN_DONE:-0}" = 1 ]; then
+    running=$(bash runner/hc/status.sh | wc -l)
+    active=$(grep -vc '^#' "$QUEUE" 2>/dev/null || echo 0)
+    now=$(date +%s); not_before=${NOT_BEFORE_EPOCH:-0}; stuck=$(( ${STUCK_HOURS:-4} * 3600 ))
+    if [ "$running" -eq 0 ] && [ "$now" -ge "$not_before" ] && { [ "$active" -eq 0 ] || [ $((now - last_launch)) -ge "$stuck" ]; }; then
+      publish
+      log "all work done (active queue jobs: $active) -> putting the machine to sleep"
+      powershell.exe -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', \$false, \$false)" >/dev/null 2>&1
+      exit 0
+    fi
+  fi
   sleep "$INTERVAL"
 done
