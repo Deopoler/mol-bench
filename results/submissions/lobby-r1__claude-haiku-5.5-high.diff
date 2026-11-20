@@ -1,0 +1,318 @@
+diff --git a/decisions.json b/decisions.json
+new file mode 100644
+index 0000000..d7e69ef
+--- /dev/null
++++ b/decisions.json
+@@ -0,0 +1,42 @@
++{
++  "schema_version": 1,
++  "requests": [
++    {
++      "request_id": "L-R1",
++      "status": "done",
++      "reason": "NONE",
++      "tradeoff": "Under 400px the header wraps to two rows, header links and buttons get a 44px minimum box, and Hangul wraps with keep-all so words break only at spaces. Desktop and tablet layouts are unchanged. Room cards keep their existing layout.",
++      "expected_metrics": [
++        {
++          "metric_id": "layout.overflow_count",
++          "value": 0
++        },
++        {
++          "metric_id": "layout.tap_targets",
++          "value": 1
++        }
++      ]
++    },
++    {
++      "request_id": "L-R2",
++      "status": "done",
++      "reason": "AMBIGUOUS_RESOLVED",
++      "tradeoff": "Language is stored in localStorage key mol-lang. With no saved choice, navigator.language starting with en gives English; anything else gives Korean (the primary language). The toggle is a native button, so Enter and Space work. The public lang.toggle probe assumes a Korean start, so it scores 2 of 5 in the en-US default context; this follows the first-visit rule and was not changed.",
++      "expected_metrics": []
++    },
++    {
++      "request_id": "L-R3",
++      "status": "done",
++      "reason": "NONE",
++      "tradeoff": "Only [data-bench=\"hero-title\"] changes, to a font-family stack with a Korean serif (Batang / 바탕) and generic serif fallbacks. No font files are downloaded, so the offline gate is unaffected. Size, color and layout are unchanged.",
++      "expected_metrics": []
++    },
++    {
++      "request_id": "L-R4",
++      "status": "partial",
++      "reason": "CONFLICT",
++      "tradeoff": "Each room card gets a live CSS 3D prism in its accent color; the angle is a pure function of the harness clock, and it stops under reduced motion. No WebGL, libraries or downloads. Cards grow about 108px. The faster first load is NOT delivered: no speedup was made and LCP cannot be measured here (Lighthouse is a stub).",
++      "expected_metrics": []
++    }
++  ]
++}
+diff --git a/lobby/app.js b/lobby/app.js
+index fa97d50..a56b618 100644
+--- a/lobby/app.js
++++ b/lobby/app.js
+@@ -1,4 +1,23 @@
+ document.documentElement.classList.toggle("dark",matchMedia("(prefers-color-scheme: dark)").matches);
+ const grid=document.querySelector('#room-grid');const empty=document.querySelector('[data-bench="empty-state"]');
+-function renderRooms(){const rooms=window.__benchHost?.params?.rooms??[];grid.replaceChildren();for(const [i,r] of rooms.entries()){const el=document.createElement(r.status==='coming_soon'?'article':'a');el.dataset.bench='room-card';el.className='room-card';if(r.status!=='coming_soon')el.href=r.route;el.innerHTML=`<small>ROOM ${i+1}</small><h3></h3><p></p>${r.status==='coming_soon'?'<b>Coming soon</b>':''}`;el.querySelector('h3').textContent=r.title_ko;el.querySelector('p').textContent=r.summary_ko;grid.append(el)}empty.hidden=rooms.length!==0}
+-renderRooms();document.querySelector('#theme').onclick=()=>document.documentElement.classList.toggle('dark');const route=()=>location.hash.startsWith('#/room/')?location.hash.slice(7):'lobby';window.__bench={version:1,ready:document.fonts.ready,setSeed(){renderRooms()},seek(){},resume(){},async renderFrame(){await new Promise(requestAnimationFrame)},state(){return{route:route(),lang:'ko',theme:document.documentElement.classList.contains('dark')?'dark':'light'}},stats(){return{drawCalls:0,triangles:0}}};
++// L-R2: Korean/English. Original Korean text is captured once and restored for "ko"; English strings live here.
++const EN_GROUPS=[['header nav a',['Rooms','About']],['#theme',['Theme']],['[data-bench="hero-title"]',['Welcome to the<br>Museum of Light']],['[data-bench="body"]',['Wander through a collection of rooms. Pick one that catches your eye and step inside for a new kind of experience.','An online museum that gathers light and ideas.']],['main h2',['Rooms','About']],['[data-bench="empty-state"]',['No rooms yet.']]];
++const SUM_EN={'빛과 기억이 포개지는 작은 전시를 천천히 거닐어 보세요. 새로운 시선으로 익숙한 풍경을 만납니다.':'Stroll slowly through a small exhibition where light and memory overlap. See familiar scenery with fresh eyes.','조용한 관찰과 발견을 위한 공간입니다. 머무는 동안 각자의 이야기를 발견해 보세요.':'A space for quiet looking and discovery. While you stay, find a story of your own.'};
++const titleKo=document.title;const base=new Map();const groups=EN_GROUPS.map(([sel,en])=>[[...document.querySelectorAll(sel)],en]);
++for(const [els] of groups)for(const el of els)base.set(el,el.innerHTML);
++const saved=(()=>{try{return localStorage.getItem('mol-lang')}catch{return null}})();
++let lang=saved==='ko'||saved==='en'?saved:/^en\b/i.test(navigator.language||'')?'en':'ko';
++const langBtn=document.createElement('button');langBtn.type='button';langBtn.id='lang';langBtn.dataset.bench='lang-toggle';document.querySelector('#theme').before(langBtn);
++langBtn.onclick=()=>{lang=lang==='ko'?'en':'ko';try{localStorage.setItem('mol-lang',lang)}catch{}apply()};
++function renderRooms(){const rooms=window.__benchHost?.params?.rooms??[];grid.replaceChildren();for(const [i,r] of rooms.entries()){const el=document.createElement(r.status==='coming_soon'?'article':'a');el.dataset.bench='room-card';el.className='room-card';if(r.status!=='coming_soon')el.href=r.route;el.innerHTML=`<div class="stage" aria-hidden="true"><div class="prism" style="--c:${(r.accent_oklch??[.68,.12,250]).join(' ')}">${'<i></i>'.repeat(6)}</div></div><small>ROOM ${i+1}</small><h3></h3><p></p>${r.status==='coming_soon'?'<b>Coming soon</b>':''}`;const en=lang==='en';el.querySelector('h3').textContent=en?r.title_en??r.title_ko:r.title_ko;el.querySelector('p').textContent=en?SUM_EN[r.summary_ko]??r.summary_ko:r.summary_ko;grid.append(el)}empty.hidden=rooms.length!==0}
++// L-R4: CSS 3D prism per card. Pose is a pure function of the clock (host clock, or the seek time), never wall time.
++const still=matchMedia('(prefers-reduced-motion: reduce)').matches;let seekT=null,gen=0;
++const now=()=>seekT??(window.__benchHost?.clock?.now()??0);
++function paint(t){grid.querySelectorAll('.prism').forEach((p,i)=>{p.style.transform=still?'rotateX(-18deg) rotateY(35deg)':`rotateX(${(-18+10*Math.sin(t/1400+i)).toFixed(2)}deg) rotateY(${((t/25+i*40)%360).toFixed(2)}deg)`})}
++function tick(g){if(g!==gen)return;paint(now());requestAnimationFrame(()=>tick(g))}
++function live(){gen++;seekT=null;if(still)paint(0);else tick(gen)}
++function seek(t){gen++;seekT=t;paint(t)}
++function apply(){document.documentElement.lang=lang;document.title=lang==='en'?'Museum of Light':titleKo;for(const [els,en] of groups)els.forEach((el,i)=>{el.innerHTML=lang==='en'?en[i]:base.get(el)});langBtn.textContent=lang==='en'?'한국어':'English';langBtn.lang=lang==='en'?'ko':'en';renderRooms()}
++document.querySelector('#theme').onclick=()=>document.documentElement.classList.toggle('dark');const route=()=>location.hash.startsWith('#/room/')?location.hash.slice(7):'lobby';
++apply();live();
++window.__bench={version:1,ready:document.fonts.ready,setSeed(){renderRooms();paint(now())},seek,resume(){live()},async renderFrame(){paint(now());await new Promise(requestAnimationFrame)},state(){return{route:route(),lang,theme:document.documentElement.classList.contains('dark')?'dark':'light'}},stats(){return{drawCalls:0,triangles:0}}};
+diff --git a/lobby/style.css b/lobby/style.css
+index f1f3a62..bd56fd5 100644
+--- a/lobby/style.css
++++ b/lobby/style.css
+@@ -1,4 +1,18 @@
+ body{margin:0;font:16px Arial,sans-serif;background:#faf9f5;color:#393832}header{padding:20px 5%;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center}button{padding:6px}main{max-width:1100px;margin:35px auto;padding:0 24px}h1{font-size:48px;line-height:1.3}p{line-height:1.65;max-width:680px}#room-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:17px}.room-card{padding:19px;border:1px solid #ccc;color:inherit;text-decoration:none;min-height:170px}.room-card h3{font-size:18px}.room-card p{font-size:14px}footer{padding:28px 5%;margin-top:40px;border-top:1px solid #ddd}a:focus-visible,button:focus-visible{outline:2px solid #a43}html.dark{background:#222;color:#eee}html.dark body{background:#222;color:#eee}@media(max-width:700px){#room-grid{grid-template-columns:repeat(2,1fr)}h1{font-size:36px}}@media(max-width:400px){#room-grid{grid-template-columns:1fr}}
+ 
+ /* Deliberately plain a5 anchor: uniform type and narrow prose measure. */
+-body *{font-size:16px!important;line-height:1.1!important}main>p{max-width:128px!important}
+\ No newline at end of file
++body *{font-size:16px!important;line-height:1.1!important}main>p{max-width:128px!important}
++/* L-R3: hero title only, serif face (system fonts, nothing downloaded). */
++[data-bench="hero-title"]{font-family:"Batang","바탕",Georgia,"Times New Roman",serif}
++/* L-R4: live CSS 3D prism in every room card; angle is driven by the harness clock in app.js. */
++.stage{height:96px;margin-bottom:12px;display:flex;align-items:center;justify-content:center;perspective:360px;overflow:hidden}
++.prism{position:relative;width:48px;height:48px;transform-style:preserve-3d}
++.prism i{position:absolute;inset:0;background:oklch(var(--c));border:1px solid rgba(0,0,0,.25)}
++.prism i:nth-child(1){transform:translateZ(24px)}
++.prism i:nth-child(2){transform:rotateY(180deg) translateZ(24px);filter:brightness(.8)}
++.prism i:nth-child(3){transform:rotateY(90deg) translateZ(24px);filter:brightness(.9)}
++.prism i:nth-child(4){transform:rotateY(-90deg) translateZ(24px);filter:brightness(.7)}
++.prism i:nth-child(5){transform:rotateX(90deg) translateZ(24px);filter:brightness(1.1)}
++.prism i:nth-child(6){transform:rotateX(-90deg) translateZ(24px);filter:brightness(.6)}
++/* L-R1: 320px phones. Header wraps, interactive targets reach 44px, Hangul breaks only at spaces. */
++@media(max-width:400px){body{word-break:keep-all;overflow-wrap:break-word}header{flex-wrap:wrap;row-gap:8px}header a,header button{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;box-sizing:border-box}}
+\ No newline at end of file
+diff --git a/report.json b/report.json
+new file mode 100644
+index 0000000..a9fc6aa
+--- /dev/null
++++ b/report.json
+@@ -0,0 +1,71 @@
++{
++  "schema_version": 1,
++  "summary": "Implemented L-R1 (320px layout: header wraps, 44px header targets, keep-all Hangul under 400px), L-R2 (ko/en switch persisted in localStorage mol-lang, browser-language first visit), L-R3 (serif hero title only) and L-R4 as a partial: CSS 3D prism per room card driven by the harness clock, but the faster first load was not achieved and LCP is unmeasured. Public selfcheck: request.L-R1 10, request.L-R3 10, request.L-R2 4 (the public lang probe assumes a Korean start and runs in en-US). tests/lobby-r1.test.mjs passes 5/5.",
++  "deliverables": [
++    "lobby/app.js",
++    "lobby/style.css",
++    "tests/lobby-r1.test.mjs",
++    "decisions.json",
++    "report.json"
++  ],
++  "claims": [
++    {
++      "metric_id": "request.L-R1",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 10,
++      "method": "bench selfcheck --perf (public seeds); score 10"
++    },
++    {
++      "metric_id": "layout.overflow_count",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 0,
++      "method": "tests/lobby-r1.test.mjs at 320x640, light and dark: documentElement.scrollWidth <= innerWidth"
++    },
++    {
++      "metric_id": "layout.tap_targets",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1,
++      "method": "tests/lobby-r1.test.mjs at 320x640: every a and button box is at least 44x44"
++    },
++    {
++      "metric_id": "request.L-R3",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 10,
++      "method": "bench selfcheck --perf (public seeds); score 10"
++    },
++    {
++      "metric_id": "type.hero_serif",
++      "status": "verified",
++      "meets_target": true,
++      "method": "tests/lobby-r1.test.mjs: computed font-family of hero-title contains serif; body text unchanged"
++    },
++    {
++      "metric_id": "request.L-R2",
++      "status": "verified",
++      "meets_target": false,
++      "measured_value": 4,
++      "method": "selfcheck: lang.toggle probe in en-US default context gives 2/5 checks; tests/lobby-r1.test.mjs passes with ko-KR start"
++    },
++    {
++      "metric_id": "request.L-R4",
++      "status": "not_verified",
++      "meets_target": false,
++      "method": "CSS 3D prism present in every card and pose tied to clock (tests/lobby-r1.test.mjs); first-load speedup not achieved and LCP not measured"
++    },
++    {
++      "metric_id": "lh.lcp_ms",
++      "status": "not_verified",
++      "method": "Lighthouse runner is a stub in this harness; not measured"
++    },
++    {
++      "metric_id": "tests.preservation",
++      "status": "not_verified",
++      "method": "bench selfcheck reports 0 because the start anchor directory is not present in this folder; not measured"
++    }
++  ],
++  "blocked": false
++}
+diff --git a/tests/lobby-r1.test.mjs b/tests/lobby-r1.test.mjs
+new file mode 100644
+index 0000000..8627b05
+--- /dev/null
++++ b/tests/lobby-r1.test.mjs
+@@ -0,0 +1,131 @@
++// Regression checks for renovation r1 (L-R1 narrow phones, L-R2 language switch, L-R3 serif hero, L-R4 3D preview).
++// Run: node --test tests/lobby-r1.test.mjs   (needs the playwright chromium already used by `npm run selfcheck`)
++import { test, before, after } from "node:test";
++import assert from "node:assert/strict";
++import http from "node:http";
++import fs from "node:fs";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++
++const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
++const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript" };
++
++// Same room shape as bench/rooms/lobby.mjs (public generator). Includes a long English title.
++const ROOMS = [
++  { id: "room-1", route: "#/room/room-1", title_ko: "고요한 빛의 정원", title_en: "A Garden of Quiet Light", summary_ko: "빛과 기억이 포개지는 작은 전시를 천천히 거닐어 보세요. 새로운 시선으로 익숙한 풍경을 만납니다.", accent_oklch: [0.68, 0.12, 120], status: "open" },
++  { id: "room-2", route: "#/room/room-2", title_ko: "기억을 수집하는 방", title_en: "A Quiet Museum of Light for Curious Visitors Everywhere Today", summary_ko: "조용한 관찰과 발견을 위한 공간입니다. 머무는 동안 각자의 이야기를 발견해 보세요.", accent_oklch: [0.68, 0.12, 250], status: "open" },
++  { id: "room-3", route: "#/room/room-3", title_ko: "작은 파도의 기록", title_en: "Notes from a Small Wave", summary_ko: "조용한 관찰과 발견을 위한 공간입니다. 머무는 동안 각자의 이야기를 발견해 보세요.", accent_oklch: [0.68, 0.12, 30], status: "open" },
++];
++
++// Injected before any room script, like the harness does. Clock is controlled by window.__T.
++function hostInit(rooms) {
++  return `window.__T = 0;
++  window.__benchHost = { contractVersion: 1, seed: 1, params: { rooms: ${JSON.stringify(rooms)} },
++    clock: { now: () => window.__T }, rng: { next: () => 0.5, int: (n) => 0, fork() { return this; } } };`;
++}
++
++let server, base, browser, chromium;
++
++before(async () => {
++  // Same browser lookup as bench/capture/browser.mjs (the harness-installed Chromium).
++  if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined) process.env.PLAYWRIGHT_BROWSERS_PATH = "0";
++  ({ chromium } = await import("playwright"));
++  server = http.createServer((req, res) => {
++    let p = path.join(ROOT, decodeURIComponent(new URL(req.url, "http://x").pathname).replace(/^\/+/, ""));
++    if (fs.existsSync(p) && fs.statSync(p).isDirectory()) p = path.join(p, "index.html");
++    if (!p.startsWith(ROOT) || !fs.existsSync(p)) { res.writeHead(404); return res.end(); }
++    res.writeHead(200, { "content-type": TYPES[path.extname(p)] || "application/octet-stream" });
++    fs.createReadStream(p).pipe(res);
++  });
++  await new Promise((r) => server.listen(0, "127.0.0.1", r));
++  base = `http://127.0.0.1:${server.address().port}/`;
++  browser = await chromium.launch();
++});
++
++after(async () => {
++  await browser?.close();
++  await new Promise((r) => server?.close(r) ?? r());
++});
++
++async function openPage({ width = 1440, height = 900, locale = "ko-KR", scheme = "light", rooms = ROOMS, storage = null } = {}) {
++  const ctx = await browser.newContext({ viewport: { width, height }, locale, colorScheme: scheme, deviceScaleFactor: 1 });
++  await ctx.addInitScript(hostInit(rooms));
++  if (storage) await ctx.addInitScript((s) => { localStorage.setItem("mol-lang", s); }, storage);
++  const page = await ctx.newPage();
++  await page.goto(base + "lobby/");
++  await page.evaluate(() => window.__bench.ready);
++  return { ctx, page };
++}
++
++test("L-R1: no sideways overflow and all tap targets >= 44px at 320x640 (both schemes)", async () => {
++  for (const scheme of ["light", "dark"]) {
++    const { ctx, page } = await openPage({ width: 320, height: 640, scheme });
++    const res = await page.evaluate(() => {
++      const overflow = document.documentElement.scrollWidth > window.innerWidth ? 1 : 0;
++      const small = [...document.querySelectorAll("a, button")].filter((el) => {
++        const r = el.getBoundingClientRect();
++        return r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44);
++      }).map((el) => el.textContent.trim() || el.id || el.className);
++      return { overflow, small };
++    });
++    assert.equal(res.overflow, 0, `horizontal overflow (${scheme})`);
++    // Room cards are large links; only header controls and nav links are measured as small targets.
++    assert.deepEqual(res.small, [], `small tap targets (${scheme})`);
++    await ctx.close();
++  }
++});
++
++test("L-R2: first visit follows navigator.language, choice persists across reload", async () => {
++  let { ctx, page } = await openPage({ locale: "en-US" });
++  assert.equal(await page.evaluate(() => document.documentElement.lang), "en");
++  assert.equal(await page.evaluate(() => window.__bench.state().lang), "en");
++  await ctx.close();
++
++  ({ ctx, page } = await openPage({ locale: "ko-KR" }));
++  assert.equal(await page.evaluate(() => document.documentElement.lang), "ko");
++  await page.focus('[data-bench="lang-toggle"]');
++  await page.keyboard.press("Enter"); // keyboard operable
++  assert.equal(await page.evaluate(() => document.documentElement.lang), "en");
++  const titles = await page.$$eval('[data-bench="room-card"] h3', (hs) => hs.map((h) => h.textContent));
++  assert.deepEqual(titles, ROOMS.map((r) => r.title_en));
++  await page.reload();
++  await page.evaluate(() => window.__bench.ready);
++  assert.equal(await page.evaluate(() => window.__bench.state().lang), "en", "choice should persist after reload");
++  await ctx.close();
++});
++
++test("L-R2: English long title does not overflow at 320 and 1440 wide", async () => {
++  for (const width of [320, 1440]) {
++    const { ctx, page } = await openPage({ width, height: 900, locale: "ko-KR", storage: "en" });
++    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false, `overflow at ${width}`);
++    await ctx.close();
++  }
++});
++
++test("L-R3: hero title is serif and nothing else's typeface changes", async () => {
++  const { ctx, page } = await openPage();
++  const family = await page.$eval('[data-bench="hero-title"]', (el) => getComputedStyle(el).fontFamily);
++  assert.match(family, /serif/i);
++  const bodyFamily = await page.$eval('[data-bench="body"]', (el) => getComputedStyle(el).fontFamily);
++  assert.doesNotMatch(bodyFamily, /Batang|Georgia|Times/);
++  await ctx.close();
++});
++
++test("L-R4: 3D prism pose is a pure function of the clock (seek + renderFrame)", async () => {
++  const { ctx, page } = await openPage();
++  const pose = () => page.$eval('[data-bench="room-card"] .prism', (el) => el.style.transform);
++  await page.evaluate(() => { window.__bench.seek(1234); });
++  await page.evaluate(() => window.__bench.renderFrame());
++  const a = await pose();
++  await page.evaluate(() => { window.__bench.seek(5000); });
++  await page.evaluate(() => window.__bench.renderFrame());
++  const b = await pose();
++  await page.evaluate(() => { window.__bench.seek(1234); });
++  await page.evaluate(() => window.__bench.renderFrame());
++  const c = await pose();
++  assert.ok(a.length > 0 && a !== b, "pose should change with time");
++  assert.equal(a, c, "same time gives same pose");
++  const count = await page.$$eval('[data-bench="room-card"] .prism', (els) => els.length);
++  assert.equal(count, ROOMS.length, "every room card has a preview");
++  await ctx.close();
++});

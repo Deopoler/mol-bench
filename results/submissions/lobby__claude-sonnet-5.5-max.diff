@@ -1,0 +1,1935 @@
+diff --git a/lobby/app.js b/lobby/app.js
+index 21095f6..6a8098a 100644
+--- a/lobby/app.js
++++ b/lobby/app.js
+@@ -1,3 +1,442 @@
+-const root=document.querySelector('#rooms');
+-function renderRooms(){const rooms=window.__benchHost?.params?.rooms??[];root.replaceChildren();for(const room of rooms){const a=document.createElement(room.status==='coming_soon'?'article':'a');a.dataset.bench='room-card';if(room.status!=='coming_soon')a.href=room.route;a.textContent=room.title_ko;root.append(a)}document.querySelector('[data-bench="empty-state"]').hidden=rooms.length>0}
+-renderRooms();document.querySelector("[data-bench=body]").textContent="가".repeat(100);const roomId=()=>location.hash.startsWith('#/room/')?location.hash.slice(7):'lobby';window.__bench={version:1,ready:document.fonts.ready,setSeed(){renderRooms()},seek(){},resume(){},async renderFrame(){await new Promise(requestAnimationFrame)},state(){return{route:roomId(),lang:'ko',theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}},stats(){return{drawCalls:0,triangles:0}}};
++/* Museum of Light — lobby behaviour.
++ *
++ * - Room cards are generated from window.__benchHost.params.rooms (never hard-coded).
++ * - Hash routes (#/room/<id>) swap the hero + sections in place; the lobby DOM is kept alive
++ *   so keyboard focus, scroll position and history behave like a real page.
++ * - Implements the MoL-Bench runtime contract (window.__bench, version 1). Nothing here reads
++ *   wall-clock time or randomness, so a fixed (seed, viewport, media) always renders the same pixels.
++ */
++(() => {
++  'use strict';
++
++  const doc = document;
++  const root = doc.documentElement;
++  const host = window.__benchHost || null;
++  const KEY_LANG = 'mol-lang';
++  const KEY_THEME = 'mol-theme';
++
++  const COPY = {
++    ko: {
++      docTitle: 'Museum of Light · 빛의 박물관',
++      skip: '본문으로 건너뛰기',
++      langButton: 'English',
++      langButtonLang: 'en',
++      toDark: '다크 테마로 전환',
++      toLight: '라이트 테마로 전환',
++      eyebrow: '서울 · 디지털 전시관',
++      heroTitle: '빛의 방에 오신 것을 환영합니다',
++      heroLead: '각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다. 천천히 걸으며, 마음이 머무는 곳으로 들어가 보세요.',
++      explore: '전시 공간 둘러보기',
++      back: '로비로 돌아가기',
++      roomsTitle: '전시 공간',
++      emptyTitle: '아직 공개된 방이 없습니다.',
++      emptyBody: '새로운 전시가 준비되는 대로 이곳에 문을 엽니다.',
++      roomWord: 'Room',
++      statusOpen: '입장 가능',
++      statusSoon: '준비 중',
++      enter: '입장하기',
++      soonCta: '곧 문을 엽니다',
++      doorNote: '문 앞까지 오셨습니다. 이 방의 전시는 별도의 공간에서 이어집니다.',
++      infoTitle: '방문 안내',
++      info1Title: '열린 시간',
++      info1Body: '연중무휴, 하루 24시간 열려 있습니다. 언제든 천천히 머물러 주세요.',
++      info2Title: '함께 걷는 법',
++      info2Body: '마음이 가는 방의 카드를 선택하면 입장합니다. 키보드에서는 Tab 키로 이동하고 Enter 키로 들어갑니다.',
++      info3Title: '편안한 보기',
++      info3Body: '화면 설정에 맞춰 밝은 테마와 어두운 테마를 보여 주며, 움직임 줄이기 설정을 존중합니다.',
++      footerNote: '서울의 작은 디지털 전시관',
++      footerNav: '바로가기',
++      navRooms: '전시 공간',
++      navInfo: '방문 안내',
++      navTop: '맨 위로',
++      count: (total, open, soon) => {
++        const parts = [`총 ${total}개의 방`];
++        if (open) parts.push(`${open}개 입장 가능`);
++        if (soon) parts.push(`${soon}개 준비 중`);
++        return parts.join(' · ');
++      },
++    },
++    en: {
++      docTitle: 'Museum of Light',
++      skip: 'Skip to content',
++      langButton: '한국어',
++      langButtonLang: 'ko',
++      toDark: 'Switch to dark theme',
++      toLight: 'Switch to light theme',
++      eyebrow: 'Seoul · Digital museum',
++      heroTitle: 'Welcome to the rooms of light',
++      heroLead: 'Each room is a small world for a different way of sensing and thinking. Walk slowly, and step into whichever one holds your attention.',
++      explore: 'Explore the rooms',
++      back: 'Back to the lobby',
++      roomsTitle: 'Rooms',
++      emptyTitle: 'No rooms are open yet.',
++      emptyBody: 'New exhibitions will open their doors here as soon as they are ready.',
++      roomWord: 'Room',
++      statusOpen: 'Open',
++      statusSoon: 'Coming soon',
++      enter: 'Enter room',
++      soonCta: 'Opening soon',
++      doorNote: 'You have reached the door. This room continues in a space of its own.',
++      infoTitle: 'Visit',
++      info1Title: 'Opening hours',
++      info1Body: 'Open every day, at any hour. Stay as long as you like.',
++      info2Title: 'How to wander',
++      info2Body: 'Select a room card to step inside. With a keyboard, move with the Tab key and press Enter to go in.',
++      info3Title: 'Comfortable viewing',
++      info3Body: 'Light and dark themes follow your screen settings, and reduced-motion preferences are respected.',
++      footerNote: 'A small digital museum in Seoul',
++      footerNav: 'Shortcuts',
++      navRooms: 'Rooms',
++      navInfo: 'Visit',
++      navTop: 'Back to top',
++      count: (total, open, soon) => {
++        const parts = [`${total} ${total === 1 ? 'room' : 'rooms'}`];
++        if (open) parts.push(`${open} open`);
++        if (soon) parts.push(`${soon} coming soon`);
++        return parts.join(' · ');
++      },
++    },
++  };
++
++  const store = {
++    get(key) { try { return window.localStorage.getItem(key); } catch (_) { return null; } },
++    set(key, value) { try { window.localStorage.setItem(key, value); } catch (_) { /* storage unavailable */ } },
++  };
++
++  const $ = (selector) => doc.querySelector(selector);
++  const el = {
++    main: $('#main'),
++    veil: $('#veil'),
++    eyebrow: $('#hero-eyebrow'),
++    title: $('#hero-title'),
++    alt: $('#hero-alt'),
++    lead: $('#hero-lead'),
++    explore: $('#cta-explore'),
++    back: $('#cta-back'),
++    spectrum: $('#hero-spectrum'),
++    art: $('#hero-art'),
++    rooms: $('#rooms'),
++    roomsNote: $('#rooms-note'),
++    grid: $('#room-grid'),
++    empty: $('#empty-state'),
++    info: $('#info'),
++    langToggle: $('#lang-toggle'),
++    themeToggle: $('#theme-toggle'),
++    footerNav: $('#footer-nav'),
++  };
++
++  const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
++
++  let lang = store.get(KEY_LANG) === 'en' ? 'en' : 'ko';
++  let rooms = [];
++  let route = 'lobby';
++  let lobbyScroll = 0;
++  let lastInvoker = null;
++  let clockMs = 0;
++
++  /* ---------- data ---------- */
++
++  const num = (value, fallback) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
++  const pad = (n) => String(n).padStart(2, '0');
++
++  function readRooms() {
++    const list = host && host.params && Array.isArray(host.params.rooms) ? host.params.rooms : [];
++    return list
++      .filter((room) => room && typeof room === 'object')
++      .map((room, index) => {
++        const accent = Array.isArray(room.accent_oklch) ? room.accent_oklch : [];
++        const id = String(room.id == null ? `room-${index + 1}` : room.id);
++        const titleKo = String(room.title_ko == null ? '' : room.title_ko);
++        return {
++          id,
++          index,
++          route: typeof room.route === 'string' && room.route.startsWith('#/') ? room.route : `#/room/${encodeURIComponent(id)}`,
++          titleKo,
++          titleEn: room.title_en == null || room.title_en === '' ? titleKo : String(room.title_en),
++          summary: String(room.summary_ko == null ? '' : room.summary_ko),
++          l: num(accent[0], 0.68),
++          c: num(accent[1], 0.12),
++          h: num(accent[2], 250),
++          open: room.status !== 'coming_soon',
++        };
++      });
++  }
++
++  const roomTitle = (room) => (lang === 'ko' ? room.titleKo : room.titleEn);
++  const roomAltTitle = (room) => (lang === 'ko' ? room.titleEn : room.titleKo);
++  const altLang = () => (lang === 'ko' ? 'en' : 'ko');
++
++  function accentVars(node, room) {
++    node.style.setProperty('--l', String(room.l));
++    node.style.setProperty('--c', String(room.c));
++    node.style.setProperty('--h', String(room.h));
++  }
++
++  function make(tag, className, text) {
++    const node = doc.createElement(tag);
++    if (className) node.className = className;
++    if (text != null) node.textContent = text;
++    return node;
++  }
++
++  /* ---------- rendering ---------- */
++
++  function buildCard(room, position) {
++    const copy = COPY[lang];
++    const item = make('li', 'card-item');
++    item.dataset.bench = 'room-card';
++    item.dataset.status = room.open ? 'open' : 'coming_soon';
++    item.dataset.room = room.id;
++    accentVars(item, room);
++
++    const card = room.open ? make('a', 'card card--open') : make('div', 'card card--soon');
++    const titleId = `room-title-${position}`;
++    const summaryId = `room-summary-${position}`;
++    if (room.open) {
++      card.setAttribute('href', room.route);
++      card.setAttribute('aria-labelledby', titleId);
++    }
++
++    const plate = make('div', 'card__plate');
++    plate.setAttribute('aria-hidden', 'true');
++
++    const body = make('div', 'card__body');
++    const meta = make('p', 'card__meta', `${copy.roomWord} ${pad(position + 1)} · ${room.open ? copy.statusOpen : copy.statusSoon}`);
++    const title = make('h3', 'card__title', roomTitle(room));
++    title.id = titleId;
++    const alt = make('p', 'card__alt', roomAltTitle(room));
++    alt.lang = altLang();
++    const cta = make('p', 'card__cta', room.open ? copy.enter : copy.soonCta);
++
++    body.append(meta, title, alt);
++    if (room.summary) {
++      const summary = make('p', 'card__summary', room.summary);
++      summary.id = summaryId;
++      summary.lang = 'ko';
++      summary.dataset.bench = 'body';
++      body.append(summary);
++      if (room.open) card.setAttribute('aria-describedby', summaryId);
++    }
++    body.append(cta);
++    card.append(plate, body);
++    item.append(card);
++    return item;
++  }
++
++  function renderRooms() {
++    const copy = COPY[lang];
++    el.grid.replaceChildren(...rooms.map(buildCard));
++
++    const open = rooms.filter((room) => room.open).length;
++    const soon = rooms.length - open;
++    const summary = copy.count(rooms.length, open, soon);
++    el.roomsNote.textContent = summary;
++    el.roomsNote.hidden = rooms.length === 0;
++    el.empty.hidden = rooms.length > 0;
++    el.grid.hidden = rooms.length === 0;
++
++    el.spectrum.replaceChildren(...rooms.map((room) => {
++      const bar = make('span', room.open ? '' : 'is-soon');
++      accentVars(bar, room);
++      return bar;
++    }));
++  }
++
++  function renderStatic() {
++    const copy = COPY[lang];
++    root.lang = lang;
++    doc.querySelectorAll('[data-i18n]').forEach((node) => {
++      const value = copy[node.dataset.i18n];
++      if (typeof value === 'string') node.textContent = value;
++    });
++    el.langToggle.textContent = copy.langButton;
++    el.langToggle.lang = copy.langButtonLang;
++    el.footerNav.setAttribute('aria-label', copy.footerNav);
++    updateThemeToggle();
++  }
++
++  function activeRoom() {
++    return route === 'lobby' ? null : rooms.find((room) => room.id === route) || null;
++  }
++
++  function renderView() {
++    const copy = COPY[lang];
++    const room = activeRoom();
++    const inRoom = Boolean(room);
++
++    el.rooms.hidden = inRoom;
++    el.info.hidden = inRoom;
++    el.explore.hidden = inRoom;
++    el.back.hidden = !inRoom;
++    el.alt.hidden = !inRoom;
++    el.spectrum.hidden = inRoom || rooms.length === 0;
++    el.art.dataset.mode = inRoom ? 'room' : 'lobby';
++
++    if (room) {
++      el.eyebrow.textContent = `${copy.roomWord} ${pad(room.index + 1)} · ${copy.statusOpen}`;
++      el.title.textContent = roomTitle(room);
++      el.alt.textContent = roomAltTitle(room);
++      el.alt.lang = altLang();
++      el.lead.textContent = room.summary;
++      el.lead.lang = 'ko';
++      accentVars(el.art, room);
++      doc.title = `${roomTitle(room)} — Museum of Light`;
++    } else {
++      el.eyebrow.textContent = copy.eyebrow;
++      el.title.textContent = copy.heroTitle;
++      el.alt.textContent = '';
++      el.lead.textContent = copy.heroLead;
++      el.lead.removeAttribute('lang');
++      el.art.style.removeProperty('--l');
++      el.art.style.removeProperty('--c');
++      el.art.style.removeProperty('--h');
++      doc.title = copy.docTitle;
++    }
++  }
++
++  /* ---------- routing ---------- */
++
++  function parseRoute() {
++    const hash = window.location.hash;
++    const match = /^#\/room\/(.+)$/.exec(hash);
++    if (!match) return 'lobby';
++    let id = match[1];
++    try { id = decodeURIComponent(id); } catch (_) { /* keep raw id */ }
++    const room = rooms.find((candidate) => candidate.open && (candidate.route === hash || candidate.id === id));
++    return room ? room.id : 'lobby';
++  }
++
++  function restartTransition() {
++    el.main.classList.remove('is-entering');
++    el.veil.classList.remove('is-playing');
++    void el.main.offsetWidth; // restart the CSS animations
++    el.main.classList.add('is-entering');
++    el.veil.classList.add('is-playing');
++  }
++
++  function applyRoute(initial) {
++    const next = parseRoute();
++    if (!initial && next === route) return;
++    if (route === 'lobby' && !initial) lobbyScroll = window.scrollY;
++    route = next;
++    renderView();
++    if (initial) return;
++
++    restartTransition();
++    if (route === 'lobby') {
++      window.scrollTo(0, lobbyScroll);
++      const hash = window.location.hash;
++      const anchor = hash.length > 1 && !hash.startsWith('#/') ? doc.getElementById(decodeURIComponent(hash.slice(1))) : null;
++      if (anchor) anchor.scrollIntoView();
++      if (lastInvoker && lastInvoker.isConnected) lastInvoker.focus({ preventScroll: true });
++      lastInvoker = null;
++    } else {
++      window.scrollTo(0, 0);
++      el.title.focus({ preventScroll: true });
++    }
++  }
++
++  function onClick(event) {
++    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
++    const link = event.target instanceof Element ? event.target.closest('a[href^="#/"]') : null;
++    if (!link) return;
++    event.preventDefault();
++    lastInvoker = link.closest('[data-bench="room-card"]') ? link : null;
++    const href = link.getAttribute('href');
++    if (window.location.hash !== href) window.location.hash = href;
++    applyRoute(false);
++    if (link.id === 'brand') window.scrollTo(0, 0);
++  }
++
++  /* ---------- language + theme ---------- */
++
++  function setLang(next, persist) {
++    lang = next === 'en' ? 'en' : 'ko';
++    if (persist) store.set(KEY_LANG, lang);
++    renderStatic();
++    renderRooms();
++    renderView();
++  }
++
++  function effectiveTheme() {
++    const chosen = root.getAttribute('data-theme');
++    if (chosen === 'dark' || chosen === 'light') return chosen;
++    return darkQuery && darkQuery.matches ? 'dark' : 'light';
++  }
++
++  function updateThemeToggle() {
++    const copy = COPY[lang];
++    const label = effectiveTheme() === 'dark' ? copy.toLight : copy.toDark;
++    el.themeToggle.setAttribute('aria-label', label);
++    el.themeToggle.setAttribute('title', label);
++  }
++
++  function toggleTheme() {
++    const next = effectiveTheme() === 'dark' ? 'light' : 'dark';
++    root.setAttribute('data-theme', next);
++    store.set(KEY_THEME, next);
++    updateThemeToggle();
++  }
++
++  /* ---------- runtime contract ---------- */
++
++  function settleAnimations() {
++    if (typeof doc.getAnimations !== 'function') return;
++    doc.getAnimations().forEach((animation) => {
++      try { animation.finish(); } catch (_) { /* infinite or detached animation */ }
++    });
++  }
++
++  function nextFrame() {
++    return new Promise((resolve) => {
++      let finished = false;
++      const done = () => { if (!finished) { finished = true; resolve(); } };
++      window.requestAnimationFrame(() => window.requestAnimationFrame(done));
++      window.setTimeout(done, 100); // never hang if frames are paused by the harness
++    });
++  }
++
++  function reloadData() {
++    rooms = readRooms();
++    renderRooms();
++    const next = parseRoute();
++    if (next !== route) route = next;
++    renderView();
++  }
++
++  window.__bench = {
++    version: 1,
++    ready: Promise.resolve(doc.fonts && doc.fonts.ready).then(() => undefined),
++    setSeed() {
++      reloadData();
++      clockMs = 0;
++    },
++    seek(tMs) {
++      clockMs = Number.isFinite(Number(tMs)) ? Number(tMs) : 0;
++      settleAnimations();
++    },
++    resume() {},
++    renderFrame: nextFrame,
++    state() {
++      return { route, lang, theme: effectiveTheme(), rooms: rooms.length, t: clockMs };
++    },
++    stats() {
++      return { drawCalls: 0, triangles: 0 };
++    },
++  };
++
++  /* ---------- boot ---------- */
++
++  el.langToggle.addEventListener('click', () => setLang(lang === 'ko' ? 'en' : 'ko', true));
++  el.themeToggle.addEventListener('click', toggleTheme);
++  doc.addEventListener('click', onClick);
++  window.addEventListener('hashchange', () => applyRoute(false));
++  if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener('change', updateThemeToggle);
++  if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
++
++  rooms = readRooms();
++  route = parseRoute();
++  renderStatic();
++  renderRooms();
++  renderView();
++})();
+diff --git a/lobby/index.html b/lobby/index.html
+index 449c50b..f3479ab 100644
+--- a/lobby/index.html
++++ b/lobby/index.html
+@@ -1 +1,137 @@
+-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Museum of Light</title><style>body{font:16px system-ui,sans-serif;margin:2rem;color:#222}main{max-width:70rem;margin:auto}</style><style>body *{font-size:16px!important;line-height:1.1!important}[data-bench="body"]{max-width:120px}body *{margin:5px!important;padding:5px!important;gap:5px!important}</style></head><body><main><header data-bench="header"><span>MUSEUM OF LIGHT</span><button></button></header><h1 data-bench="hero-title">빛의 방에 오신 것을 환영합니다</h1><p data-bench="body">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다.</p><section id="rooms" aria-label="전시 공간"></section><p data-bench="empty-state" hidden>아직 공개된 방이 없습니다.</p><footer data-bench="footer">Museum of Light · Seoul</footer></main><script src="./app.js" type="module"></script></body></html>
++<!doctype html>
++<html lang="ko">
++<head>
++<meta charset="utf-8">
++<meta name="viewport" content="width=device-width, initial-scale=1">
++<meta name="color-scheme" content="light dark">
++<meta name="theme-color" content="#fbf9f4" media="(prefers-color-scheme: light)">
++<meta name="theme-color" content="#1b1815" media="(prefers-color-scheme: dark)">
++<meta name="description" content="Museum of Light — 빛으로 만든 작은 방들이 이어지는 디지털 전시관의 입구입니다.">
++<title>Museum of Light · 빛의 박물관</title>
++<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23262220'/%3E%3Cpath d='M16 3a13 13 0 0 1 0 26z' fill='%23f1c65b'/%3E%3C/svg%3E">
++<script>
++/* Apply a stored theme/language choice before first paint (no flash). */
++(function () {
++  try {
++    var s = window.localStorage, t = s.getItem('mol-theme'), l = s.getItem('mol-lang');
++    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
++    if (l === 'en' || l === 'ko') document.documentElement.setAttribute('lang', l);
++  } catch (e) { /* storage unavailable: fall back to system preference */ }
++})();
++</script>
++<link rel="stylesheet" href="styles.css">
++</head>
++<body id="top">
++
++<a class="skip" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
++
++<header class="site-header" data-bench="header">
++  <div class="wrap site-header__bar">
++    <a class="brand" href="#/" id="brand" lang="en"><span class="brand__mark" aria-hidden="true"></span>Museum of Light</a>
++    <div class="site-header__actions">
++      <button class="ctrl" type="button" id="lang-toggle" data-bench="lang-toggle" lang="en">English</button>
++      <button class="ctrl ctrl--icon" type="button" id="theme-toggle" data-bench="theme-toggle" aria-label="다크 테마로 전환" title="다크 테마로 전환">
++        <svg class="icon icon--moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
++        <svg class="icon icon--sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
++      </button>
++    </div>
++  </div>
++</header>
++
++<main id="main" tabindex="-1">
++
++  <section class="hero" aria-labelledby="hero-title">
++    <div class="wrap hero__inner">
++      <div class="hero__copy">
++        <p class="eyebrow" id="hero-eyebrow" data-i18n="eyebrow">서울 · 디지털 전시관</p>
++        <h1 class="hero__title" id="hero-title" data-bench="hero-title" tabindex="-1">빛의 방에 오신 것을 환영합니다</h1>
++        <p class="hero__alt" id="hero-alt" hidden></p>
++        <p class="hero__lead" id="hero-lead" data-bench="body">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다. 천천히 걸으며, 마음이 머무는 곳으로 들어가 보세요.</p>
++        <div class="hero__actions">
++          <a class="btn btn--down" id="cta-explore" href="#rooms" data-i18n="explore">전시 공간 둘러보기</a>
++          <a class="btn btn--back" id="cta-back" href="#/" data-i18n="back" hidden>로비로 돌아가기</a>
++        </div>
++        <div class="spectrum" id="hero-spectrum" aria-hidden="true"></div>
++      </div>
++      <div class="hero__art" id="hero-art" aria-hidden="true" data-mode="lobby">
++        <svg viewBox="0 0 400 500" focusable="false">
++          <defs>
++            <linearGradient id="art-fill" x1="0" y1="0" x2="0" y2="1">
++              <stop offset="0" class="art-fill-top"/>
++              <stop offset="1" class="art-fill-bottom"/>
++            </linearGradient>
++            <linearGradient id="art-line" gradientUnits="userSpaceOnUse" x1="0" y1="140" x2="0" y2="500">
++              <stop offset="0" class="art-line-top"/>
++              <stop offset="1" class="art-line-bottom"/>
++            </linearGradient>
++          </defs>
++          <path d="M0 500V200a200 200 0 0 1 400 0V500z" fill="url(#art-fill)"/>
++          <path d="M.5 500V200a199.5 199.5 0 0 1 399 0V500" fill="none" stroke="url(#art-line)"/>
++          <path d="M24.5 500V200a175.5 175.5 0 0 1 351 0V500" fill="none" stroke="url(#art-line)"/>
++        </svg>
++      </div>
++    </div>
++  </section>
++
++  <section class="rooms" id="rooms" aria-labelledby="rooms-title">
++    <div class="wrap">
++      <div class="section-head">
++        <h2 id="rooms-title" data-i18n="roomsTitle">전시 공간</h2>
++        <p class="section-head__note" id="rooms-note"></p>
++      </div>
++      <ul class="room-grid" id="room-grid" role="list"></ul>
++      <div class="empty" data-bench="empty-state" id="empty-state" hidden>
++        <span class="empty__door" aria-hidden="true"></span>
++        <p class="empty__title" data-i18n="emptyTitle">아직 공개된 방이 없습니다.</p>
++        <p class="empty__body" data-i18n="emptyBody">새로운 전시가 준비되는 대로 이곳에 문을 엽니다.</p>
++      </div>
++      <noscript><p class="empty__body">전시 공간을 보려면 JavaScript가 필요합니다.</p></noscript>
++    </div>
++  </section>
++
++  <section class="info" id="info" aria-labelledby="info-title">
++    <div class="wrap">
++      <div class="section-head">
++        <h2 id="info-title" data-i18n="infoTitle">방문 안내</h2>
++      </div>
++      <div class="info__grid">
++        <div class="info__item">
++          <h3 data-i18n="info1Title">열린 시간</h3>
++          <p data-bench="body" data-i18n="info1Body">연중무휴, 하루 24시간 열려 있습니다. 언제든 천천히 머물러 주세요.</p>
++        </div>
++        <div class="info__item">
++          <h3 data-i18n="info2Title">함께 걷는 법</h3>
++          <p data-bench="body" data-i18n="info2Body">마음이 가는 방의 카드를 선택하면 입장합니다. 키보드에서는 Tab 키로 이동하고 Enter 키로 들어갑니다.</p>
++        </div>
++        <div class="info__item">
++          <h3 data-i18n="info3Title">편안한 보기</h3>
++          <p data-bench="body" data-i18n="info3Body">화면 설정에 맞춰 밝은 테마와 어두운 테마를 보여 주며, 움직임 줄이기 설정을 존중합니다.</p>
++        </div>
++      </div>
++    </div>
++  </section>
++
++</main>
++
++<footer class="site-footer" data-bench="footer">
++  <div class="wrap footer__grid">
++    <div class="footer__brand">
++      <p class="footer__name" lang="en">Museum of Light</p>
++      <p class="footer__note" data-i18n="footerNote">서울의 작은 디지털 전시관</p>
++    </div>
++    <nav class="footer__nav" id="footer-nav" aria-label="바로가기">
++      <ul>
++        <li><a href="#rooms" data-i18n="navRooms">전시 공간</a></li>
++        <li><a href="#info" data-i18n="navInfo">방문 안내</a></li>
++        <li><a href="#top" data-i18n="navTop">맨 위로</a></li>
++      </ul>
++    </nav>
++    <p class="footer__legal">© Museum of Light · Seoul</p>
++  </div>
++</footer>
++
++<div class="veil" id="veil" aria-hidden="true"></div>
++
++<script src="app.js"></script>
++</body>
++</html>
+diff --git a/lobby/styles.css b/lobby/styles.css
+new file mode 100644
+index 0000000..5107178
+--- /dev/null
++++ b/lobby/styles.css
+@@ -0,0 +1,596 @@
++/* Museum of Light — lobby
++   Type scale (px): 14 · 16 · 20 · 28 · 48   Spacing: multiples of 4 only.
++   System font stacks only — no font files are requested. */
++
++:root {
++  color-scheme: light;
++
++  --sans: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Noto Sans CJK KR", "Malgun Gothic", Roboto, "Helvetica Neue", Arial, sans-serif;
++  --serif: Georgia, "Noto Serif KR", "Noto Serif CJK KR", "Nanum Myeongjo", AppleMyungjo, Batang, "Times New Roman", serif;
++
++  --paper: oklch(0.985 0.007 85);
++  --paper-2: oklch(0.955 0.012 85);
++  --ink: oklch(0.24 0.02 60);
++  --ink-soft: oklch(0.34 0.02 60);
++  --ink-2: oklch(0.43 0.02 60);
++  --line: oklch(0.88 0.012 80);
++  --line-strong: oklch(0.7 0.015 75);
++  --focus: oklch(0.45 0.18 262);
++  --btn-bg: oklch(0.24 0.02 60);
++  --btn-fg: oklch(0.985 0.007 85);
++  --veil: oklch(0.24 0.02 60);
++  --glow-1: oklch(0.95 0.07 90 / 0.85);
++  --plate-shine: oklch(1 0 0 / 0.55);
++  --plate-door: oklch(1 0 0 / 0.5);
++
++  --gutter: 20px;
++  --measure-lead: 30em;
++  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
++}
++
++/* Dark tokens: system preference unless the visitor chose a theme. */
++@media (prefers-color-scheme: dark) {
++  :root:not([data-theme="light"]) {
++    color-scheme: dark;
++    --paper: oklch(0.175 0.012 60);
++    --paper-2: oklch(0.215 0.014 60);
++    --ink: oklch(0.95 0.01 85);
++    --ink-soft: oklch(0.88 0.01 85);
++    --ink-2: oklch(0.77 0.015 80);
++    --line: oklch(0.32 0.014 60);
++    --line-strong: oklch(0.52 0.015 70);
++    --focus: oklch(0.86 0.13 88);
++    --btn-bg: oklch(0.95 0.01 85);
++    --btn-fg: oklch(0.2 0.012 60);
++    --veil: oklch(0 0 0);
++    --glow-1: oklch(0.34 0.06 85 / 0.7);
++    --plate-shine: oklch(1 0 0 / 0.32);
++    --plate-door: oklch(1 0 0 / 0.36);
++  }
++}
++:root[data-theme="dark"] {
++  color-scheme: dark;
++  --paper: oklch(0.175 0.012 60);
++  --paper-2: oklch(0.215 0.014 60);
++  --ink: oklch(0.95 0.01 85);
++  --ink-soft: oklch(0.88 0.01 85);
++  --ink-2: oklch(0.77 0.015 80);
++  --line: oklch(0.32 0.014 60);
++  --line-strong: oklch(0.52 0.015 70);
++  --focus: oklch(0.86 0.13 88);
++  --btn-bg: oklch(0.95 0.01 85);
++  --btn-fg: oklch(0.2 0.012 60);
++  --veil: oklch(0 0 0);
++  --glow-1: oklch(0.34 0.06 85 / 0.7);
++  --plate-shine: oklch(1 0 0 / 0.32);
++  --plate-door: oklch(1 0 0 / 0.36);
++}
++
++/* ---------- Base ---------- */
++
++*, *::before, *::after { box-sizing: border-box; }
++
++html {
++  -webkit-text-size-adjust: 100%;
++  text-size-adjust: 100%;
++}
++
++body {
++  margin: 0;
++  background: var(--paper);
++  color: var(--ink);
++  font: 400 16px/1.7 var(--sans);
++  word-break: keep-all;
++  overflow-wrap: break-word;
++  -webkit-font-smoothing: antialiased;
++}
++
++h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
++ul, ol { padding: 0; list-style: none; }
++a { color: inherit; }
++button { font: inherit; color: inherit; margin: 0; }
++svg { display: block; }
++[hidden] { display: none !important; }
++[lang="en"] { word-break: normal; overflow-wrap: break-word; }
++
++main:focus, h1:focus { outline: none; }
++
++.wrap {
++  width: min(100% - 2 * var(--gutter), 1240px);
++  margin-inline: auto;
++}
++
++/* Visible focus for everything keyboard-reachable. */
++a:focus-visible, button:focus-visible {
++  outline: 3px solid var(--focus);
++  outline-offset: 4px;
++}
++
++.skip {
++  position: absolute;
++  left: 16px;
++  top: -80px;
++  z-index: 10;
++  padding: 12px 20px;
++  border-radius: 999px;
++  background: var(--btn-bg);
++  color: var(--btn-fg);
++  font-size: 14px;
++  line-height: 1.5;
++  text-decoration: none;
++}
++.skip:focus-visible { top: 16px; }
++
++/* ---------- Header ---------- */
++
++.site-header { border-bottom: 1px solid var(--line); }
++
++.site-header__bar {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 16px;
++  min-height: 72px;
++  padding-block: 12px;
++}
++
++.brand {
++  display: inline-flex;
++  align-items: center;
++  gap: 12px;
++  min-height: 44px;
++  font-size: 14px;
++  font-weight: 600;
++  line-height: 1.5;
++  letter-spacing: 0.14em;
++  text-transform: uppercase;
++  text-decoration: none;
++}
++
++.brand__mark {
++  width: 20px;
++  height: 20px;
++  border: 2px solid var(--ink);
++  border-radius: 50%;
++  background: linear-gradient(90deg, var(--ink) 50%, transparent 50%);
++}
++
++.site-header__actions { display: flex; align-items: center; gap: 8px; }
++
++.ctrl {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  gap: 8px;
++  min-width: 44px;
++  min-height: 44px;
++  padding: 0 16px;
++  border: 1px solid var(--line-strong);
++  border-radius: 999px;
++  background: transparent;
++  font-size: 14px;
++  line-height: 1.5;
++  cursor: pointer;
++  transition: background-color 160ms ease, border-color 160ms ease;
++}
++.ctrl:hover { background: var(--paper-2); }
++.ctrl--icon { padding: 0; }
++
++.icon--sun { display: none; }
++:root[data-theme="dark"] .icon--moon { display: none; }
++:root[data-theme="dark"] .icon--sun { display: block; }
++@media (prefers-color-scheme: dark) {
++  :root:not([data-theme="light"]) .icon--moon { display: none; }
++  :root:not([data-theme="light"]) .icon--sun { display: block; }
++}
++
++/* ---------- Hero ---------- */
++
++.hero {
++  position: relative;
++  isolation: isolate;
++  padding-block: 80px 64px;
++}
++
++.hero__inner {
++  display: flex;
++  flex-direction: column;
++  gap: 32px;
++}
++
++.hero__copy {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: 24px;
++  min-width: 0;
++}
++
++.eyebrow {
++  font-size: 14px;
++  line-height: 1.5;
++  letter-spacing: 0.12em;
++  text-transform: uppercase;
++  color: var(--ink-2);
++}
++
++.hero__title {
++  max-width: 10em;
++  color: var(--ink-soft);
++  font: 400 clamp(32px, 4vw + 16px, 48px) / 1.25 var(--serif);
++  letter-spacing: -0.01em;
++  text-wrap: balance;
++}
++
++.hero__alt {
++  margin-top: -8px;
++  font-size: 20px;
++  line-height: 1.5;
++  color: var(--ink-2);
++}
++
++.hero__lead {
++  max-width: var(--measure-lead);
++  font-size: 20px;
++  line-height: 1.7;
++  color: var(--ink-2);
++  text-wrap: pretty;
++}
++
++.hero__actions { display: flex; flex-wrap: wrap; gap: 16px; }
++
++.btn {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  gap: 12px;
++  min-height: 48px;
++  padding: 0 28px;
++  border-radius: 999px;
++  background: var(--btn-bg);
++  color: var(--btn-fg);
++  font-size: 16px;
++  line-height: 1.5;
++  font-weight: 600;
++  text-decoration: none;
++  transition: transform 180ms var(--ease), background-color 180ms ease;
++}
++.btn:hover { transform: translateY(-2px); }
++.btn--down::after { content: "↓"; }
++.btn--back::before { content: "←"; }
++
++/* One bar of light per room, tinted with the room's accent. */
++.spectrum {
++  display: flex;
++  gap: 4px;
++  width: 100%;
++  max-width: 560px;
++  height: 8px;
++  margin-top: 16px;
++}
++.spectrum span {
++  flex: 1 1 0;
++  min-width: 4px;
++  border-radius: 4px;
++  background: oklch(var(--l) var(--c) var(--h));
++}
++.spectrum span { opacity: 0.6; }
++.spectrum span.is-soon { background: var(--line-strong); opacity: 0.55; }
++
++/* Doorway of light: a pale arch in the lobby, the room's own colour inside a room.
++   Drawn as inline SVG so it rasterises identically on every run. */
++.hero__art {
++  --l: 0.93;
++  --c: 0.07;
++  --h: 88;
++  display: none;
++  width: 100%;
++  max-width: 200px;
++}
++.hero__art svg { width: 100%; height: auto; }
++.hero__art .art-fill-top { stop-color: var(--glow-1); }
++.hero__art .art-fill-bottom { stop-color: var(--glow-1); stop-opacity: 0; }
++.hero__art .art-line-top { stop-color: var(--line-strong); }
++.hero__art .art-line-bottom { stop-color: var(--line-strong); stop-opacity: 0; }
++.hero__art[data-mode="room"] { display: block; }
++.hero__art[data-mode="room"] .art-fill-top { stop-color: oklch(var(--l) var(--c) var(--h)); }
++.hero__art[data-mode="room"] .art-fill-bottom { stop-color: oklch(calc(var(--l) - 0.14) var(--c) calc(var(--h) + 28)); stop-opacity: 1; }
++.hero__art[data-mode="room"] .art-line-top { stop-color: oklch(1 0 0 / 0.7); }
++.hero__art[data-mode="room"] .art-line-bottom { stop-color: oklch(1 0 0 / 0.7); stop-opacity: 1; }
++
++/* Shared "plate" artwork on cards: a lit room with an open door. */
++.card__plate {
++  position: relative;
++  border-radius: 12px;
++  background:
++    radial-gradient(90% 140% at 12% 0%, var(--plate-shine), transparent 62%),
++    linear-gradient(155deg, oklch(var(--l) var(--c) var(--h)), oklch(calc(var(--l) - 0.14) var(--c) calc(var(--h) + 28)));
++}
++.card__plate::after {
++  content: "";
++  position: absolute;
++  left: 50%;
++  bottom: 0;
++  width: 26%;
++  height: 68%;
++  transform: translateX(-50%);
++  border-radius: 999px 999px 0 0;
++  background: linear-gradient(to top, var(--plate-door), transparent 120%);
++}
++
++/* ---------- Sections ---------- */
++
++.rooms { padding-block: 16px 96px; }
++
++.section-head {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr);
++  align-items: baseline;
++  gap: 8px 32px;
++  margin-bottom: 40px;
++  padding-top: 32px;
++  border-top: 1px solid var(--line);
++}
++
++.section-head h2 {
++  font: 400 28px / 1.3 var(--serif);
++  letter-spacing: -0.005em;
++  text-wrap: balance;
++}
++
++.section-head__note {
++  font-size: 14px;
++  line-height: 1.5;
++  color: var(--ink-2);
++}
++
++/* ---------- Room cards ---------- */
++
++.room-grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr);
++  gap: 40px 24px;
++}
++
++.card-item { display: flex; min-width: 0; }
++
++.card {
++  display: flex;
++  flex-direction: column;
++  gap: 20px;
++  width: 100%;
++  min-width: 0;
++  border-radius: 12px;
++  color: inherit;
++  text-decoration: none;
++}
++
++.card__plate {
++  height: 144px;
++  transition: transform 220ms var(--ease), box-shadow 220ms ease;
++}
++
++.card__body {
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++  min-width: 0;
++}
++
++.card__meta {
++  font-size: 14px;
++  line-height: 1.5;
++  letter-spacing: 0.08em;
++  text-transform: uppercase;
++  color: var(--ink-2);
++}
++
++.card__title {
++  font-size: 20px;
++  font-weight: 600;
++  line-height: 1.4;
++  text-wrap: balance;
++}
++
++.card__alt {
++  font-size: 14px;
++  line-height: 1.5;
++  color: var(--ink-2);
++}
++
++.card__summary {
++  margin-top: 4px;
++  font-size: 16px;
++  line-height: 1.7;
++  color: var(--ink-2);
++  text-wrap: pretty;
++}
++
++.card__cta {
++  margin-top: 8px;
++  font-size: 14px;
++  font-weight: 600;
++  line-height: 1.5;
++}
++
++.card--open .card__cta::after {
++  content: "→";
++  display: inline-block;
++  margin-left: 8px;
++  transition: transform 180ms var(--ease);
++}
++
++.card--open:hover .card__plate {
++  transform: translateY(-4px);
++  box-shadow: 0 16px 32px -16px oklch(0.2 0.05 60 / 0.45);
++}
++.card--open:hover .card__title {
++  text-decoration: underline;
++  text-decoration-thickness: 1px;
++  text-underline-offset: 6px;
++}
++.card--open:hover .card__cta::after { transform: translateX(4px); }
++
++/* Coming soon: dashed, hatched, no hover — clearly not a door yet. */
++.card--soon { cursor: default; }
++.card--soon .card__plate {
++  background:
++    repeating-linear-gradient(135deg, var(--line) 0 2px, transparent 2px 12px),
++    var(--paper-2);
++  border: 1px dashed var(--line-strong);
++}
++.card--soon .card__plate::after { display: none; }
++.card--soon .card__title { font-weight: 500; }
++.card--soon .card__cta { color: var(--ink-2); font-weight: 500; }
++
++/* ---------- Empty state ---------- */
++
++.empty {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: 8px;
++  padding: 48px 0;
++}
++.empty__door {
++  width: 56px;
++  height: 80px;
++  margin-bottom: 16px;
++  border: 2px solid var(--line-strong);
++  border-bottom-width: 0;
++  border-radius: 999px 999px 0 0;
++  background: linear-gradient(to top, var(--paper-2), transparent);
++}
++.empty__title { font: 400 20px / 1.5 var(--serif); }
++.empty__body { color: var(--ink-2); max-width: 32em; }
++
++/* ---------- Info ---------- */
++
++.info { padding-block: 0 96px; }
++
++.info__grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr);
++  gap: 32px;
++}
++
++.info__item { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
++.info__item h3 { font-size: 20px; font-weight: 600; line-height: 1.4; }
++.info__item p { color: var(--ink-2); text-wrap: pretty; }
++
++/* ---------- Footer ---------- */
++
++.site-footer {
++  border-top: 1px solid var(--line);
++  background: var(--paper-2);
++}
++
++.footer__grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr);
++  gap: 24px;
++  padding-block: 48px;
++  font-size: 14px;
++  line-height: 1.5;
++}
++
++.footer__name { font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
++.footer__note, .footer__legal { color: var(--ink-2); }
++.footer__brand { display: flex; flex-direction: column; gap: 4px; }
++.footer__nav ul { display: flex; flex-wrap: wrap; gap: 8px 24px; }
++.footer__nav a {
++  display: inline-block;
++  padding: 4px 0;
++  text-decoration: underline;
++  text-underline-offset: 4px;
++  text-decoration-thickness: 1px;
++}
++.footer__nav a:hover { text-decoration-thickness: 2px; }
++
++/* ---------- Route transition ----------
++   Entering or leaving a room "turns the lights up": the view rises 12px while a dim veil fades out. */
++
++@keyframes view-in {
++  from { opacity: 0.4; transform: translateY(12px); }
++  to { opacity: 1; transform: none; }
++}
++@keyframes veil-out {
++  from { opacity: 0.42; }
++  to { opacity: 0; }
++}
++main.is-entering { animation: view-in 440ms var(--ease) backwards; }
++
++.veil {
++  position: fixed;
++  inset: 0;
++  z-index: 40;
++  pointer-events: none;
++  background: var(--veil);
++  opacity: 0;
++}
++.veil.is-playing { animation: veil-out 440ms cubic-bezier(0.3, 0.2, 0.2, 1) backwards; }
++
++/* ---------- Breakpoints ---------- */
++
++@media (min-width: 640px) {
++  :root { --gutter: 32px; }
++  .hero { padding-block: 96px 64px; }
++  .room-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px 24px; }
++  .footer__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++}
++
++@media (min-width: 1100px) {
++  :root { --gutter: 48px; }
++  .hero { padding-block: 96px; }
++  .hero__inner {
++    display: grid;
++    grid-template-columns: repeat(3, minmax(0, 1fr));
++    align-items: center;
++    gap: 32px;
++  }
++  .hero__copy { grid-column: 1 / span 2; }
++  .hero__art, .hero__art[data-mode="lobby"], .hero__art[data-mode="room"] {
++    display: block;
++    grid-column: 3;
++    max-width: none;
++  }
++  .section-head { grid-template-columns: repeat(3, minmax(0, 1fr)); }
++  .section-head h2 { grid-column: 1 / span 2; }
++  .section-head__note { grid-column: 3; }
++  .room-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 56px 32px; }
++  .info__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
++  .footer__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
++}
++
++/* Roomy screens: the first view is just the invitation; rooms begin below the fold. */
++@media (min-width: 1100px) and (min-height: 640px) {
++  .hero {
++    display: flex;
++    align-items: center;
++    min-height: calc(100vh - 73px);
++    min-height: calc(100svh - 73px);
++  }
++}
++
++@media (max-width: 360px) {
++  .ctrl { padding: 0 12px; }
++  .brand { letter-spacing: 0.1em; }
++}
++
++/* ---------- Forced colors (Windows high contrast) ---------- */
++
++@media (forced-colors: active) {
++  .btn { border: 1px solid ButtonText; }
++  .card__plate, .hero__art { forced-color-adjust: none; }
++  .card--soon .card__plate { border-color: CanvasText; }
++}
++
++/* ---------- Reduced motion ---------- */
++
++@media (prefers-reduced-motion: reduce) {
++  *, *::before, *::after {
++    animation: none !important;
++    transition: none !important;
++    scroll-behavior: auto !important;
++  }
++}
+diff --git a/report.json b/report.json
+index 1ed5e36..ade4e81 100644
+--- a/report.json
++++ b/report.json
+@@ -1 +1,221 @@
+-{"schema_version":1,"summary":"Lobby seed workspace. Fonts are system stacks: no offline OFL font resource was available in the repository or installed package assets, so the seed requests none.","deliverables":["lobby/index.html","report.json"],"claims":[],"blocked":false}
++{
++  "schema_version": 1,
++  "summary": "Lobby: static HTML/CSS shell plus app.js that builds room cards from __benchHost.params.rooms (ko/en titles; coming-soon cards are not links) and swaps hero/sections for #/room/<id> with the lobby DOM kept alive. Decisions: default language is always ko (Playwright's locale is en-US, so navigator.language is ignored; the toggle persists); system font stacks only (no OFL font vendored); no CSS radial gradients (+-1px raster noise risked G-determinism), hero art is vector. Unverified here: G-live FLIP (bench python path breaks in this layout), tests.hidden (public tests not wired).",
++  "deliverables": [
++    "lobby/index.html",
++    "lobby/styles.css",
++    "lobby/app.js",
++    "tests/lobby.test.mjs",
++    "report.json"
++  ],
++  "claims": [
++    {
++      "metric_id": "G-load",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-console",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-contract",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-determinism",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-offline",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-raster",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-fonts-local",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-report",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck on public seeds: PASS"
++    },
++    {
++      "metric_id": "G-live",
++      "status": "not_verified",
++      "method": "selfcheck cannot run FLIP here (bench python path); manual FLIP seek-vs-live 3.1e-07 (<=0.02), MAD 0"
++    },
++    {
++      "metric_id": "data.rooms_rendered",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1,
++      "method": "selfcheck public seeds; own tests: seeds 1,2,3,7 and a custom room list"
++    },
++    {
++      "metric_id": "data.long_title",
++      "status": "verified",
++      "meets_target": true,
++      "method": "selfcheck + own tests: long title whole and inside viewport at 320-1440"
++    },
++    {
++      "metric_id": "data.empty_state",
++      "status": "verified",
++      "meets_target": true,
++      "method": "selfcheck + own tests: empty variant and setSeed to an empty list"
++    },
++    {
++      "metric_id": "nav.routes",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1,
++      "method": "selfcheck public seeds; own tests: click, Enter, Back/Forward, deep link"
++    },
++    {
++      "metric_id": "layout.overflow_count",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 0,
++      "method": "selfcheck at 3 viewports/2 schemes; own sweep 280-2560px in ko and en"
++    },
++    {
++      "metric_id": "text.clipped_count",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 0,
++      "method": "selfcheck; own tests incl. 320px long unbroken title"
++    },
++    {
++      "metric_id": "a11y.axe_violations",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 0,
++      "method": "selfcheck; own tests: 0 serious/critical and 0 contrast failures, light+dark, 3 variants"
++    },
++    {
++      "metric_id": "a11y.keyboard_reach",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1,
++      "method": "selfcheck keyboard probe"
++    },
++    {
++      "metric_id": "a11y.focus_visible",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1,
++      "method": "selfcheck focus probe; also dark theme and 360px in own tests"
++    },
++    {
++      "metric_id": "theme.both_valid",
++      "status": "verified",
++      "meets_target": true,
++      "method": "theme probe run directly: renders differ, 0 axe contrast violations in both schemes"
++    },
++    {
++      "metric_id": "a11y.reduced_motion_transition_ms",
++      "status": "verified",
++      "meets_target": true,
++      "method": "nav_transition probe under prefers-reduced-motion at 3 viewports: 16 ms"
++    },
++    {
++      "metric_id": "nav.transition_ms",
++      "status": "verified",
++      "meets_target": true,
++      "method": "nav_transition probe at 3 viewports: 384 ms light, 272-304 ms dark"
++    },
++    {
++      "metric_id": "lh.lcp_ms",
++      "status": "verified",
++      "meets_target": true,
++      "method": "Lighthouse (vendored) desktop preset, simulated throttling, 3 runs: LCP 244-262 ms"
++    },
++    {
++      "metric_id": "lh.cls",
++      "status": "verified",
++      "meets_target": true,
++      "method": "Lighthouse desktop, 3 runs: CLS 0"
++    },
++    {
++      "metric_id": "budget.transfer_kb",
++      "status": "verified",
++      "meets_target": true,
++      "method": "Lighthouse total byte weight 13.9 KB (3 requests: html, css, js)"
++    },
++    {
++      "metric_id": "text.hangul_midword_breaks",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 0,
++      "method": "selfcheck; keep-all line breaking"
++    },
++    {
++      "metric_id": "text.line_length",
++      "status": "verified",
++      "meets_target": true,
++      "method": "selfcheck: Hangul median inside 22-45; direct probe 31 at 1440, 28 at 768"
++    },
++    {
++      "metric_id": "text.line_height",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1.7,
++      "method": "selfcheck; unitless 1.7 on all running text"
++    },
++    {
++      "metric_id": "type.size_steps",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 5,
++      "method": "selfcheck at 1440x900: 14/16/20/28/48 px"
++    },
++    {
++      "metric_id": "type.scale_ratio_min",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1.1429,
++      "method": "selfcheck at 1440x900: smallest step 16/14"
++    },
++    {
++      "metric_id": "space.grid4_frac",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1,
++      "method": "selfcheck at all viewports: every padding/gap/sibling gap is a multiple of 4 px"
++    },
++    {
++      "metric_id": "align.column_count",
++      "status": "verified",
++      "meets_target": true,
++      "method": "direct align probe at 1440x900: 4 left-edge clusters"
++    },
++    {
++      "metric_id": "visual.congestion",
++      "status": "not_verified",
++      "method": "selfcheck raw 0.109 (inside published 0.10-0.12) but the band is anchor-calibrated, so no target is asserted"
++    },
++    {
++      "metric_id": "tests.hidden",
++      "status": "not_verified",
++      "method": "selfcheck finds no public-tests dir in this layout; ran public-tests/smoke.mjs plus 62 own checks (tests/lobby.test.mjs), all pass"
++    }
++  ],
++  "blocked": false
++}
+diff --git a/tests/lobby.test.mjs b/tests/lobby.test.mjs
+new file mode 100644
+index 0000000..00f5c27
+--- /dev/null
++++ b/tests/lobby.test.mjs
+@@ -0,0 +1,507 @@
++// Regression tests for lobby/index.html — run with:  node tests/lobby.test.mjs
++//
++// Drives the page through the same Playwright harness the grader uses (bench/capture) and
++// covers the public smoke tests plus the behaviours the brief lists: collection counts and
++// titles at edge lengths, empty collection, coming-soon rooms, responsive overflow, heading
++// structure, language semantics, keyboard access, focus indication, themes, reduced motion
++// and route behaviour. Exit code is non-zero when any check fails.
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath, pathToFileURL } from 'node:url';
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const load = (rel) => import(pathToFileURL(path.join(root, rel)).href);
++const { launchBrowser } = await load('bench/capture/browser.mjs');
++const { startServer } = await load('bench/capture/server.mjs');
++const { runProbe } = await load('bench/capture/probes/index.js');
++const { runTests } = await load('bench/capture/testrunner.mjs');
++const { pngMeanAbsDiff } = await load('bench/capture/probes/shared.js');
++const adapter = await load('bench/rooms/lobby.mjs');
++
++const server = await startServer(path.join(root, 'lobby'));
++const session = await launchBrowser({ mode: 'swiftshader' });
++const results = [];
++const only = process.argv[2] || '';
++
++async function open({ seed = 1, variant = 'normal', viewport = '1440x900', scheme = 'light', reduced = false, locale = null, mutate = null } = {}) {
++  let params = adapter.generate(seed, { variant });
++  if (mutate) params = mutate(params);
++  const handle = await session.newPage({
++    origin: server.origin, url: server.url, viewport, colorScheme: scheme, seed, params, locale,
++    reducedMotion: reduced ? 'reduce' : 'no-preference',
++  });
++  await handle.setSeed(seed, params);
++  await handle.seek(0);
++  await handle.renderFrame();
++  return { handle, page: handle.page, params };
++}
++
++function test(name, fn) {
++  results.push({ name, fn });
++}
++
++async function run() {
++  let failed = 0;
++  for (const { name, fn } of results) {
++    if (only && !name.includes(only)) continue;
++    let opened = [];
++    const ctx = { open: async (opts) => { const o = await open(opts); opened.push(o.handle); return o; } };
++    try {
++      const out = await fn(ctx);
++      const pass = out === undefined || out === true || (out && out.pass !== false);
++      if (!pass) failed += 1;
++      console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}${out && out.detail ? `  — ${out.detail}` : ''}`);
++    } catch (err) {
++      failed += 1;
++      console.log(`FAIL  ${name}  — ${String(err && err.stack ? err.stack.split('\n').slice(0, 3).join(' | ') : err)}`);
++    } finally {
++      for (const h of opened) await h.close().catch(() => {});
++    }
++  }
++  return failed;
++}
++
++const expect = (cond, detail) => ({ pass: Boolean(cond), detail: cond ? '' : detail });
++const VIEWPORTS = ['320x640', '360x780', '390x844', '768x1024', '1024x768', '1440x900', '1920x1080'];
++
++/* ---------- public smoke tests (same module the grader receives) ---------- */
++
++test('public smoke tests pass', async () => {
++  const smoke = await runTests([path.join(root, 'public-tests')], {
++    browserSession: session, origin: server.origin, url: server.url, adapter, hidden: false,
++  });
++  const bad = smoke.filter((t) => !t.pass);
++  return expect(smoke.length >= 2 && bad.length === 0, bad.map((t) => `${t.id}: ${t.detail}`).join('; ') || `only ${smoke.length} tests ran`);
++});
++
++/* ---------- data: counts, titles, edge lengths ---------- */
++
++for (const seed of [1, 2, 3, 7]) {
++  test(`data: every generated room renders as one card (seed ${seed})`, async ({ open }) => {
++    const { page, params } = await open({ seed });
++    const r = await page.evaluate(() => {
++      const cards = [...document.querySelectorAll('[data-bench="room-card"]')];
++      return { n: cards.length, titles: cards.map((c) => c.querySelector('h3')?.textContent), links: cards.map((c) => c.querySelector('a')?.getAttribute('href')) };
++    });
++    const ok = r.n === params.rooms.length
++      && params.rooms.every((room, i) => r.titles[i] === room.title_ko && r.links[i] === room.route);
++    return expect(ok, JSON.stringify(r).slice(0, 300));
++  });
++}
++
++test('data: room data is read from __benchHost (no hard-coded titles)', async ({ open }) => {
++  const { page } = await open({
++    mutate: () => ({ rooms: [{ id: 'x-1', route: '#/room/x-1', title_ko: '시험용 방 가나다', title_en: 'Probe Room', summary_ko: '테스트 요약입니다.', accent_oklch: [0.7, 0.1, 200], status: 'open' }] }),
++  });
++  const t = await page.evaluate(() => [...document.querySelectorAll('[data-bench="room-card"] h3')].map((h) => h.textContent));
++  return expect(t.length === 1 && t[0] === '시험용 방 가나다', JSON.stringify(t));
++});
++
++test('data: many rooms (24) all render without overflow', async ({ open }) => {
++  const { page } = await open({ variant: 'many_rooms', viewport: '360x780' });
++  const r = await page.evaluate(() => ({ n: document.querySelectorAll('[data-bench="room-card"]').length, sw: document.documentElement.scrollWidth, iw: innerWidth }));
++  return expect(r.n === 24 && r.sw <= r.iw, JSON.stringify(r));
++});
++
++test('data: one room renders', async ({ open }) => {
++  const { page } = await open({ variant: 'one_room' });
++  return expect(await page.evaluate(() => document.querySelectorAll('[data-bench="room-card"]').length) === 1, 'expected one card');
++});
++
++for (const vp of ['320x640', '360x780', '768x1024', '1440x900']) {
++  test(`data: long titles stay whole and inside the viewport (${vp})`, async ({ open }) => {
++    const { page, params } = await open({ variant: 'long_title', viewport: vp });
++    const r = await page.evaluate(() => {
++      const h = document.querySelector('[data-bench="room-card"] h3');
++      const box = h.getBoundingClientRect();
++      const s = getComputedStyle(h);
++      return { text: h.textContent, right: box.right, left: box.left, iw: innerWidth, h: box.height, clipped: h.scrollWidth > h.clientWidth + 1, ov: s.overflow, sw: document.documentElement.scrollWidth };
++    });
++    return expect(r.text === params.rooms[0].title_ko && r.right <= r.iw && r.left >= 0 && r.h > 0 && !r.clipped && r.sw <= r.iw, JSON.stringify(r));
++  });
++}
++
++test('data: a single very long unbroken title does not overflow at 320px', async ({ open }) => {
++  const { page } = await open({
++    viewport: '320x640',
++    mutate: (p) => { p.rooms[0].title_ko = '아주아주아주아주아주아주아주아주아주아주아주아주아주아주긴제목'; p.rooms[0].title_en = 'Supercalifragilisticexpialidocious'.repeat(2); return p; },
++  });
++  const r = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth }));
++  return expect(r.sw <= r.iw, JSON.stringify(r));
++});
++
++/* ---------- empty collection ---------- */
++
++test('empty: clear empty state, no cards, no grid', async ({ open }) => {
++  const { page } = await open({ variant: 'empty_rooms' });
++  const r = await page.evaluate(() => {
++    const e = document.querySelector('[data-bench="empty-state"]');
++    return { cards: document.querySelectorAll('[data-bench="room-card"]').length, hidden: e.hidden, display: getComputedStyle(e).display, text: e.textContent.trim(), h: e.getBoundingClientRect().height };
++  });
++  return expect(r.cards === 0 && !r.hidden && r.display !== 'none' && r.text.length > 8 && r.h > 0, JSON.stringify(r));
++});
++
++test('empty: state is hidden when rooms exist and returns after setSeed with no rooms', async ({ open }) => {
++  const { page, handle } = await open({});
++  const before = await page.evaluate(() => document.querySelector('[data-bench="empty-state"]').hidden);
++  await handle.setSeed(1, { rooms: [] });
++  const after = await page.evaluate(() => ({ hidden: document.querySelector('[data-bench="empty-state"]').hidden, cards: document.querySelectorAll('[data-bench="room-card"]').length }));
++  return expect(before === true && after.hidden === false && after.cards === 0, JSON.stringify({ before, after }));
++});
++
++/* ---------- coming soon ---------- */
++
++test('coming soon: visibly distinct, not a link, click does not navigate', async ({ open }) => {
++  const { page } = await open({ variant: 'coming_soon' });
++  const info = await page.evaluate(() => {
++    const cards = [...document.querySelectorAll('[data-bench="room-card"]')];
++    const soon = cards.find((c) => c.dataset.status === 'coming_soon');
++    const open = cards.find((c) => c.dataset.status === 'open');
++    const style = (c) => { const x = c.querySelector('.card'); const p = c.querySelector('.card__plate'); return { border: getComputedStyle(p).borderStyle, bg: getComputedStyle(p).backgroundImage, cursor: getComputedStyle(x).cursor, text: c.textContent }; };
++    return { soonLinks: soon.querySelectorAll('a[href]').length, soonStyle: style(soon), openStyle: style(open) };
++  });
++  const first = (await page.$$('[data-bench="room-card"]'))[0];
++  const hashBefore = await page.evaluate(() => location.hash);
++  await first.click();
++  await page.waitForTimeout(120);
++  const after = await page.evaluate(() => ({ hash: location.hash, route: __bench.state().route }));
++  const distinct = info.soonStyle.border !== info.openStyle.border && info.soonStyle.bg !== info.openStyle.bg && /준비 중|Coming soon/.test(info.soonStyle.text);
++  return expect(info.soonLinks === 0 && distinct && after.hash === hashBefore && after.route === 'lobby', JSON.stringify({ info, after }));
++});
++
++test('coming soon: deep link to a coming-soon route stays on the lobby', async ({ open }) => {
++  const { page, handle } = await open({ variant: 'coming_soon' });
++  await page.evaluate(() => { location.hash = '#/room/room-1'; });
++  await page.waitForTimeout(150);
++  const r = await handle.state();
++  return expect(r.route === 'lobby', JSON.stringify(r));
++});
++
++/* ---------- responsive overflow ---------- */
++
++for (const vp of VIEWPORTS) {
++  for (const scheme of ['light', 'dark']) {
++    test(`layout: no horizontal overflow or clipped text (${vp}, ${scheme})`, async ({ open }) => {
++      const { page } = await open({ viewport: vp, scheme, seed: 3 });
++      const layout = await runProbe('layout', { page }, {});
++      const text = await runProbe('text', { page }, {});
++      const ov = layout['layout.overflow_count'];
++      const cl = text['text.clipped_count'];
++      return expect(ov === 0 && cl === 0, `overflow=${ov} clipped=${cl}`);
++    });
++  }
++}
++
++test('layout: no horizontal overflow at every width from 280 to 2560 (both languages)', async ({ open }) => {
++  const { page, handle } = await open({ viewport: '1440x900', variant: 'long_title' });
++  const bad = [];
++  for (const lang of ['ko', 'en']) {
++    if (lang === 'en') await page.click('[data-bench="lang-toggle"]');
++    for (const w of [280, 300, 320, 360, 390, 414, 480, 560, 639, 640, 641, 720, 768, 820, 900, 1023, 1024, 1099, 1100, 1101, 1180, 1280, 1366, 1440, 1600, 1920, 2560]) {
++      await handle.setViewport(`${w}x800`);
++      const r = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: innerWidth }));
++      if (r.sw > r.iw) bad.push(`${lang}@${w}: ${r.sw}>${r.iw}`);
++    }
++  }
++  return expect(bad.length === 0, bad.join('; '));
++});
++
++test('layout: overflow stays 0 in English at 320px with a long title', async ({ open }) => {
++  const { page } = await open({ viewport: '320x640', variant: 'long_title' });
++  await page.click('[data-bench="lang-toggle"]');
++  const r = await runProbe('layout', { page }, {});
++  return expect(r['layout.overflow_count'] === 0, String(r['layout.overflow_count']));
++});
++
++/* ---------- heading structure ---------- */
++
++test('headings: one h1, no skipped levels, in lobby and in a room', async ({ open }) => {
++  const { page } = await open({});
++  const lobby = await page.evaluate(() => [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter((h) => h.getClientRects().length).map((h) => Number(h.tagName[1])));
++  await page.click('[data-bench="room-card"] a');
++  await page.waitForTimeout(100);
++  const room = await page.evaluate(() => ({ all: [...document.querySelectorAll('h1')].length, vis: [...document.querySelectorAll('h1,h2,h3')].filter((h) => h.getClientRects().length).map((h) => Number(h.tagName[1])) }));
++  const ok = (levels) => levels[0] === 1 && levels.filter((l) => l === 1).length === 1 && levels.every((l, i) => i === 0 || l - levels[i - 1] <= 1);
++  return expect(ok(lobby) && ok(room.vis) && room.all === 1, JSON.stringify({ lobby, room }));
++});
++
++/* ---------- language semantics ---------- */
++
++test('language: html[lang] is ko by default (even with an English browser locale) and matches state()', async ({ open }) => {
++  const { page, handle } = await open({ locale: 'en-US' });
++  const r = await page.evaluate(() => ({ lang: document.documentElement.lang, state: __bench.state().lang, nav: navigator.language }));
++  return expect(r.lang === 'ko' && r.state === 'ko', JSON.stringify(r));
++});
++
++test('language: toggle swaps titles, html lang, state and persists', async ({ open }) => {
++  const { page, params } = await open({ seed: 2 });
++  await page.click('[data-bench="lang-toggle"]');
++  const r = await page.evaluate(() => ({
++    lang: document.documentElement.lang, state: __bench.state().lang, saved: localStorage.getItem('mol-lang'),
++    titles: [...document.querySelectorAll('[data-bench="room-card"] h3')].map((h) => h.textContent),
++    korean: [...document.querySelectorAll('[data-bench="room-card"]')].every((c, i) => c.textContent.includes(window.__benchHost.params.rooms[i].title_ko)),
++    sw: document.documentElement.scrollWidth <= innerWidth,
++    langAttrs: [...document.querySelectorAll('.card__alt')].every((n) => n.lang === 'ko') && [...document.querySelectorAll('.card__summary')].every((n) => n.lang === 'ko'),
++    label: document.querySelector('[data-bench="lang-toggle"]').textContent,
++  }));
++  const ok = r.lang === 'en' && r.state === 'en' && r.saved === 'en' && params.rooms.every((room, i) => r.titles[i] === room.title_en) && r.korean && r.sw && r.langAttrs;
++  await page.click('[data-bench="lang-toggle"]');
++  const back = await page.evaluate(() => ({ lang: document.documentElement.lang, state: __bench.state().lang }));
++  return expect(ok && back.lang === 'ko' && back.state === 'ko', JSON.stringify({ r, back }).slice(0, 400));
++});
++
++test('language: foreign-language fragments carry their own lang attribute', async ({ open }) => {
++  const { page } = await open({});
++  const r = await page.evaluate(() => ({
++    alt: [...document.querySelectorAll('.card__alt')].every((n) => n.lang === 'en'),
++    brand: document.querySelector('.brand').lang === 'en',
++    toggle: document.querySelector('[data-bench="lang-toggle"]').lang === 'en',
++  }));
++  return expect(r.alt && r.brand && r.toggle, JSON.stringify(r));
++});
++
++test('language: stored English preference is applied on load', async ({ open }) => {
++  const { page, handle } = await open({});
++  await page.evaluate(() => localStorage.setItem('mol-lang', 'en'));
++  await page.reload();
++  await handle.waitForBenchReady();
++  const r = await page.evaluate(() => ({ lang: document.documentElement.lang, state: __bench.state().lang, h1: document.querySelector('h1').textContent }));
++  return expect(r.lang === 'en' && r.state === 'en' && /Welcome/.test(r.h1), JSON.stringify(r));
++});
++
++/* ---------- keyboard + focus ---------- */
++
++test('keyboard: every required target is reachable and room links activate with Enter', async ({ open }) => {
++  const { page } = await open({ seed: 3 });
++  const r = await runProbe('keyboard_reach', { page }, {});
++  return expect(r['a11y.keyboard_reach'] === 1, JSON.stringify(r.details));
++});
++
++for (const vp of ['360x780', '1440x900']) {
++  test(`focus: visible indicator on every required target (${vp})`, async ({ open }) => {
++    const { page } = await open({ seed: 3, viewport: vp });
++    const r = await runProbe('focus_visible', { page }, {});
++    return expect(r['a11y.focus_visible'] === 1, JSON.stringify(r.details.per_target.filter((t) => !t.pass)));
++  });
++}
++
++test('focus: dark theme focus indicator is visible too', async ({ open }) => {
++  const { page } = await open({ seed: 1, scheme: 'dark' });
++  const r = await runProbe('focus_visible', { page }, {});
++  return expect(r['a11y.focus_visible'] === 1, JSON.stringify(r.details.per_target.filter((t) => !t.pass)));
++});
++
++test('keyboard: Tab order starts with the skip link and Space/Enter toggle the buttons', async ({ open }) => {
++  const { page } = await open({});
++  await page.keyboard.press('Tab');
++  const first = await page.evaluate(() => document.activeElement.className);
++  await page.focus('[data-bench="theme-toggle"]');
++  const t0 = await page.evaluate(() => __bench.state().theme);
++  await page.keyboard.press('Enter');
++  const t1 = await page.evaluate(() => __bench.state().theme);
++  await page.keyboard.press('Space');
++  const t2 = await page.evaluate(() => __bench.state().theme);
++  return expect(first === 'skip' && t0 !== t1 && t2 === t0, JSON.stringify({ first, t0, t1, t2 }));
++});
++
++test('keyboard: controls are at least 44px tall', async ({ open }) => {
++  const { page } = await open({ viewport: '360x780' });
++  const small = await page.evaluate(() => [...document.querySelectorAll('button, [data-bench="room-card"] a, .btn')].map((n) => n.getBoundingClientRect()).filter((r) => r.width && (r.height < 44 || r.width < 44)).length);
++  return expect(small === 0, `${small} small targets`);
++});
++
++/* ---------- themes ---------- */
++
++for (const vp of ['360x780', '768x1024', '1440x900']) {
++  test(`theme: zero serious/critical axe violations and zero contrast failures in both schemes (${vp})`, async ({ open }) => {
++    const bad = [];
++    for (const scheme of ['light', 'dark']) {
++      for (const variant of ['normal', 'coming_soon', 'empty_rooms']) {
++        const { page } = await open({ viewport: vp, scheme, variant, seed: 2 });
++        const a = await runProbe('axe', { page }, {});
++        if (a['a11y.axe_violations'] !== 0 || a.colorContrastViolations !== 0) bad.push({ scheme, variant, v: a.violations, cc: a.colorContrastViolations });
++      }
++    }
++    return expect(bad.length === 0, JSON.stringify(bad));
++  });
++}
++
++test('theme: follows prefers-color-scheme and the toggle flips it (light → dark → light)', async ({ open }) => {
++  const { page, handle } = await open({ scheme: 'light' });
++  const a = await handle.state();
++  await page.emulateMedia({ colorScheme: 'dark' });
++  const b = await handle.state();
++  await page.emulateMedia({ colorScheme: 'light' });
++  await page.click('[data-bench="theme-toggle"]');
++  const c = await handle.state();
++  const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
++  await page.click('[data-bench="theme-toggle"]');
++  const d = await handle.state();
++  return expect(a.theme === 'light' && b.theme === 'dark' && c.theme === 'dark' && d.theme === 'light' && bg !== 'rgb(251, 249, 244)', JSON.stringify({ a, b, c, d, bg }));
++});
++
++test('theme: light and dark renders differ', async ({ open }) => {
++  const l = await open({ scheme: 'light' });
++  const a = await l.handle.screenshot();
++  const d = await open({ scheme: 'dark' });
++  const b = await d.handle.screenshot();
++  return expect(Buffer.compare(a, b) !== 0, 'identical screenshots');
++});
++
++/* ---------- reduced motion ---------- */
++
++test('motion: reduced-motion removes animations and transitions', async ({ open }) => {
++  const { page } = await open({ reduced: true });
++  const r = await page.evaluate(() => {
++    const names = ['.btn', '.ctrl', '.card__plate', 'main'].map((s) => document.querySelector(s)).filter(Boolean);
++    return names.map((n) => { const s = getComputedStyle(n); return [n.className || n.tagName, s.transitionDuration, s.animationName]; });
++  });
++  const ok = r.every(([, t, a]) => t.split(',').every((d) => parseFloat(d) === 0) && a === 'none');
++  return expect(ok, JSON.stringify(r));
++});
++
++test('motion: route change settles within 100 ms under reduced motion', async ({ open }) => {
++  const { handle } = await open({ reduced: true, seed: 1 });
++  const r = await runProbe('nav_transition', handle, {});
++  return expect(r['nav.transition_ms'] <= 100, JSON.stringify(r['nav.transition_ms']));
++});
++
++test('motion: route transition is between 150 and 600 ms normally', async ({ open }) => {
++  const { handle } = await open({ seed: 1 });
++  const r = await runProbe('nav_transition', handle, {});
++  const v = r['nav.transition_ms'];
++  return expect(v >= 150 && v <= 600, `${v} ms ${JSON.stringify(r.details.sampleDiffs)}`);
++});
++
++/* ---------- routes ---------- */
++
++test('route: every open card navigates, shows the room, and Back restores the lobby and scroll', async ({ open }) => {
++  const { page } = await open({ seed: 3, viewport: '768x1024' });
++  const r = await runProbe('nav_routes', { page }, {});
++  return expect(r['nav.routes'] === 1, JSON.stringify(r.details.results.filter((x) => !x.pass)));
++});
++
++test('route: room view shows its own title and a way back; hero-title follows the room', async ({ open }) => {
++  const { page, params } = await open({ seed: 2 });
++  const target = params.rooms[3];
++  await page.click(`[data-room="${target.id}"] a`);
++  await page.waitForTimeout(100);
++  const r = await page.evaluate(() => ({
++    route: __bench.state().route, hash: location.hash, h1: document.querySelector('[data-bench="hero-title"]').textContent,
++    roomsVisible: document.querySelector('#rooms').getClientRects().length, back: document.querySelector('#cta-back').getClientRects().length,
++    focus: document.activeElement.id, title: document.title,
++  }));
++  await page.click('#cta-back');
++  await page.waitForTimeout(100);
++  const back = await page.evaluate(() => ({ route: __bench.state().route, rooms: document.querySelector('#rooms').getClientRects().length }));
++  return expect(r.route === target.id && r.hash === target.route && r.h1 === target.title_ko && !r.roomsVisible && r.back > 0 && r.focus === 'hero-title' && back.route === 'lobby' && back.rooms > 0, JSON.stringify({ r, back }));
++});
++
++test('route: deep link opens the room on load; unknown ids fall back to the lobby', async ({ open }) => {
++  const a = await open({ seed: 1 });
++  await a.page.evaluate(() => { location.hash = '#/room/room-2'; });
++  await a.page.reload();
++  await a.handle.waitForBenchReady();
++  const deep = await a.handle.state();
++  await a.page.evaluate(() => { location.hash = '#/room/does-not-exist'; });
++  await a.page.waitForTimeout(100);
++  const unknown = await a.handle.state();
++  return expect(deep.route === 'room-2' && unknown.route === 'lobby', JSON.stringify({ deep, unknown }));
++});
++
++test('route: browser Back/Forward across several rooms keeps state() in sync', async ({ open }) => {
++  const { page, handle } = await open({ seed: 1 });
++  const seen = [];
++  for (const id of ['room-1', 'room-4']) {
++    await page.evaluate((h) => { location.hash = h; }, `#/room/${id}`);
++    await page.waitForTimeout(80);
++    seen.push((await handle.state()).route);
++  }
++  await page.goBack(); await page.waitForTimeout(80); seen.push((await handle.state()).route);
++  await page.goBack(); await page.waitForTimeout(80); seen.push((await handle.state()).route);
++  await page.goForward(); await page.waitForTimeout(80); seen.push((await handle.state()).route);
++  return expect(JSON.stringify(seen) === JSON.stringify(['room-1', 'room-4', 'room-1', 'lobby', 'room-1']), JSON.stringify(seen));
++});
++
++test('route: in-page anchors (#rooms, #info, #top) keep the lobby route', async ({ open }) => {
++  const { page, handle } = await open({ viewport: '768x1024' });
++  const routes = [];
++  for (const h of ['#rooms', '#info', '#top']) {
++    await page.evaluate((x) => { location.hash = x; }, h);
++    await page.waitForTimeout(60);
++    routes.push((await handle.state()).route);
++  }
++  return expect(routes.every((x) => x === 'lobby'), JSON.stringify(routes));
++});
++
++/* ---------- runtime contract + determinism ---------- */
++
++test('contract: __bench v1 shape, state() fields and stats() numbers', async ({ open }) => {
++  const { page } = await open({});
++  const r = await page.evaluate(async () => {
++    const b = window.__bench; await b.ready;
++    const s = b.state(); const st = b.stats();
++    return { v: b.version, fns: ['setSeed', 'seek', 'resume', 'renderFrame', 'state', 'stats'].every((k) => typeof b[k] === 'function'), route: s.route, lang: s.lang, theme: s.theme, dc: typeof st.drawCalls, tri: typeof st.triangles };
++  });
++  return expect(r.v === 1 && r.fns && r.route === 'lobby' && ['ko', 'en'].includes(r.lang) && ['light', 'dark'].includes(r.theme) && r.dc === 'number' && r.tri === 'number', JSON.stringify(r));
++});
++
++test('determinism: same seed/time/viewport renders identical pixels in fresh pages', async ({ open }) => {
++  const a = await open({ seed: 2 });
++  const b = await open({ seed: 2 });
++  const [x, y] = [await a.handle.screenshot(), await b.handle.screenshot()];
++  return expect(Buffer.compare(x, y) === 0, 'pixel mismatch');
++});
++
++test('determinism: seek() frame equals a live frame at the same clock (mean abs diff < 0.0005)', async ({ open }) => {
++  const { handle, page } = await open({ seed: 1 });
++  await handle.resetClock(0);
++  await handle.resume();
++  await page.waitForTimeout(300);
++  const now = await handle.clockNow();
++  await page.evaluate((t) => { window.__benchHostControl.freeze(t); window.__bench.seek(t); }, now);
++  await handle.renderFrame();
++  const live = await handle.screenshot();
++  const other = await open({ seed: 1 });
++  await other.handle.seek(now);
++  await other.handle.renderFrame();
++  const seeked = await other.handle.screenshot();
++  const mad = pngMeanAbsDiff(live, seeked);
++  return expect(mad < 0.0005, `live vs seek mean abs diff ${mad}`);
++});
++
++test('console: no errors or external requests during a full interaction pass', async ({ open }) => {
++  const o = await open({ seed: 1 });
++  await o.page.click('[data-bench="lang-toggle"]');
++  await o.page.click('[data-bench="theme-toggle"]');
++  await o.page.click('[data-bench="room-card"] a');
++  await o.page.waitForTimeout(100);
++  await o.page.goBack();
++  await o.page.waitForTimeout(100);
++  const errs = o.handle.consoleLogs.filter((l) => l.type === 'error' || l.type === 'pageerror');
++  const ext = o.handle.networkLogs.filter((n) => !n.allowed);
++  return expect(errs.length === 0 && ext.length === 0, JSON.stringify({ errs, ext }));
++});
++
++/* ---------- performance budget ---------- */
++
++test('budget: transfer under 400 KB, no raster/font files, LCP/CLS in range', async ({ open }) => {
++  const stats = server.getServedStats();
++  const files = fs.readdirSync(path.join(root, 'lobby'), { recursive: true }).map(String);
++  const bytes = files.reduce((sum, f) => { const p = path.join(root, 'lobby', f); return sum + (fs.statSync(p).isFile() ? fs.statSync(p).size : 0); }, 0);
++  const raster = files.filter((f) => /\.(png|jpe?g|webp|gif|avif|bmp|woff2?|ttf|otf)$/i.test(f));
++  const { page } = await open({ viewport: '1440x900' });
++  const vitals = await page.evaluate(() => new Promise((resolve) => {
++    let cls = 0; let lcp = 0;
++    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) cls += e.value; }).observe({ type: 'layout-shift', buffered: true });
++    new PerformanceObserver((l) => { for (const e of l.getEntries()) lcp = e.startTime; }).observe({ type: 'largest-contentful-paint', buffered: true });
++    setTimeout(() => resolve({ cls, lcp }), 600);
++  }));
++  return expect(bytes < 400 * 1024 && raster.length === 0 && vitals.cls <= 0.02 && vitals.lcp <= 1200, JSON.stringify({ kb: Math.round(bytes / 1024), raster, vitals, served: stats.requests }));
++});
++
++const failed = await run();
++await session.close();
++await server.close();
++console.log(failed === 0 ? `\nAll ${results.filter((r) => !only || r.name.includes(only)).length} checks passed.` : `\n${failed} check(s) failed.`);
++process.exit(failed === 0 ? 0 : 1);

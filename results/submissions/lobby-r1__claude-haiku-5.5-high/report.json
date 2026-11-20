@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "summary": "Implemented L-R1 (320px layout: header wraps, 44px header targets, keep-all Hangul under 400px), L-R2 (ko/en switch persisted in localStorage mol-lang, browser-language first visit), L-R3 (serif hero title only) and L-R4 as a partial: CSS 3D prism per room card driven by the harness clock, but the faster first load was not achieved and LCP is unmeasured. Public selfcheck: request.L-R1 10, request.L-R3 10, request.L-R2 4 (the public lang probe assumes a Korean start and runs in en-US). tests/lobby-r1.test.mjs passes 5/5.",
+  "deliverables": [
+    "lobby/app.js",
+    "lobby/style.css",
+    "tests/lobby-r1.test.mjs",
+    "decisions.json",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "request.L-R1",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 10,
+      "method": "bench selfcheck --perf (public seeds); score 10"
+    },
+    {
+      "metric_id": "layout.overflow_count",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "tests/lobby-r1.test.mjs at 320x640, light and dark: documentElement.scrollWidth <= innerWidth"
+    },
+    {
+      "metric_id": "layout.tap_targets",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "tests/lobby-r1.test.mjs at 320x640: every a and button box is at least 44x44"
+    },
+    {
+      "metric_id": "request.L-R3",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 10,
+      "method": "bench selfcheck --perf (public seeds); score 10"
+    },
+    {
+      "metric_id": "type.hero_serif",
+      "status": "verified",
+      "meets_target": true,
+      "method": "tests/lobby-r1.test.mjs: computed font-family of hero-title contains serif; body text unchanged"
+    },
+    {
+      "metric_id": "request.L-R2",
+      "status": "verified",
+      "meets_target": false,
+      "measured_value": 4,
+      "method": "selfcheck: lang.toggle probe in en-US default context gives 2/5 checks; tests/lobby-r1.test.mjs passes with ko-KR start"
+    },
+    {
+      "metric_id": "request.L-R4",
+      "status": "not_verified",
+      "meets_target": false,
+      "method": "CSS 3D prism present in every card and pose tied to clock (tests/lobby-r1.test.mjs); first-load speedup not achieved and LCP not measured"
+    },
+    {
+      "metric_id": "lh.lcp_ms",
+      "status": "not_verified",
+      "method": "Lighthouse runner is a stub in this harness; not measured"
+    },
+    {
+      "metric_id": "tests.preservation",
+      "status": "not_verified",
+      "method": "bench selfcheck reports 0 because the start anchor directory is not present in this folder; not measured"
+    }
+  ],
+  "blocked": false
+}

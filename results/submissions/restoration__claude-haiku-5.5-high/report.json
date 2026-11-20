@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "summary": "Diagnosed and minimally fixed the four planted orrery regressions in room/src/orrery.js, each with a red-green test in tests/regression/bugs.test.mjs. B1: makeColor applied the sRGB encode twice (background and plaque too bright and washed out). B2: camera.near set to 0.0002 and the floor decal's polygon offset disabled, so the decal z-fought with the floor. B5: tick advanced time by a fixed 16.667 ms per frame instead of the host clock. B7: the next-planet and resize listeners were never removed on unmount, so they stacked across remounts.",
+  "deliverables": [
+    "report.json",
+    "tests/regression/bugs.test.mjs",
+    "room/src/orrery.js"
+  ],
+  "claims": [
+    {
+      "metric_id": "G-load",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-console",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-contract",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-determinism",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-offline",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-raster",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-fonts-local",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-live",
+      "status": "not_verified",
+      "method": "selfcheck FLIP helper used wrong .venv/metrics paths in this copy (bench/capture uses ../../../); manual FLIP seek vs live = 0.0"
+    },
+    {
+      "metric_id": "time.flicker",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.0428,
+      "method": "npm run selfcheck (baseline was 0.3571)"
+    },
+    {
+      "metric_id": "render.aliasing",
+      "status": "verified",
+      "meets_target": false,
+      "measured_value": 0.0438,
+      "method": "npm run selfcheck (full-score band is <= 0.04)"
+    },
+    {
+      "metric_id": "perf.frame_p95_norm_ms",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck (p95 about 2 ms across runs, well under 16.7 ms)"
+    },
+    {
+      "metric_id": "tests.redgreen",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node --test tests/regression/bugs.test.mjs: 4/4 red on starting source, 4/4 green after fix"
+    },
+    {
+      "metric_id": "tests.hidden",
+      "status": "not_verified",
+      "method": "hidden tests unavailable; public-tests/orrery.test.mjs 5/5 pass via bench testrunner"
+    },
+    {
+      "metric_id": "bugs.fixed",
+      "status": "not_verified",
+      "method": "grader-side weighted score; not measured by selfcheck"
+    },
+    {
+      "metric_id": "rootcause.accuracy",
+      "status": "not_verified",
+      "method": "root causes assigned by code analysis; not measured by selfcheck"
+    },
+    {
+      "metric_id": "diff.out_of_scope_files",
+      "status": "not_verified",
+      "method": "selfcheck counted generated selfcheck.json and work/ (removed afterwards); diff scoring needs --start"
+    }
+  ],
+  "blocked": false,
+  "room": {
+    "bugs": [
+      {
+        "report_id": "B1",
+        "root_cause": "COLOR_SPACE_DOUBLE_ENCODE",
+        "files": ["room/src/orrery.js"],
+        "test": "tests/regression/bugs.test.mjs"
+      },
+      {
+        "report_id": "B2",
+        "root_cause": "DEPTH_PRECISION_ZFIGHT",
+        "files": ["room/src/orrery.js"],
+        "test": "tests/regression/bugs.test.mjs"
+      },
+      {
+        "report_id": "B5",
+        "root_cause": "FRAME_RATE_DEPENDENT_UPDATE",
+        "files": ["room/src/orrery.js"],
+        "test": "tests/regression/bugs.test.mjs"
+      },
+      {
+        "report_id": "B7",
+        "root_cause": "LISTENER_NOT_REMOVED",
+        "files": ["room/src/orrery.js"],
+        "test": "tests/regression/bugs.test.mjs"
+      }
+    ]
+  }
+}

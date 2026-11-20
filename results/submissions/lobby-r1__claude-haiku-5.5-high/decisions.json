@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "requests": [
+    {
+      "request_id": "L-R1",
+      "status": "done",
+      "reason": "NONE",
+      "tradeoff": "Under 400px the header wraps to two rows, header links and buttons get a 44px minimum box, and Hangul wraps with keep-all so words break only at spaces. Desktop and tablet layouts are unchanged. Room cards keep their existing layout.",
+      "expected_metrics": [
+        {
+          "metric_id": "layout.overflow_count",
+          "value": 0
+        },
+        {
+          "metric_id": "layout.tap_targets",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "request_id": "L-R2",
+      "status": "done",
+      "reason": "AMBIGUOUS_RESOLVED",
+      "tradeoff": "Language is stored in localStorage key mol-lang. With no saved choice, navigator.language starting with en gives English; anything else gives Korean (the primary language). The toggle is a native button, so Enter and Space work. The public lang.toggle probe assumes a Korean start, so it scores 2 of 5 in the en-US default context; this follows the first-visit rule and was not changed.",
+      "expected_metrics": []
+    },
+    {
+      "request_id": "L-R3",
+      "status": "done",
+      "reason": "NONE",
+      "tradeoff": "Only [data-bench=\"hero-title\"] changes, to a font-family stack with a Korean serif (Batang / 바탕) and generic serif fallbacks. No font files are downloaded, so the offline gate is unaffected. Size, color and layout are unchanged.",
+      "expected_metrics": []
+    },
+    {
+      "request_id": "L-R4",
+      "status": "partial",
+      "reason": "CONFLICT",
+      "tradeoff": "Each room card gets a live CSS 3D prism in its accent color; the angle is a pure function of the harness clock, and it stops under reduced motion. No WebGL, libraries or downloads. Cards grow about 108px. The faster first load is NOT delivered: no speedup was made and LCP cannot be measured here (Lighthouse is a stub).",
+      "expected_metrics": []
+    }
+  ]
+}

@@ -1,0 +1,1309 @@
+diff --git a/lobby/app.js b/lobby/app.js
+deleted file mode 100644
+index 21095f6..0000000
+--- a/lobby/app.js
++++ /dev/null
+@@ -1,3 +0,0 @@
+-const root=document.querySelector('#rooms');
+-function renderRooms(){const rooms=window.__benchHost?.params?.rooms??[];root.replaceChildren();for(const room of rooms){const a=document.createElement(room.status==='coming_soon'?'article':'a');a.dataset.bench='room-card';if(room.status!=='coming_soon')a.href=room.route;a.textContent=room.title_ko;root.append(a)}document.querySelector('[data-bench="empty-state"]').hidden=rooms.length>0}
+-renderRooms();document.querySelector("[data-bench=body]").textContent="가".repeat(100);const roomId=()=>location.hash.startsWith('#/room/')?location.hash.slice(7):'lobby';window.__bench={version:1,ready:document.fonts.ready,setSeed(){renderRooms()},seek(){},resume(){},async renderFrame(){await new Promise(requestAnimationFrame)},state(){return{route:roomId(),lang:'ko',theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}},stats(){return{drawCalls:0,triangles:0}}};
+diff --git a/lobby/index.html b/lobby/index.html
+index 449c50b..0e38626 100644
+--- a/lobby/index.html
++++ b/lobby/index.html
+@@ -1 +1,434 @@
+-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Museum of Light</title><style>body{font:16px system-ui,sans-serif;margin:2rem;color:#222}main{max-width:70rem;margin:auto}</style><style>body *{font-size:16px!important;line-height:1.1!important}[data-bench="body"]{max-width:120px}body *{margin:5px!important;padding:5px!important;gap:5px!important}</style></head><body><main><header data-bench="header"><span>MUSEUM OF LIGHT</span><button></button></header><h1 data-bench="hero-title">빛의 방에 오신 것을 환영합니다</h1><p data-bench="body">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다.</p><section id="rooms" aria-label="전시 공간"></section><p data-bench="empty-state" hidden>아직 공개된 방이 없습니다.</p><footer data-bench="footer">Museum of Light · Seoul</footer></main><script src="./app.js" type="module"></script></body></html>
++<!doctype html>
++<html lang="ko">
++<head>
++<meta charset="utf-8">
++<meta name="viewport" content="width=device-width,initial-scale=1">
++<meta name="color-scheme" content="light dark">
++<title>Museum of Light — Lobby</title>
++<link rel="stylesheet" href="./styles.css">
++</head>
++<body>
++<a class="skip-link" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
++
++<header class="site-header" data-bench="header">
++  <a class="brand" href="#/"><span>Museum of Light</span></a>
++  <div class="header-actions">
++    <button type="button" class="chip" data-bench="lang-toggle" id="lang-toggle"><span id="lang-toggle-label">English</span></button>
++    <button type="button" class="chip" data-bench="theme-toggle" id="theme-toggle" aria-pressed="false"><span class="chip-dot" aria-hidden="true"></span><span id="theme-toggle-label" data-i18n="navTheme">다크 모드</span></button>
++  </div>
++</header>
++
++<main id="main">
++  <div id="lobby">
++    <section class="hero" aria-labelledby="hero-title">
++      <p class="eyebrow" data-i18n="eyebrow">로비 · 입구</p>
++      <h1 class="hero-title" id="hero-title" data-bench="hero-title" data-i18n="heroTitle">빛의 방에 오신 것을 환영합니다</h1>
++      <p class="lead" data-bench="body" data-i18n="heroLead">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다.</p>
++      <div class="spectrum" id="spectrum" aria-hidden="true" hidden></div>
++    </section>
++
++    <section class="rooms" aria-labelledby="rooms-heading">
++      <div class="section-head">
++        <h2 id="rooms-heading" data-i18n="roomsHeading">전시 공간</h2>
++        <p class="section-note" data-i18n="roomsNote">열린 방을 눌러 들어가 보세요. 준비 중인 방은 문이 열리면 이곳에 표시됩니다.</p>
++      </div>
++      <div class="empty-state" data-bench="empty-state" hidden>
++        <p class="empty-title" data-i18n="emptyTitle">아직 공개된 방이 없습니다.</p>
++        <p class="empty-body" data-i18n="emptyBody">새로운 방이 준비되면 이곳에서 가장 먼저 소개합니다.</p>
++      </div>
++      <ul class="room-grid" id="room-list"></ul>
++    </section>
++
++    <section class="visit" id="visit" aria-labelledby="visit-heading">
++      <h2 id="visit-heading" data-i18n="visitHeading">관람 안내</h2>
++      <p data-bench="body" data-i18n="visit1">각 방은 순서와 상관없이 자유롭게 둘러볼 수 있습니다. 마음이 끌리는 방에서 시작해 천천히 머물러 보세요.</p>
++      <p data-bench="body" data-i18n="visit2">방을 나올 때는 “로비로 돌아가기”를 누르거나 브라우저의 뒤로 가기를 사용하세요. 준비 중인 방은 열리는 대로 이곳에 소개됩니다.</p>
++    </section>
++  </div>
++
++  <section class="room-view" id="room-view" aria-labelledby="room-view-title" hidden>
++    <div class="room-view-bar">
++      <a class="back-link" id="back-link" href="#/" data-i18n="back">← 로비로 돌아가기</a>
++    </div>
++    <div class="room-view-body">
++      <p class="eyebrow" id="room-view-eyebrow"></p>
++      <h2 class="room-view-title" id="room-view-title" tabindex="-1"></h2>
++      <p class="room-view-alt" id="room-view-alt" hidden></p>
++      <p class="room-view-summary" id="room-view-summary"></p>
++      <div class="threshold" aria-hidden="true"></div>
++    </div>
++  </section>
++</main>
++
++<footer class="site-footer" data-bench="footer">
++  <p data-i18n="footerLine">Museum of Light · 서울</p>
++  <p class="footer-links"><a href="#visit" data-i18n="footerVisit">관람 안내</a> <span aria-hidden="true">·</span> <a href="#top" data-i18n="footerTop">맨 위로</a></p>
++</footer>
++
++<script>
++(function () {
++  'use strict';
++
++  // Copy for both languages. Room titles come from the host data (title_ko / title_en).
++  var COPY = {
++    ko: {
++      skip: '본문으로 건너뛰기',
++      eyebrow: '로비 · 입구',
++      heroTitle: '빛의 방에 오신 것을 환영합니다',
++      heroLead: '각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다.',
++      navLang: 'English',
++      navTheme: '다크 모드',
++      roomsHeading: '전시 공간',
++      roomsNote: '열린 방을 눌러 들어가 보세요. 준비 중인 방은 문이 열리면 이곳에 표시됩니다.',
++      emptyTitle: '아직 공개된 방이 없습니다.',
++      emptyBody: '새로운 방이 준비되면 이곳에서 가장 먼저 소개합니다.',
++      soon: '준비 중',
++      enter: '방 들어가기 →',
++      visitHeading: '관람 안내',
++      visit1: '각 방은 순서와 상관없이 자유롭게 둘러볼 수 있습니다. 마음이 끌리는 방에서 시작해 천천히 머물러 보세요.',
++      visit2: '방을 나올 때는 “로비로 돌아가기”를 누르거나 브라우저의 뒤로 가기를 사용하세요. 준비 중인 방은 열리는 대로 이곳에 소개됩니다.',
++      footerLine: 'Museum of Light · 서울',
++      footerVisit: '관람 안내',
++      footerTop: '맨 위로',
++      back: '← 로비로 돌아가기',
++      roomLabel: '방'
++    },
++    en: {
++      skip: 'Skip to content',
++      eyebrow: 'Lobby · Entrance',
++      heroTitle: 'Welcome to the Rooms of Light',
++      heroLead: 'Each room is a small world for a different sense and a different thought.',
++      navLang: '한국어',
++      navTheme: 'Dark mode',
++      roomsHeading: 'Rooms',
++      roomsNote: 'Choose an open room to step inside. Rooms in preparation appear here as they open.',
++      emptyTitle: 'No rooms are open yet.',
++      emptyBody: 'New rooms will be introduced here as soon as they are ready.',
++      soon: 'Coming soon',
++      enter: 'Enter the room →',
++      visitHeading: 'Visit',
++      visit1: 'Rooms can be visited in any order. Begin with the one that catches your attention and take your time.',
++      visit2: 'To leave a room, choose “Back to lobby” or use the browser’s back button. Rooms in preparation are introduced here as they open.',
++      footerLine: 'Museum of Light · Seoul',
++      footerVisit: 'Visit',
++      footerTop: 'Back to top',
++      back: '← Back to lobby',
++      roomLabel: 'Room'
++    }
++  };
++
++  var root = document.documentElement;
++  var langButton = document.getElementById('lang-toggle');
++  var langLabel = document.getElementById('lang-toggle-label');
++  var themeButton = document.getElementById('theme-toggle');
++  var themeLabel = document.getElementById('theme-toggle-label');
++  var listEl = document.getElementById('room-list');
++  var emptyEl = document.querySelector('[data-bench="empty-state"]');
++  var spectrumEl = document.getElementById('spectrum');
++  var lobbyEl = document.getElementById('lobby');
++  var headerEl = document.querySelector('[data-bench="header"]');
++  var footerEl = document.querySelector('[data-bench="footer"]');
++  var roomView = document.getElementById('room-view');
++  var roomEyebrow = document.getElementById('room-view-eyebrow');
++  var roomTitle = document.getElementById('room-view-title');
++  var roomAlt = document.getElementById('room-view-alt');
++  var roomSummary = document.getElementById('room-view-summary');
++  var backLink = document.getElementById('back-link');
++  var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
++  var STORE_KEY = 'mol-lang';
++
++  var session = {
++    lang: 'ko',
++    themeOverride: null,   // 'light' | 'dark' once the visitor toggles; null follows the system
++    shownRoomId: null      // id of the room shown in the room view, or null for the lobby
++  };
++
++  function rooms() {
++    var host = window.__benchHost;
++    var list = host && host.params && host.params.rooms;
++    return Array.isArray(list) ? list : [];
++  }
++
++  function pad(n) {
++    return String(n).padStart(2, '0');
++  }
++
++  function findOpenRoom(hash) {
++    var match = /^#\/room\/([^?#]+)$/.exec(hash || '');
++    if (!match) return null;
++    var id;
++    try {
++      id = decodeURIComponent(match[1]);
++    } catch (err) {
++      return null;
++    }
++    var list = rooms();
++    for (var i = 0; i < list.length; i += 1) {
++      if (String(list[i].id) === id && list[i].status === 'open') return list[i];
++    }
++    return null;
++  }
++
++  function currentTheme() {
++    if (session.themeOverride) return session.themeOverride;
++    return darkQuery.matches ? 'dark' : 'light';
++  }
++
++  function loadLang() {
++    try {
++      var saved = localStorage.getItem(STORE_KEY);
++      if (saved === 'ko' || saved === 'en') return saved;
++    } catch (err) {
++      // Storage can be unavailable (private mode); keep the default.
++    }
++    return 'ko';
++  }
++
++  function saveLang(lang) {
++    try {
++      localStorage.setItem(STORE_KEY, lang);
++    } catch (err) {
++      // Ignore: the choice then lasts only for this page view.
++    }
++  }
++
++  // Title shown in the card heading. Falls back to Korean when no English title exists.
++  function titleFor(room, lang) {
++    return lang === 'en' && room.title_en ? room.title_en : room.title_ko;
++  }
++
++  function titleLangFor(room, lang) {
++    return lang === 'en' && room.title_en ? 'en' : 'ko';
++  }
++
++  // The other language, shown as a secondary line.
++  function altFor(room, lang) {
++    if (!room.title_en) return null;
++    return lang === 'en'
++      ? { text: room.title_ko, lang: 'ko' }
++      : { text: room.title_en, lang: 'en' };
++  }
++
++  function setAccent(el, accent) {
++    if (!Array.isArray(accent) || accent.length < 3) return;
++    var l = Number(accent[0]);
++    var c = Number(accent[1]);
++    var h = Number(accent[2]);
++    if (!isFinite(l) || !isFinite(c) || !isFinite(h)) return;
++    el.style.setProperty('--accent-l', String(l));
++    el.style.setProperty('--accent-c', String(c));
++    el.style.setProperty('--accent-h', String(h));
++  }
++
++  function makeEl(tag, className, text, lang) {
++    var el = document.createElement(tag);
++    if (className) el.className = className;
++    if (text !== undefined && text !== null) el.textContent = text;
++    if (lang) el.lang = lang;
++    return el;
++  }
++
++  function buildRoomItem(room, index, lang) {
++    var copy = COPY[lang];
++    var isOpen = room.status === 'open';
++    var item = makeEl('li', 'room-item');
++    var card = makeEl('article', isOpen ? 'room-card' : 'room-card is-soon');
++    card.setAttribute('data-bench', 'room-card');
++    card.setAttribute('data-status', isOpen ? 'open' : 'coming_soon');
++    if (room.id !== undefined) card.setAttribute('data-room-id', String(room.id));
++    setAccent(card, room.accent_oklch);
++
++    // Only open rooms get a link; coming-soon rooms are plain, non-focusable cards.
++    var box = card;
++    if (isOpen) {
++      box = makeEl('a', 'room-link');
++      box.href = typeof room.route === 'string' && room.route
++        ? room.route
++        : '#/room/' + encodeURIComponent(String(room.id));
++      card.appendChild(box);
++    }
++
++    var meta = makeEl('div', 'room-meta');
++    meta.appendChild(makeEl('span', 'room-no', pad(index + 1)));
++    if (!isOpen) meta.appendChild(makeEl('span', 'room-badge', copy.soon));
++    box.appendChild(meta);
++
++    box.appendChild(makeEl('h3', 'room-title', titleFor(room, lang), titleLangFor(room, lang)));
++    var alt = altFor(room, lang);
++    if (alt) box.appendChild(makeEl('span', 'room-alt', alt.text, alt.lang));
++    box.appendChild(makeEl('p', 'room-summary', room.summary_ko || '', 'ko'));
++    if (isOpen) box.appendChild(makeEl('span', 'room-cta', copy.enter));
++
++    item.appendChild(card);
++    return item;
++  }
++
++  function renderRooms() {
++    var list = rooms();
++    listEl.replaceChildren();
++    for (var i = 0; i < list.length; i += 1) {
++      listEl.appendChild(buildRoomItem(list[i], i, session.lang));
++    }
++    emptyEl.hidden = list.length > 0;
++  }
++
++  function renderSpectrum() {
++    spectrumEl.replaceChildren();
++    var open = rooms().filter(function (room) { return room.status === 'open'; }).slice(0, 16);
++    open.forEach(function (room) {
++      var band = makeEl('span', 'spectrum-band');
++      setAccent(band, room.accent_oklch);
++      spectrumEl.appendChild(band);
++    });
++    spectrumEl.hidden = open.length === 0;
++  }
++
++  function applyCopy() {
++    var copy = COPY[session.lang];
++    root.lang = session.lang;
++    var nodes = document.querySelectorAll('[data-i18n]');
++    for (var i = 0; i < nodes.length; i += 1) {
++      var key = nodes[i].getAttribute('data-i18n');
++      if (Object.prototype.hasOwnProperty.call(copy, key)) nodes[i].textContent = copy[key];
++    }
++    langLabel.textContent = copy.navLang;
++    langLabel.lang = session.lang === 'ko' ? 'en' : 'ko';
++    themeLabel.textContent = copy.navTheme;
++    backLink.textContent = copy.back;
++  }
++
++  function applyTheme() {
++    if (session.themeOverride) {
++      root.setAttribute('data-theme', session.themeOverride);
++    } else {
++      root.removeAttribute('data-theme');
++    }
++    themeButton.setAttribute('aria-pressed', String(currentTheme() === 'dark'));
++  }
++
++  function fillRoomView(room) {
++    var lang = session.lang;
++    var index = rooms().indexOf(room);
++    roomEyebrow.textContent = COPY[lang].roomLabel + ' ' + pad(index + 1);
++    roomTitle.textContent = titleFor(room, lang);
++    roomTitle.lang = titleLangFor(room, lang);
++    var alt = altFor(room, lang);
++    roomAlt.hidden = !alt;
++    if (alt) {
++      roomAlt.textContent = alt.text;
++      roomAlt.lang = alt.lang;
++    }
++    roomSummary.textContent = room.summary_ko || '';
++    roomSummary.lang = 'ko';
++    setAccent(roomView, room.accent_oklch);
++  }
++
++  // Route: '#/room/<id>' opens an open room in a fixed layer above the lobby. The lobby keeps its
++  // layout, so the window scroll position is unchanged when opening and when going back.
++  function applyRoute() {
++    var room = findOpenRoom(location.hash);
++    var previous = session.shownRoomId;
++    if (room) {
++      var id = String(room.id);
++      fillRoomView(room);
++      roomView.hidden = false;
++      lobbyEl.inert = true;
++      headerEl.inert = true;
++      footerEl.inert = true;
++      if (previous !== id) {
++        roomView.scrollTop = 0;
++        roomTitle.focus({ preventScroll: true });
++      }
++      session.shownRoomId = id;
++      return;
++    }
++    roomView.hidden = true;
++    lobbyEl.inert = false;
++    headerEl.inert = false;
++    footerEl.inert = false;
++    if (previous !== null) {
++      session.shownRoomId = null;
++      var links = listEl.querySelectorAll('.room-link');
++      for (var i = 0; i < links.length; i += 1) {
++        var card = links[i].closest('[data-room-id]');
++        if (card && card.getAttribute('data-room-id') === previous) {
++          links[i].focus({ preventScroll: true });
++          break;
++        }
++      }
++    }
++  }
++
++  function refresh() {
++    applyCopy();
++    applyTheme();
++    renderRooms();
++    renderSpectrum();
++    applyRoute();
++  }
++
++  function nextFrame() {
++    return new Promise(function (resolve) {
++      var done = false;
++      function finish() {
++        if (!done) {
++          done = true;
++          resolve();
++        }
++      }
++      // The timer keeps this resolving even when the harness has taken over requestAnimationFrame.
++      window.setTimeout(finish, 100);
++      window.requestAnimationFrame(function () {
++        window.requestAnimationFrame(finish);
++      });
++    });
++  }
++
++  langButton.addEventListener('click', function () {
++    session.lang = session.lang === 'ko' ? 'en' : 'ko';
++    saveLang(session.lang);
++    refresh();
++  });
++
++  themeButton.addEventListener('click', function () {
++    session.themeOverride = currentTheme() === 'dark' ? 'light' : 'dark';
++    applyTheme();
++  });
++
++  document.addEventListener('keydown', function (event) {
++    if (event.key === 'Escape' && session.shownRoomId !== null) {
++      location.hash = '#/';
++    }
++  });
++
++  window.addEventListener('hashchange', applyRoute);
++  darkQuery.addEventListener('change', applyTheme);
++
++  session.lang = loadLang();
++  refresh();
++
++  window.__bench = {
++    version: 1,
++    ready: (document.fonts ? document.fonts.ready : Promise.resolve()).then(nextFrame),
++    setSeed: function () {
++      refresh();
++    },
++    seek: function () {},
++    resume: function () {},
++    renderFrame: nextFrame,
++    state: function () {
++      var room = findOpenRoom(location.hash);
++      return {
++        route: room ? String(room.id) : 'lobby',
++        lang: session.lang,
++        theme: currentTheme()
++      };
++    },
++    stats: function () {
++      return { drawCalls: 0, triangles: 0 };
++    }
++  };
++})();
++</script>
++</body>
++</html>
+diff --git a/lobby/styles.css b/lobby/styles.css
+new file mode 100644
+index 0000000..616a1f7
+--- /dev/null
++++ b/lobby/styles.css
+@@ -0,0 +1,559 @@
++/* Museum of Light — lobby. Restrained editorial layout; system font stacks only (no network fonts).
++   Spacing is kept on a 4 px grid. Type scale: 13 / 16 / 20 / 28 / 44 px (ratio >= 1.23). */
++
++:root {
++  color-scheme: light;
++  --bg: oklch(0.975 0.008 85);
++  --surface: oklch(0.99 0.005 85);
++  --ink: oklch(0.25 0.012 60);
++  --ink-soft: oklch(0.42 0.012 60);
++  --line: oklch(0.87 0.01 80);
++  --chip: oklch(0.93 0.01 80);
++  --focus: oklch(0.46 0.18 258);
++  --font: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", sans-serif;
++}
++
++@media (prefers-color-scheme: dark) {
++  :root:not([data-theme="light"]) {
++    color-scheme: dark;
++    --bg: oklch(0.19 0.01 265);
++    --surface: oklch(0.23 0.012 265);
++    --ink: oklch(0.94 0.008 85);
++    --ink-soft: oklch(0.78 0.012 85);
++    --line: oklch(0.36 0.012 265);
++    --chip: oklch(0.29 0.012 265);
++    --focus: oklch(0.82 0.13 258);
++  }
++}
++
++:root[data-theme="dark"] {
++  color-scheme: dark;
++  --bg: oklch(0.19 0.01 265);
++  --surface: oklch(0.23 0.012 265);
++  --ink: oklch(0.94 0.008 85);
++  --ink-soft: oklch(0.78 0.012 85);
++  --line: oklch(0.36 0.012 265);
++  --chip: oklch(0.29 0.012 265);
++  --focus: oklch(0.82 0.13 258);
++}
++
++*,
++*::before,
++*::after {
++  box-sizing: border-box;
++  margin: 0;
++  padding: 0;
++}
++
++[hidden] {
++  display: none !important;
++}
++
++html {
++  -webkit-text-size-adjust: 100%;
++  text-size-adjust: 100%;
++}
++
++body {
++  font-family: var(--font);
++  font-size: 16px;
++  line-height: 1.7;
++  color: var(--ink);
++  background: var(--bg);
++  word-break: keep-all;
++  overflow-wrap: break-word;
++  -webkit-font-smoothing: antialiased;
++}
++
++a {
++  color: inherit;
++}
++
++:focus-visible {
++  outline: 3px solid var(--focus);
++  outline-offset: 3px;
++}
++
++/* ---------- skip link ---------- */
++
++.skip-link {
++  position: absolute;
++  left: 16px;
++  top: -100px;
++  z-index: 30;
++  padding: 12px 16px;
++  border-radius: 8px;
++  background: var(--ink);
++  color: var(--bg);
++  font-size: 13px;
++  line-height: 1.5;
++  text-decoration: none;
++}
++
++.skip-link:focus-visible {
++  top: 16px;
++}
++
++/* ---------- header ---------- */
++
++.site-header {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  justify-content: space-between;
++  gap: 16px;
++  padding: 16px 24px;
++  border-bottom: 1px solid var(--line);
++}
++
++@media (min-width: 768px) {
++  .site-header {
++    padding: 24px 48px;
++  }
++}
++
++.brand {
++  font-size: 13px;
++  font-weight: 700;
++  line-height: 1.5;
++  letter-spacing: 0.14em;
++  text-transform: uppercase;
++  text-decoration: none;
++  border-radius: 4px;
++}
++
++.header-actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++}
++
++.chip {
++  min-height: 44px;
++  padding: 12px 16px;
++  border: 1px solid var(--line);
++  border-radius: 999px;
++  background: var(--surface);
++  color: var(--ink);
++  font: inherit;
++  font-size: 13px;
++  line-height: 1.5;
++  text-align: center;
++  cursor: pointer;
++}
++
++.chip:hover {
++  border-color: var(--ink-soft);
++}
++
++.chip-dot {
++  display: inline-block;
++  width: 8px;
++  height: 8px;
++  margin-right: 8px;
++  border: 1px solid var(--ink-soft);
++  border-radius: 50%;
++  vertical-align: 1px;
++}
++
++.chip[aria-pressed="true"] .chip-dot {
++  background: var(--ink);
++}
++
++/* ---------- main & lobby ---------- */
++
++main {
++  padding: 0 24px;
++}
++
++@media (min-width: 768px) {
++  main {
++    padding: 0 48px;
++  }
++}
++
++/* The entrance is deliberately sparse: on wide screens the hero fills the first screen and the room
++   grid begins below the fold, so the opening view stays calm (restraint, as the brief asks). */
++.hero {
++  padding: 48px 0;
++}
++
++@media (min-width: 768px) {
++  .hero {
++    padding: 120px 0 96px;
++  }
++}
++
++@media (min-width: 1200px) {
++  .hero {
++    padding: 200px 0 160px;
++  }
++}
++
++.eyebrow {
++  margin-bottom: 16px;
++  font-size: 13px;
++  line-height: 1.5;
++  font-weight: 700;
++  letter-spacing: 0.12em;
++  text-transform: uppercase;
++  color: var(--ink-soft);
++}
++
++.hero-title {
++  max-width: 18em;
++  margin-bottom: 24px;
++  font-size: 36px;
++  line-height: 1.3;
++  font-weight: 700;
++  text-wrap: balance;
++}
++
++@media (min-width: 768px) {
++  .hero-title {
++    font-size: 44px;
++  }
++}
++
++.lead {
++  max-width: 34em;
++  margin-bottom: 40px;
++  font-size: 20px;
++  line-height: 1.7;
++  color: var(--ink-soft);
++}
++
++.spectrum {
++  display: flex;
++  width: min(100%, 560px);
++  height: 8px;
++  border-radius: 999px;
++  overflow: hidden;
++}
++
++.spectrum-band {
++  flex: 1 1 0;
++  background: oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250));
++}
++
++.rooms {
++  padding: 48px 0;
++}
++
++@media (min-width: 768px) {
++  .rooms {
++    padding: 72px 0 48px;
++  }
++}
++
++@media (min-width: 1200px) {
++  .rooms {
++    padding: 120px 0 48px;
++  }
++}
++
++.section-head {
++  margin-bottom: 32px;
++}
++
++h2 {
++  font-size: 28px;
++  line-height: 1.35;
++  font-weight: 700;
++}
++
++.section-head h2 {
++  margin-bottom: 8px;
++}
++
++.section-note {
++  max-width: 34em;
++  font-size: 16px;
++  line-height: 1.7;
++  color: var(--ink-soft);
++}
++
++.empty-state {
++  padding: 48px 24px;
++  border: 1px dashed var(--line);
++  border-radius: 16px;
++}
++
++.empty-title {
++  margin-bottom: 8px;
++  font-size: 20px;
++  line-height: 1.4;
++  font-weight: 700;
++}
++
++.empty-body {
++  font-size: 16px;
++  line-height: 1.7;
++  color: var(--ink-soft);
++}
++
++/* ---------- room cards ---------- */
++
++.room-grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr);
++  gap: 24px;
++  list-style: none;
++}
++
++@media (min-width: 640px) {
++  .room-grid {
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++  }
++}
++
++@media (min-width: 1024px) {
++  .room-grid {
++    grid-template-columns: repeat(3, minmax(0, 1fr));
++  }
++}
++
++.room-card {
++  display: flex;
++  flex-direction: column;
++  min-width: 0;
++  border: 1px solid var(--line);
++  border-top: 3px solid oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250));
++  border-radius: 16px;
++  background: var(--surface);
++  transition: border-color 200ms ease;
++}
++
++.room-card:hover {
++  border-color: var(--ink-soft);
++  border-top-color: oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250));
++}
++
++.room-link {
++  display: block;
++  flex: 1 1 auto;
++  padding: 24px;
++  border-radius: 14px;
++  text-decoration: none;
++  color: inherit;
++}
++
++.room-link:focus-visible {
++  outline-offset: 4px;
++}
++
++.room-link:hover .room-title,
++.room-link:hover .room-cta {
++  text-decoration: underline;
++  text-underline-offset: 4px;
++}
++
++.room-card.is-soon {
++  flex: 1 1 auto;
++  padding: 24px;
++  border-style: dashed;
++  background: transparent;
++}
++
++.room-card.is-soon .room-title {
++  color: var(--ink-soft);
++}
++
++.room-meta {
++  margin-bottom: 12px;
++  font-size: 13px;
++  line-height: 1.5;
++  font-variant-numeric: tabular-nums;
++  color: var(--ink-soft);
++}
++
++.room-no {
++  letter-spacing: 0.08em;
++}
++
++.room-badge {
++  display: inline-block;
++  margin-left: 8px;
++  padding: 4px 12px;
++  border-radius: 999px;
++  background: var(--chip);
++  color: var(--ink);
++  letter-spacing: 0;
++}
++
++.room-title {
++  margin-bottom: 8px;
++  font-size: 20px;
++  line-height: 1.4;
++  font-weight: 700;
++  overflow-wrap: anywhere;
++}
++
++.room-alt {
++  display: block;
++  margin-bottom: 16px;
++  font-size: 16px;
++  line-height: 1.5;
++  color: var(--ink-soft);
++  overflow-wrap: anywhere;
++}
++
++.room-summary {
++  margin-bottom: 16px;
++  font-size: 16px;
++  line-height: 1.7;
++  color: var(--ink-soft);
++  overflow-wrap: anywhere;
++}
++
++.room-cta {
++  display: block;
++  font-size: 16px;
++  line-height: 1.5;
++  font-weight: 700;
++}
++
++/* ---------- visit ---------- */
++
++.visit {
++  padding: 48px 0;
++  border-top: 1px solid var(--line);
++}
++
++.visit h2 {
++  margin-bottom: 16px;
++}
++
++.visit p {
++  max-width: 34em;
++  margin-bottom: 16px;
++  font-size: 16px;
++  line-height: 1.7;
++}
++
++/* ---------- footer ---------- */
++
++.site-footer {
++  padding: 40px 24px 48px;
++  border-top: 1px solid var(--line);
++  font-size: 13px;
++  line-height: 1.6;
++  color: var(--ink-soft);
++}
++
++@media (min-width: 768px) {
++  .site-footer {
++    padding: 40px 48px 48px;
++  }
++}
++
++.site-footer p {
++  margin-bottom: 8px;
++}
++
++.footer-links a {
++  color: var(--ink);
++  text-underline-offset: 4px;
++}
++
++/* ---------- room view (fixed layer above the lobby) ---------- */
++
++@keyframes room-in {
++  from {
++    opacity: 0;
++    transform: translateY(16px);
++  }
++  to {
++    opacity: 1;
++    transform: none;
++  }
++}
++
++.room-view {
++  position: fixed;
++  inset: 0;
++  z-index: 20;
++  overflow-y: auto;
++  overscroll-behavior: contain;
++  background: var(--bg);
++  animation: room-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
++}
++
++.room-view-bar {
++  display: flex;
++  align-items: center;
++  min-height: 64px;
++  padding: 16px 24px;
++  border-bottom: 1px solid var(--line);
++}
++
++@media (min-width: 768px) {
++  .room-view-bar {
++    padding: 24px 48px;
++  }
++}
++
++.back-link {
++  display: inline-block;
++  padding: 8px 0;
++  font-size: 16px;
++  line-height: 1.5;
++  font-weight: 700;
++  text-underline-offset: 4px;
++}
++
++.room-view-body {
++  max-width: 40em;
++  padding: 48px 24px 64px;
++}
++
++@media (min-width: 768px) {
++  .room-view-body {
++    padding: 64px 48px 80px;
++  }
++}
++
++.room-view-title {
++  margin-bottom: 16px;
++  font-size: 36px;
++  line-height: 1.3;
++  outline: none;
++  overflow-wrap: anywhere;
++}
++
++@media (min-width: 768px) {
++  .room-view-title {
++    font-size: 44px;
++  }
++}
++
++.room-view-alt {
++  margin-bottom: 24px;
++  font-size: 16px;
++  line-height: 1.5;
++  color: var(--ink-soft);
++}
++
++.room-view-summary {
++  max-width: 34em;
++  margin-bottom: 40px;
++  font-size: 20px;
++  line-height: 1.7;
++}
++
++.threshold {
++  height: 240px;
++  border: 1px solid var(--line);
++  border-radius: 16px;
++  background: linear-gradient(160deg, oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250)), oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250) / 0.2));
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .room-view {
++    animation: none;
++  }
++
++  .room-card {
++    transition: none;
++  }
++}
+diff --git a/report.json b/report.json
+index 1ed5e36..1d0cc5f 100644
+--- a/report.json
++++ b/report.json
+@@ -1 +1,46 @@
+-{"schema_version":1,"summary":"Lobby seed workspace. Fonts are system stacks: no offline OFL font resource was available in the repository or installed package assets, so the seed requests none.","deliverables":["lobby/index.html","report.json"],"claims":[],"blocked":false}
++{
++  "schema_version": 1,
++  "summary": "Lobby at lobby/index.html (+ styles.css). Rooms come from window.__benchHost.params.rooms; open rooms link to #/room/<id> and open a fixed layer, so scroll survives open and Back. Coming-soon rooms are dashed, unlinked cards. Korean is the default; the EN toggle persists in localStorage mol-lang. Dark mode follows the system unless toggled. System fonts, no external requests, no raster assets. Local selfcheck: G-live fails only because the harness FLIP call cannot resolve its venv from this isolated layout (FLIP on the same frames run directly = 0.0), which zeroes craft and visual locally.",
++  "deliverables": [
++    "lobby/index.html",
++    "lobby/styles.css",
++    "tests/lobby.regression.mjs",
++    "report.json"
++  ],
++  "claims": [
++    { "metric_id": "data.rooms_rendered", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck, public seeds 1-3, all viewports" },
++    { "metric_id": "data.long_title", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck, public seeds 1-3" },
++    { "metric_id": "data.empty_state", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck, public seeds 1-3" },
++    { "metric_id": "nav.routes", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck nav probe: click each open room, Back restores route, scroll delta 0" },
++    { "metric_id": "layout.overflow_count", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck, all viewports and schemes" },
++    { "metric_id": "text.clipped_count", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck, all viewports" },
++    { "metric_id": "a11y.axe_violations", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck axe (light and dark); axe-core run directly: 0 violations of any impact" },
++    { "metric_id": "a11y.keyboard_reach", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck Tab traversal over required targets" },
++    { "metric_id": "a11y.focus_visible", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck focus ring pixel probe on required targets" },
++    { "metric_id": "text.hangul_midword_breaks", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck, all viewports" },
++    { "metric_id": "text.line_length", "status": "verified", "meets_target": true, "measured_value": 40, "method": "bench selfcheck median chars per line, Hangul body blocks (ideal 22-45)" },
++    { "metric_id": "text.line_height", "status": "verified", "meets_target": true, "measured_value": 1.7, "method": "bench selfcheck body line-height ratio (Hangul ideal 1.5-1.9)" },
++    { "metric_id": "type.size_steps", "status": "verified", "meets_target": true, "measured_value": 5, "method": "bench selfcheck distinct font sizes at 1440x900 (13, 16, 20, 28, 44 px)" },
++    { "metric_id": "type.scale_ratio_min", "status": "verified", "meets_target": true, "measured_value": 1.2308, "method": "bench selfcheck minimum ratio between consecutive sizes at 1440x900" },
++    { "metric_id": "space.grid4_frac", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck paddings and gaps on the 4 px grid, all viewports" },
++    { "metric_id": "align.column_count", "status": "verified", "meets_target": true, "measured_value": 3.5, "method": "bench selfcheck left-edge clusters at 1440x900 (limit 8)" },
++    { "metric_id": "visual.congestion", "status": "verified", "meets_target": true, "measured_value": 0.1079, "method": "bench selfcheck Feature Congestion at 1440x900 (ideal 0.10-0.12)" },
++    { "metric_id": "G-load", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: loaded, __bench.ready resolved" },
++    { "metric_id": "G-console", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: 0 console errors or uncaught exceptions" },
++    { "metric_id": "G-contract", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: BenchRoom v1 contract satisfied" },
++    { "metric_id": "G-determinism", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: identical pixel hash across fresh pages" },
++    { "metric_id": "G-offline", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: 0 requests outside the local origin" },
++    { "metric_id": "G-fonts-local", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: 0 font responses, document.fonts.ready resolved" },
++    { "metric_id": "G-report", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: report.json valid against schemas/report.schema.json" },
++    { "metric_id": "G-raster", "status": "verified", "meets_target": true, "method": "bench selfcheck gate: no raster files in the submission" },
++    { "metric_id": "G-live", "status": "not_verified", "method": "FAILS locally: harness FLIP call cannot resolve .venv/metrics from this isolated layout; FLIP on the same frames run directly = 0.0" },
++    { "metric_id": "tests.hidden", "status": "not_verified", "method": "harness found no public tests (expects rooms/lobby/seed/public-tests); public-tests/smoke.mjs (2/2) and tests/lobby.regression.mjs (11/11) pass when run directly" },
++    { "metric_id": "theme.both_valid", "status": "not_verified", "method": "harness emits no theme probe (null); run directly: light and dark frames differ, axe 0 violations in both schemes" },
++    { "metric_id": "a11y.reduced_motion_transition_ms", "status": "not_verified", "method": "harness has no nav_transition step executor (null); regression test: no running animation with reduced motion" },
++    { "metric_id": "nav.transition_ms", "status": "not_verified", "method": "harness has no nav_transition step executor (null); room open uses a 320 ms CSS animation" },
++    { "metric_id": "lh.lcp_ms", "status": "not_verified", "method": "Lighthouse is a stub in this harness (null); not measured" },
++    { "metric_id": "lh.cls", "status": "not_verified", "method": "Lighthouse is a stub in this harness (null); rooms are rendered before first paint, no late layout shifts intended" },
++    { "metric_id": "budget.transfer_kb", "status": "not_verified", "method": "harness returned null; uncompressed index.html 16.3 KB + styles.css 9.2 KB, no other requests" }
++  ],
++  "blocked": false
++}
+diff --git a/tests/lobby.regression.mjs b/tests/lobby.regression.mjs
+new file mode 100644
+index 0000000..381811a
+--- /dev/null
++++ b/tests/lobby.regression.mjs
+@@ -0,0 +1,237 @@
++// Regression tests for lobby/index.html.
++// Run from the repository root:  node --test tests/lobby.regression.mjs
++// Uses the Playwright Chromium bundled in node_modules and a host-injected room list (no network).
++process.env.PLAYWRIGHT_BROWSERS_PATH ??= '0';
++
++import { after, before, test } from 'node:test';
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { fileURLToPath, pathToFileURL } from 'node:url';
++
++const here = path.dirname(fileURLToPath(import.meta.url));
++const pageUrl = pathToFileURL(path.join(here, '..', 'lobby', 'index.html')).href;
++
++function room(id, overrides = {}) {
++  return {
++    id,
++    route: `#/room/${id}`,
++    title_ko: `${id} 한국어 제목`,
++    title_en: `${id} English title`,
++    summary_ko: '빛과 기억이 포개지는 작은 전시를 천천히 거닐어 보세요.',
++    accent_oklch: [0.68, 0.12, 200],
++    status: 'open',
++    ...overrides,
++  };
++}
++
++const FIXTURE = [
++  room('room-1'),
++  room('room-2', { status: 'coming_soon' }),
++  room('room-3'),
++  room('room-4'),
++  room('room-5'),
++  room('room-6'),
++];
++
++const LONG_TITLE_ROOM = room('room-long', {
++  title_ko: '빛의 기억이 머무는 아주 긴 복도에서 만나는 서른여덟 글자의 긴 이야기를 다시 천천히 읽어요',
++  title_en: 'A Quiet Museum of Light for Curious Visitors Everywhere Today',
++});
++
++let chromium;
++let browser;
++
++before(async () => {
++  ({ chromium } = await import('playwright'));
++  browser = await chromium.launch({ headless: true });
++});
++
++after(async () => {
++  await browser?.close();
++});
++
++async function openLobby({ rooms = FIXTURE, viewport = { width: 1440, height: 900 }, colorScheme = 'light', reducedMotion = 'no-preference' } = {}) {
++  const context = await browser.newContext({ viewport, colorScheme, reducedMotion, locale: 'en-US' });
++  const page = await context.newPage();
++  const errors = [];
++  page.on('pageerror', (err) => errors.push(String(err)));
++  page.on('console', (msg) => {
++    if (msg.type() === 'error') errors.push(msg.text());
++  });
++  await page.addInitScript((params) => {
++    window.__benchHost = Object.freeze({ contractVersion: 1, seed: 1, params: Object.freeze({ rooms: params }) });
++  }, rooms);
++  await page.goto(pageUrl, { waitUntil: 'load' });
++  await page.evaluate(() => window.__bench.ready);
++  return { context, page, errors };
++}
++
++test('required data-bench landmarks exist exactly once', async () => {
++  const { context, page } = await openLobby();
++  try {
++    const counts = await page.evaluate(() => Object.fromEntries(
++      ['header', 'hero-title', 'body', 'footer', 'empty-state', 'lang-toggle', 'theme-toggle'].map((name) => [
++        name,
++        document.querySelectorAll(`[data-bench="${name}"]`).length,
++      ]),
++    ));
++    assert.equal(counts.header, 1);
++    assert.equal(counts['hero-title'], 1);
++    assert.ok(counts.body >= 1);
++    assert.equal(counts.footer, 1);
++    assert.equal(counts['empty-state'], 1);
++    assert.equal(counts['lang-toggle'], 1);
++    assert.equal(counts['theme-toggle'], 1);
++    assert.equal(await page.evaluate(() => document.querySelector('[data-bench="hero-title"]').tagName), 'H1');
++  } finally {
++    await context.close();
++  }
++});
++
++test('renders one room-card per room; open rooms link to their route, coming-soon rooms do not', async () => {
++  const { context, page, errors } = await openLobby();
++  try {
++    const cards = await page.evaluate(() => [...document.querySelectorAll('[data-bench="room-card"]')].map((c) => ({
++      status: c.dataset.status,
++      h3: c.querySelector('h3')?.textContent ?? null,
++      href: c.querySelector('a')?.getAttribute('href') ?? null,
++    })));
++    assert.equal(cards.length, FIXTURE.length);
++    assert.deepEqual(cards.map((c) => c.status), ['open', 'coming_soon', 'open', 'open', 'open', 'open']);
++    assert.equal(cards[0].h3, 'room-1 한국어 제목');
++    assert.equal(cards[0].href, '#/room/room-1');
++    assert.equal(cards[1].href, null, 'coming-soon card must not contain a link');
++    assert.deepEqual(errors, []);
++  } finally {
++    await context.close();
++  }
++});
++
++test('empty collection shows the empty state and no cards', async () => {
++  const { context, page } = await openLobby({ rooms: [] });
++  try {
++    const state = await page.evaluate(() => ({
++      cards: document.querySelectorAll('[data-bench="room-card"]').length,
++      emptyVisible: !document.querySelector('[data-bench="empty-state"]').hidden,
++    }));
++    assert.equal(state.cards, 0);
++    assert.equal(state.emptyVisible, true);
++  } finally {
++    await context.close();
++  }
++});
++
++test('coming-soon room click does not change the route', async () => {
++  const { context, page } = await openLobby();
++  try {
++    await page.locator('[data-bench="room-card"]').nth(1).click();
++    assert.equal(await page.evaluate(() => window.__bench.state().route), 'lobby');
++    assert.equal(await page.evaluate(() => location.hash), '');
++  } finally {
++    await context.close();
++  }
++});
++
++test('opening a room and going back restores the lobby and its scroll position', async () => {
++  const { context, page } = await openLobby();
++  try {
++    await page.evaluate(() => window.scrollTo(0, 500));
++    const before = await page.evaluate(() => scrollY);
++    await page.locator('[data-bench="room-card"] a').first().click();
++    assert.equal(await page.evaluate(() => window.__bench.state().route), 'room-1');
++    assert.equal(await page.evaluate(() => scrollY), before, 'opening a room must not scroll the lobby');
++    await page.goBack();
++    assert.equal(await page.evaluate(() => window.__bench.state().route), 'lobby');
++    assert.ok(Math.abs((await page.evaluate(() => scrollY)) - before) <= 50);
++  } finally {
++    await context.close();
++  }
++});
++
++test('Escape closes an open room', async () => {
++  const { context, page } = await openLobby();
++  try {
++    await page.evaluate(() => { location.hash = '#/room/room-3'; });
++    await page.waitForFunction(() => window.__bench.state().route === 'room-3');
++    await page.keyboard.press('Escape');
++    await page.waitForFunction(() => window.__bench.state().route === 'lobby');
++    assert.equal(await page.evaluate(() => location.hash), '#/');
++  } finally {
++    await context.close();
++  }
++});
++
++test('language toggle switches titles to English and persists the choice', async () => {
++  const { context, page } = await openLobby();
++  try {
++    await page.locator('[data-bench="lang-toggle"]').focus();
++    await page.keyboard.press('Enter');
++    const state = await page.evaluate(() => ({
++      lang: window.__bench.state().lang,
++      htmlLang: document.documentElement.lang,
++      h3: document.querySelector('[data-bench="room-card"] h3').textContent,
++      stored: localStorage.getItem('mol-lang'),
++    }));
++    assert.equal(state.lang, 'en');
++    assert.equal(state.htmlLang, 'en');
++    assert.equal(state.h3, 'room-1 English title');
++    assert.equal(state.stored, 'en');
++    await page.reload({ waitUntil: 'load' });
++    await page.evaluate(() => window.__bench.ready);
++    assert.equal(await page.evaluate(() => window.__bench.state().lang), 'en');
++  } finally {
++    await context.close();
++  }
++});
++
++test('theme toggle flips the rendered theme', async () => {
++  const { context, page } = await openLobby();
++  try {
++    const before = await page.evaluate(() => window.__bench.state().theme);
++    await page.locator('[data-bench="theme-toggle"]').click();
++    const after = await page.evaluate(() => window.__bench.state().theme);
++    assert.notEqual(before, after);
++    assert.equal(await page.locator('[data-bench="theme-toggle"]').getAttribute('aria-pressed'), after === 'dark' ? 'true' : 'false');
++  } finally {
++    await context.close();
++  }
++});
++
++test('reduced motion: opening a room runs no animation', async () => {
++  const { context, page } = await openLobby({ reducedMotion: 'reduce' });
++  try {
++    await page.locator('[data-bench="room-card"] a').first().click();
++    const running = await page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').length);
++    assert.equal(running, 0);
++  } finally {
++    await context.close();
++  }
++});
++
++test('no horizontal overflow at phone width with a long title', async () => {
++  const { context, page } = await openLobby({ rooms: [LONG_TITLE_ROOM, ...FIXTURE], viewport: { width: 360, height: 780 } });
++  try {
++    const { scrollWidth, innerWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, innerWidth }));
++    assert.ok(scrollWidth <= innerWidth, `scrollWidth ${scrollWidth} > innerWidth ${innerWidth}`);
++    const h3 = await page.evaluate(() => document.querySelector('[data-bench="room-card"] h3').textContent);
++    assert.equal(h3, LONG_TITLE_ROOM.title_ko);
++  } finally {
++    await context.close();
++  }
++});
++
++test('room links are keyboard reachable in document order', async () => {
++  const { context, page } = await openLobby();
++  try {
++    const reached = new Set();
++    for (let i = 0; i < 40; i += 1) {
++      await page.keyboard.press('Tab');
++      const id = await page.evaluate(() => document.activeElement?.closest?.('[data-room-id]')?.getAttribute('data-room-id') ?? null);
++      if (id) reached.add(id);
++    }
++    assert.ok(reached.has('room-1') && reached.has('room-3') && reached.has('room-6'));
++    assert.ok(!reached.has('room-2'), 'coming-soon room must not take focus');
++  } finally {
++    await context.close();
++  }
++});

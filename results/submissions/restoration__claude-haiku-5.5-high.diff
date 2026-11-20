@@ -1,0 +1,480 @@
+diff --git a/.run.json b/.run.json
+index 8d1a3e0..e721ba2 100644
+--- a/.run.json
++++ b/.run.json
+@@ -3,5 +3,8 @@
+   "room": "restoration",
+   "track": "build",
+   "seed": 5,
+-  "created_at": "2026-11-20T19:39:33.690Z"
++  "created_at": "2026-11-20T19:39:33.690Z",
++  "ended_at": "2026-11-20T20:10:53.115Z",
++  "wall_min": 31.3238,
++  "model": "Claude Haiku 5.5 (high)"
+ }
+diff --git a/report.json b/report.json
+new file mode 100644
+index 0000000..2da5924
+--- /dev/null
++++ b/report.json
+@@ -0,0 +1,133 @@
++{
++  "schema_version": 1,
++  "summary": "Diagnosed and minimally fixed the four planted orrery regressions in room/src/orrery.js, each with a red-green test in tests/regression/bugs.test.mjs. B1: makeColor applied the sRGB encode twice (background and plaque too bright and washed out). B2: camera.near set to 0.0002 and the floor decal's polygon offset disabled, so the decal z-fought with the floor. B5: tick advanced time by a fixed 16.667 ms per frame instead of the host clock. B7: the next-planet and resize listeners were never removed on unmount, so they stacked across remounts.",
++  "deliverables": [
++    "report.json",
++    "tests/regression/bugs.test.mjs",
++    "room/src/orrery.js"
++  ],
++  "claims": [
++    {
++      "metric_id": "G-load",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-console",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-contract",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-determinism",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-offline",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-raster",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-fonts-local",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-live",
++      "status": "not_verified",
++      "method": "selfcheck FLIP helper used wrong .venv/metrics paths in this copy (bench/capture uses ../../../); manual FLIP seek vs live = 0.0"
++    },
++    {
++      "metric_id": "time.flicker",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 0.0428,
++      "method": "npm run selfcheck (baseline was 0.3571)"
++    },
++    {
++      "metric_id": "render.aliasing",
++      "status": "verified",
++      "meets_target": false,
++      "measured_value": 0.0438,
++      "method": "npm run selfcheck (full-score band is <= 0.04)"
++    },
++    {
++      "metric_id": "perf.frame_p95_norm_ms",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck (p95 about 2 ms across runs, well under 16.7 ms)"
++    },
++    {
++      "metric_id": "tests.redgreen",
++      "status": "verified",
++      "meets_target": true,
++      "method": "node --test tests/regression/bugs.test.mjs: 4/4 red on starting source, 4/4 green after fix"
++    },
++    {
++      "metric_id": "tests.hidden",
++      "status": "not_verified",
++      "method": "hidden tests unavailable; public-tests/orrery.test.mjs 5/5 pass via bench testrunner"
++    },
++    {
++      "metric_id": "bugs.fixed",
++      "status": "not_verified",
++      "method": "grader-side weighted score; not measured by selfcheck"
++    },
++    {
++      "metric_id": "rootcause.accuracy",
++      "status": "not_verified",
++      "method": "root causes assigned by code analysis; not measured by selfcheck"
++    },
++    {
++      "metric_id": "diff.out_of_scope_files",
++      "status": "not_verified",
++      "method": "selfcheck counted generated selfcheck.json and work/ (removed afterwards); diff scoring needs --start"
++    }
++  ],
++  "blocked": false,
++  "room": {
++    "bugs": [
++      {
++        "report_id": "B1",
++        "root_cause": "COLOR_SPACE_DOUBLE_ENCODE",
++        "files": ["room/src/orrery.js"],
++        "test": "tests/regression/bugs.test.mjs"
++      },
++      {
++        "report_id": "B2",
++        "root_cause": "DEPTH_PRECISION_ZFIGHT",
++        "files": ["room/src/orrery.js"],
++        "test": "tests/regression/bugs.test.mjs"
++      },
++      {
++        "report_id": "B5",
++        "root_cause": "FRAME_RATE_DEPENDENT_UPDATE",
++        "files": ["room/src/orrery.js"],
++        "test": "tests/regression/bugs.test.mjs"
++      },
++      {
++        "report_id": "B7",
++        "root_cause": "LISTENER_NOT_REMOVED",
++        "files": ["room/src/orrery.js"],
++        "test": "tests/regression/bugs.test.mjs"
++      }
++    ]
++  }
++}
+diff --git a/room/src/orrery.js b/room/src/orrery.js
+index 85dedf3..023bd79 100644
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -56,15 +56,25 @@ function ensureHost() {
+   if (typeof window !== "undefined" && window.__benchHost) {
+     return window.__benchHost;
+   }
+-  let clockMs = 0;
++  // Standalone page (no bench harness): the clock is wall time since start, so the room
++  // animates in real time. The harness always injects __benchHost, so this path only
++  // serves the plain museum page.
++  const wallNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
++  const startMs = wallNow();
++  let offsetMs = 0;
++  let frozenMs = null;
+   const host = {
+     contractVersion: 1,
+     seed: 1,
+     params: {},
+     clock: {
+-      now: () => clockMs,
++      now: () => (frozenMs !== null ? frozenMs : wallNow() - startMs + offsetMs),
+       _set: (t) => {
+-        clockMs = Number(t) || 0;
++        frozenMs = Number(t) || 0;
++      },
++      _resume: () => {
++        offsetMs = host.clock.now() - (wallNow() - startMs);
++        frozenMs = null;
+       }
+     },
+     rng: makeFallbackRng(1)
+@@ -97,10 +107,8 @@ function deriveSeedParams(seed, hostParams = {}) {
+ }
+ 
+ function makeColor(hex) {
+-  const color = new THREE.Color(hex);
+-  color.convertLinearToSRGB();
+-  color.convertLinearToSRGB();
+-  return color;
++  // THREE.Color(hex) already converts the sRGB hex to the linear working space once.
++  return new THREE.Color(hex);
+ }
+ 
+ function loadImageTexture(url) {
+@@ -357,8 +365,6 @@ export function createOrreryBench(defaultContainer) {
+     decalMesh = new THREE.Mesh(decalGeom, decalMaterial);
+     decalMesh.rotation.x = -Math.PI / 2;
+     decalMesh.position.set(0.55, 0.0, 0.35);
+-    decalMaterial.polygonOffset = false;
+-    camera.near = 0.0002;
+     scene.add(decalMesh);
+ 
+     const pedestalGeom = trackGeometry(new THREE.CylinderGeometry(0.42, 0.58, 1.05, 32));
+@@ -702,15 +708,30 @@ export function createOrreryBench(defaultContainer) {
+   function tick() {
+     if (!isMounted) return;
+     if (!isPaused) {
+-      const frameStepMs = 16.667;
+-      currentClockMs = currentClockMs + frameStepMs;
++      // Animation time comes from the host clock, never from the number of frames.
++      currentClockMs = host.clock.now();
+       updateSceneAtTime(currentClockMs);
+       renderer.render(scene, camera);
+     }
+     rafId = requestAnimationFrame(tick);
+   }
+ 
++  function detachListeners() {
++    if (nextBtn && onNextPlanetClick) {
++      nextBtn.removeEventListener("click", onNextPlanetClick);
++      activeListenerCount -= 1;
++    }
++    if (typeof window !== "undefined" && onWindowResize) {
++      window.removeEventListener("resize", onWindowResize);
++      activeListenerCount -= 1;
++    }
++    nextBtn = null;
++    onNextPlanetClick = null;
++    onWindowResize = null;
++  }
++
+   async function mount(containerEl = currentContainer) {
++    detachListeners();
+     if (containerEl) {
+       const stageChild =
+         containerEl.id === "orrery-stage"
+@@ -774,7 +795,7 @@ export function createOrreryBench(defaultContainer) {
+       cancelAnimationFrame(rafId);
+       rafId = null;
+     }
+-
++    detachListeners();
+ 
+     for (const geom of allocatedGeometries) geom.dispose();
+     for (const mat of allocatedMaterials) mat.dispose();
+@@ -814,6 +835,9 @@ export function createOrreryBench(defaultContainer) {
+       updateSceneAtTime(currentClockMs);
+     },
+     resume() {
++      if (typeof host.clock?._resume === "function") {
++        host.clock._resume();
++      }
+       isPaused = false;
+       if (isMounted) {
+         if (rafId !== null) {
+diff --git a/tests/regression/bugs.test.mjs b/tests/regression/bugs.test.mjs
+new file mode 100644
+index 0000000..f6a4074
+--- /dev/null
++++ b/tests/regression/bugs.test.mjs
+@@ -0,0 +1,214 @@
++/**
++ * Red-green regression tests for the four visitor-reported orrery regressions.
++ *
++ * Each test drives the real room in headless Chromium (SwiftShader WebGL) through
++ * window.__bench, with a controllable host clock injected before the room scripts run.
++ *
++ *   B1  washed-out colors         -> COLOR_SPACE_DOUBLE_ENCODE
++ *   B2  shimmering floor decal    -> DEPTH_PRECISION_ZFIGHT
++ *   B5  speed depends on monitor  -> FRAME_RATE_DEPENDENT_UPDATE
++ *   B7  focus jumps several steps -> LISTENER_NOT_REMOVED
++ *
++ * Run with: npm test
++ */
++import { test, before, after } from "node:test";
++import assert from "node:assert/strict";
++import http from "node:http";
++import fs from "node:fs/promises";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++
++const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
++
++const MIME_TYPES = {
++  ".html": "text/html; charset=utf-8",
++  ".js": "text/javascript; charset=utf-8",
++  ".mjs": "text/javascript; charset=utf-8",
++  ".css": "text/css; charset=utf-8",
++  ".png": "image/png",
++  ".json": "application/json; charset=utf-8"
++};
++
++let server;
++let origin;
++let browser;
++
++before(async () => {
++  // Same browser location the bench harness uses (bundled Chromium under node_modules).
++  if (process.env.PLAYWRIGHT_BROWSERS_PATH === undefined) {
++    process.env.PLAYWRIGHT_BROWSERS_PATH = "0";
++  }
++  const { chromium } = await import("playwright");
++  server = http.createServer(async (req, res) => {
++    try {
++      const reqPath = decodeURIComponent(new URL(req.url, "http://127.0.0.1").pathname).replace(/^\/+/, "");
++      const file = path.resolve(ROOT, reqPath);
++      const rel = path.relative(ROOT, file);
++      if (rel.startsWith("..") || path.isAbsolute(rel)) {
++        res.writeHead(403).end();
++        return;
++      }
++      const body = await fs.readFile(file);
++      res.writeHead(200, { "content-type": MIME_TYPES[path.extname(file)] || "application/octet-stream" });
++      res.end(body);
++    } catch {
++      res.writeHead(404).end();
++    }
++  });
++  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
++  origin = `http://127.0.0.1:${server.address().port}`;
++  browser = await chromium.launch({
++    headless: true,
++    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
++  });
++});
++
++after(async () => {
++  await browser?.close();
++  server?.closeAllConnections?.();
++  await new Promise((resolve) => server?.close(resolve) ?? resolve());
++});
++
++/** Opens the room with a controllable host clock (window.__testClockMs, in ms). */
++async function openRoom() {
++  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
++  const page = await context.newPage();
++  await page.addInitScript(() => {
++    window.__testClockMs = 0;
++    window.__benchHost = {
++      contractVersion: 1,
++      seed: 1,
++      params: {},
++      clock: { now: () => window.__testClockMs },
++      rng: null
++    };
++  });
++  await page.goto(`${origin}/room/index.html`);
++  await page.waitForFunction(() => window.__bench !== undefined);
++  await page.evaluate(() => window.__bench.ready);
++  return { context, page };
++}
++
++function colorDistance(a, b) {
++  return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
++}
++
++test("B1: scene colors are not double-encoded in sRGB (background and chart patch 0 match sRGB)", async () => {
++  const { context, page } = await openRoom();
++  try {
++    const sample = await page.evaluate(async () => {
++      window.__bench.seek(1000);
++      await window.__bench.renderFrame();
++      const st = window.__bench.state();
++      const canvas = document.querySelector("canvas");
++      const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
++      const w = canvas.width;
++      const h = canvas.height;
++      const px = new Uint8Array(w * h * 4);
++      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
++      const at = (x, y) => {
++        const i = ((h - 1 - y) * w + x) * 4;
++        return [px[i], px[i + 1], px[i + 2]];
++      };
++      const p0 = st.chartPatches[0];
++      return { background: at(20, 20), patch0: at(p0.x, p0.y) };
++    });
++    // Background is sRGB 0x141822 = (20, 24, 34); patch 0 reference is (194, 150, 130).
++    const bgErr = colorDistance(sample.background, [20, 24, 34]);
++    const patchErr = colorDistance(sample.patch0, [194, 150, 130]);
++    assert.ok(bgErr <= 18, `background ${sample.background} is not sRGB (20,24,34), error=${bgErr.toFixed(1)}`);
++    assert.ok(patchErr <= 18, `chart patch 0 ${sample.patch0} is not sRGB (194,150,130), error=${patchErr.toFixed(1)}`);
++  } finally {
++    await context.close();
++  }
++});
++
++test("B2: floor decal does not shimmer or z-fight while the camera drifts", async () => {
++  const { context, page } = await openRoom();
++  try {
++    const result = await page.evaluate(async () => {
++      const canvas = document.querySelector("canvas");
++      const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
++      const rw = 200;
++      const rh = 80;
++      const rx = 760;
++      const ry = 160;
++      const frames = [];
++      for (let k = 0; k < 4; k++) {
++        window.__bench.seek(2500 + k * 16.667);
++        await window.__bench.renderFrame();
++        const buf = new Uint8Array(rw * rh * 4);
++        gl.readPixels(rx, ry, rw, rh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
++        frames.push(buf);
++      }
++      let jumpingPixels = 0;
++      for (let i = 0; i < rw * rh * 4; i += 4) {
++        const d01 = Math.abs(frames[1][i] - frames[0][i]);
++        const d12 = Math.abs(frames[2][i] - frames[1][i]);
++        if (d01 > 75 && d12 > 75) jumpingPixels++;
++      }
++      return { jumpingPixels };
++    });
++    assert.ok(
++      result.jumpingPixels < 50,
++      `floor decal flickers between adjacent frames: ${result.jumpingPixels} jumping pixels`
++    );
++  } finally {
++    await context.close();
++  }
++});
++
++test("B5: planet orbits follow the host clock, not the number of rendered frames", async () => {
++  const { context, page } = await openRoom();
++  try {
++    // Hold the host clock at 2000 ms and let the live loop run for 20 frames.
++    await page.evaluate(() => {
++      window.__testClockMs = 2000;
++    });
++    await page.evaluate(
++      () =>
++        new Promise((resolve) => {
++          let frames = 0;
++          const step = () => {
++            frames += 1;
++            if (frames >= 20) resolve();
++            else requestAnimationFrame(step);
++          };
++          requestAnimationFrame(step);
++        })
++    );
++    const live = await page.evaluate(() => window.__bench.state().orbitAngleDeg);
++    const seeked = await page.evaluate(async () => {
++      window.__bench.seek(2000);
++      await window.__bench.renderFrame();
++      return window.__bench.state().orbitAngleDeg;
++    });
++    assert.ok(
++      Math.abs(live - seeked) < 1e-6,
++      `live orbit angle ${live} after 20 frames at host clock 2000ms != angle at 2000ms ${seeked}`
++    );
++  } finally {
++    await context.close();
++  }
++});
++
++test("B7: one next-planet click advances focus by exactly one step after lifecycle remounts", async () => {
++  const { context, page } = await openRoom();
++  try {
++    const result = await page.evaluate(async () => {
++      const container = document.getElementById("orrery-stage");
++      for (let i = 0; i < 3; i++) {
++        await window.__bench.unmount();
++        await window.__bench.mount(container);
++      }
++      const before = window.__bench.state().focusedIndex;
++      document.querySelector('[data-bench="next-planet"]').click();
++      const after = window.__bench.state().focusedIndex;
++      return { step: (after - before + 7) % 7, listeners: window.__bench.stats().listeners };
++    });
++    assert.equal(result.step, 1, `one click advanced focus by ${result.step} steps`);
++    assert.equal(result.listeners, 2, `room holds ${result.listeners} listeners after remounts (expected 2)`);
++  } finally {
++    await context.close();
++  }
++});

@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "summary": "Procedural hex lantern in build.py (no imports; geometry from blueprint numbers): body with 8 mm corner posts and rails, 5 glass panes (2 mm), stepped hex roof, footed base, 32 mm ring handle, wax candle with emissive flame, brass door with glass on a left hinge at (-38,-80) and a door_open action rotating it 0 to -90 deg about Z. Materials brass_/glass_/wax_/flame_ from materials.json. 9 meshes, 5500 triangles, 0 non-manifold edges. Silhouette proxy (own rasterisation; npm run selfcheck unavailable): worst IoU about 0.974.",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "G-blender-run",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run blender-run: build.py exits 0 headless, about 21 s"
+    },
+    {
+      "metric_id": "G-reproducible",
+      "status": "verified",
+      "meets_target": true,
+      "method": "two build.py runs; out/lantern.glb md5 identical"
+    },
+    {
+      "metric_id": "budget.triangles",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.183,
+      "method": "Blender loop-triangle count 5500 / 30000"
+    },
+    {
+      "metric_id": "topo.manifold",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "bmesh edge.is_manifold check on all 9 mesh objects of out/lantern.blend"
+    },
+    {
+      "metric_id": "topo.normals_outward",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "signed volume (divergence theorem) per object in out/lantern.blend, all positive"
+    },
+    {
+      "metric_id": "scene.hierarchy",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "Blender object parent inspection: 10/10 required (name, parent) pairs"
+    },
+    {
+      "metric_id": "scene.units_origin",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "scene METRIC, scale_length 1.0; all object scales 1.0; lowest vertex z=0 mm; bbox centre x=y=0"
+    },
+    {
+      "metric_id": "rig.hinge",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "door_open action on Door; frame 1 rotation 0 deg, frame 30 rotation -90 deg about Z through (-38,-80); only Door animated"
+    },
+    {
+      "metric_id": "mat.assignment",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "Blender material slot inspection: 9/9 mesh parts with brass_/glass_/wax_/flame_ prefixes"
+    },
+    {
+      "metric_id": "dims.bbox_error",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.0039,
+      "method": "Blender world-vertex bbox vs blueprint: x 207.05 vs 207.85, y 179.52 vs 180, z 418.00 vs 418 (max relative error)"
+    },
+    {
+      "metric_id": "shape.iou_public",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "shape.iou_hidden",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "dims.key_measurements",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "mat.pbr_plausible",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "mat.color_delta",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "topo.degenerate",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "uv.overlap",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "web.three_load",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "vq.bevel_ratio",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "vq.shading_artifacts",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "vq.texel_density_cv",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "vq.exposure",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "vq.highlight_metal",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "vq.detail_scale",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "render.aliasing",
+      "status": "not_verified"
+    },
+    {
+      "metric_id": "report.autonomy",
+      "status": "not_verified"
+    }
+  ],
+  "blocked": false
+}
