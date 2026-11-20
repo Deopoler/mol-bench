@@ -63,6 +63,7 @@ function runPythonMetrics(manifestPath, specPath, outPath, repoRoot = REPO_ROOT)
   try {
     execFileSync(py, ["-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath], {
       cwd: repoRoot,
+      env: { ...process.env, PYTHONPATH: [path.join(repoRoot, "metrics"), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"]
     });
