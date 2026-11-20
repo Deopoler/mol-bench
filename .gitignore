@@ -4,6 +4,9 @@ node_modules/
 __pycache__/
 *.pyc
 work/
-results/
 preview/
 selfcheck.json
+hidden/
+results/**/node_modules/
+results/**/.venv/
+site/leaderboard/data.json
