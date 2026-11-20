@@ -116,6 +116,10 @@ Each room ships three reference submissions: **null** (unchanged seed), **a5** (
    gradient-free black frame that has zero banding). Each must score composite ≤ the threshold stated in its `attacks` entry (default 4; "legitimate but plain" attacks may use 5).
 6. **Determinism check:** grade the same submission twice on different days → every non-perf value identical.
 
+Exception (objectively graded rooms): in rooms where anchors are simply correct or incorrect (e.g. `restoration`,
+a debugging room), a fully correct a8 may legitimately exceed 8.5; such rooms record their actual anchor composites in
+the results instead of forcing the band. v0.1: restoration null 1.11 / a5 5.93 / a8 9.60.
+
 After freeze, bands never change within a major version. Hidden seeds/timestamps never equal public ones.
 
 ## 7. Taste (human only)
