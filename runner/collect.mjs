@@ -52,6 +52,7 @@ function parseArgs(argv) {
         key === "no-python" ||
         key === "lenient" ||
         key === "no-hidden" ||
+        key === "timed-out" ||
         key === "perf" ||
         key === "help" ||
         key === "h"
@@ -304,6 +305,7 @@ export function collectRun({
   noPython = false,
   perf = false,
   lenient = false,
+  timedOut = false,
   repoRoot = DEFAULT_REPO_ROOT,
   resultsDir = null
 }) {
@@ -373,6 +375,7 @@ export function collectRun({
   if (noPython) gradeArgs.push("--no-python");
   if (perf) gradeArgs.push("--perf");
   if (lenient) gradeArgs.push("--lenient");
+  if (timedOut) gradeArgs.push("--timed-out");
   gradeArgs.push("--work-dir", workDir);
 
   // 5a. Export the start snapshot (first commit of the run repo) so diff metrics compare against it.
@@ -466,6 +469,7 @@ function main() {
     noPython: Boolean(flags["no-python"]),
     perf: Boolean(flags.perf),
     lenient: Boolean(flags.lenient),
+    timedOut: Boolean(flags["timed-out"]),
     repoRoot: flags["repo-root"] || DEFAULT_REPO_ROOT,
     resultsDir: flags["results-dir"] || null
   });

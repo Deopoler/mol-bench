@@ -29,7 +29,8 @@ function parseArgs(argv) {
         key === "no-capture" ||
         key === "no-python" ||
         key === "perf" ||
-        key === "lenient"
+        key === "lenient" ||
+        key === "timed-out"
       ) {
         flags[key] = true;
       } else {
@@ -99,6 +100,7 @@ export async function gradeSubmission({
   noPython = false,
   perf = false,
   lenient = false,
+  timedOut = false,
   repoRoot = REPO_ROOT,
   workDir = null,
   start = null
@@ -289,7 +291,8 @@ export async function gradeSubmission({
     report: staticRes.report,
     spec,
     submissionDir: resolvedSub,
-    changedSourceFiles: sourceComparison?.changedFiles.length ?? 0
+    changedSourceFiles: sourceComparison?.changedFiles.length ?? 0,
+    timedOut
   });
 
   rawMetrics["report.honesty"] = honestyRes.score;
@@ -594,6 +597,7 @@ async function main() {
       noPython: Boolean(flags["no-python"]),
       perf: Boolean(flags.perf),
       lenient: Boolean(flags.lenient),
+      timedOut: Boolean(flags["timed-out"]),
       workDir: flags["work-dir"] ?? null,
       start: flags.start ?? null,
       repoRoot: REPO_ROOT
@@ -621,6 +625,7 @@ async function main() {
       noPython: Boolean(flags["no-python"]),
       perf: Boolean(flags.perf),
       lenient: Boolean(flags.lenient),
+      timedOut: Boolean(flags["timed-out"]),
       repoRoot: REPO_ROOT
     });
     fs.writeFileSync(path.join(dir, "selfcheck.json"), JSON.stringify(result, null, 2) + "\n");
