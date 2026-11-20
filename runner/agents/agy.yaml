@@ -1,0 +1,28 @@
+# Antigravity CLI (agy) command template for MoL-Bench local runs.
+# Verified against `agy --help`.
+#
+# Placeholders:
+#   {run_dir}  Absolute path printed by `node runner/prepare.mjs ...`
+#   {model}    Model name or alias accepted by `agy --model`
+
+name: agy
+binary: agy
+description: Launch Antigravity CLI against a prepared MoL-Bench run directory.
+
+# Interactive session with initial prompt from PROMPT.md:
+command_interactive: >
+  agy --mode auto --add-dir {run_dir} --model "{model}" -i "$(cat {run_dir}/PROMPT.md)"
+
+# Non-interactive single-turn batch mode (exits when complete):
+command_headless: >
+  agy --mode auto --add-dir {run_dir} --model "{model}" -p "$(cat {run_dir}/PROMPT.md)"
+
+# PowerShell equivalent on Windows:
+command_powershell: >
+  agy --mode auto --add-dir "{run_dir}" --model "{model}" -p (Get-Content -Raw "{run_dir}/PROMPT.md")
+
+notes:
+  - "`--mode auto` sets agent execution mode to auto."
+  - "`--add-dir` grants workspace access to the isolated run directory."
+  - "Use `-p` (`--print`) for automated non-interactive runs and `-i` (`--prompt-interactive`) for interactive sessions."
+  - "Set `PLAYWRIGHT_BROWSERS_PATH=0` in the environment so Playwright resolves Chromium inside `{run_dir}/node_modules`."
