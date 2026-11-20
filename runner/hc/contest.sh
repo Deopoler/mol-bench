@@ -54,7 +54,7 @@ case "$agent" in
   *) echo "unknown agent $agent" >&2; exit 1 ;;
 esac
 
-term="c-$(echo "$rid" | cut -c1-40)"
+term="c$(printf %s "$rid" | md5sum | cut -c1-5)-$(echo "$rid" | cut -c1-25)"   # hc names: <= 32 chars, unique
 hc run --bg --name "$term" --cwd "$dir" -- "${cmd[@]}" >/dev/null
 # Auto-accept the first-run folder trust dialog of codex/claude (this is our own freshly prepared folder).
 for _ in $(seq 1 30); do
