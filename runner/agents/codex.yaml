@@ -1,0 +1,31 @@
+# OpenAI Codex CLI command template for MoL-Bench local runs.
+# Verified against `codex --help` and `codex exec --help`
+# (binary: C:/Users/seonj/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe).
+#
+# Placeholders:
+#   {run_dir}  Absolute path printed by `node runner/prepare.mjs ...`
+#   {model}    Model name passed to `-m` / `--model`
+
+name: codex
+binary: codex
+description: Launch OpenAI Codex CLI against a prepared MoL-Bench run directory.
+
+# Interactive TUI without shared daemon, workspace-write sandbox, no approval prompts:
+command_interactive: >
+  codex --no-daemon -s workspace-write -a never -C {run_dir} -m "{model}" "$(cat {run_dir}/PROMPT.md)"
+
+# Non-interactive one-shot execution via `codex exec` (does not take --no-daemon or -a):
+command_headless: >
+  codex exec -s workspace-write -C {run_dir} -m "{model}" "$(cat {run_dir}/PROMPT.md)"
+
+# PowerShell equivalent on Windows:
+command_powershell: >
+  codex --no-daemon -s workspace-write -a never -C "{run_dir}" -m "{model}" (Get-Content -Raw "{run_dir}/PROMPT.md")
+
+notes:
+  - "`--no-daemon` disables connecting to a shared background server."
+  - "`-s workspace-write` restricts writes to the workspace (`-C {run_dir}`)."
+  - "`-a never` (`--ask-for-approval never`) disables interactive approval prompts."
+  - "`-C {run_dir}` (`--cd`) sets the run folder as Codex's working root."
+  - "`codex exec` runs non-interactively and exits when finished; omit `--no-daemon` and `-a` for `codex exec`."
+  - "Set `PLAYWRIGHT_BROWSERS_PATH=0` in the environment so Playwright resolves Chromium inside `{run_dir}/node_modules`."

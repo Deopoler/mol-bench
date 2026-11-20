@@ -10,7 +10,10 @@ import { evaluateStaticGates, combineGates, getGitChangedFiles } from "./gates.m
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "./report.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const IS_ISOLATED_BENCH =
+  fs.existsSync(path.join(__dirname, "..", "schemas")) &&
+  !fs.existsSync(path.join(__dirname, "..", "..", "harness"));
+const REPO_ROOT = IS_ISOLATED_BENCH ? path.resolve(__dirname, "..") : path.resolve(__dirname, "..", "..");
 const BENCH_VERSION = "0.1.0";
 
 function parseArgs(argv) {
@@ -60,10 +63,12 @@ async function loadRoomAdapter(room) {
 
 function runPythonMetrics(manifestPath, specPath, outPath, repoRoot = REPO_ROOT) {
   const py = findPythonExecutable(repoRoot);
+  const metricsPkgDir = path.join(repoRoot, "metrics");
+  const pythonPath = [metricsPkgDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   try {
     execFileSync(py, ["-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath], {
       cwd: repoRoot,
-      env: { ...process.env, PYTHONPATH: [path.join(repoRoot, "metrics"), process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
+      env: { ...process.env, PYTHONPATH: pythonPath },
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -271,16 +276,28 @@ export async function gradeSubmission({
 
 function readBenchRoomFile(dir) {
   const file = path.join(dir, ".bench-room");
+  const runJsonFile = path.join(dir, ".run.json");
+  let runMeta = null;
+  if (fs.existsSync(runJsonFile)) {
+    try {
+      runMeta = JSON.parse(fs.readFileSync(runJsonFile, "utf8"));
+    } catch {
+      runMeta = null;
+    }
+  }
   if (!fs.existsSync(file)) {
+    if (runMeta?.room) {
+      return { room: runMeta.room, renovation: runMeta.renovation ?? null };
+    }
     throw new Error(`Missing .bench-room file in ${dir}. Create .bench-room containing the room name (e.g. "aurora").`);
   }
   const raw = fs.readFileSync(file, "utf8").trim();
   if (raw.startsWith("{")) {
     const parsed = JSON.parse(raw);
-    return { room: parsed.room, renovation: parsed.renovation ?? null };
+    return { room: parsed.room, renovation: parsed.renovation ?? runMeta?.renovation ?? null };
   }
   const parts = raw.split(/\s+/);
-  return { room: parts[0], renovation: parts[1] ?? null };
+  return { room: parts[0], renovation: parts[1] ?? runMeta?.renovation ?? null };
 }
 
 function formatSelfcheckTable(result) {
@@ -529,6 +546,7 @@ async function main() {
       noPython: Boolean(flags["no-python"]),
       perf: Boolean(flags.perf),
       lenient: Boolean(flags.lenient),
+      workDir: flags["work-dir"] ?? null,
       repoRoot: REPO_ROOT
     });
 

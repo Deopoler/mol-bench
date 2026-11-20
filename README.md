@@ -42,3 +42,43 @@ Planned (not yet written): `rooms/*/prompt.md`, `rooms/*/seed/`, anchors `a5`/`a
 ## License
 
 Code: Apache-2.0. Assets and reference renders: CC-BY-4.0. (To be added before first public release.)
+
+## Runner
+
+Run contestants locally in isolated per-run directories (outside the repo so `hidden/` is never reachable), collect diffs and graded results, and build the leaderboard:
+
+1. **Prepare an isolated run folder** (default root `C:/Users/seonj/molbench-runs`, overridable via `MOLBENCH_RUNS` or `--root`):
+
+   ```bash
+   node runner/prepare.mjs aurora --run-id aurora-codex-01 --seed 1
+   # Renovation track:
+   node runner/prepare.mjs aurora --run-id aurora-r1-codex-01 --renovation r1
+   ```
+
+   `prepare.mjs` copies only the room start state (or `rooms/restoration/build-variant.mjs <seed>` output for `restoration`, or `rooms/<room>/anchors/a5` without `report.json` for renovations), `PROMPT.md`, `bench/` (copy of `harness/src` without `hidden/`), `metrics/`, `contract/`, `schemas/`, `node_modules/`, `.venv/` (via `robocopy /E /MT:16` on Windows), and `.run.json`, initializes a git repo with a neutral start commit, and prints the run directory path.
+
+2. **Launch an agent** using the templates in `runner/agents/agy.yaml` or `runner/agents/codex.yaml` (set `PLAYWRIGHT_BROWSERS_PATH=0` so Playwright uses the run directory's bundled Chromium):
+
+   ```bash
+   # Codex CLI (non-interactive one-shot):
+   codex exec -s workspace-write -C <run_dir> -m "<model>" "$(cat <run_dir>/PROMPT.md)"
+
+   # Antigravity CLI (non-interactive print mode):
+   agy --mode auto --add-dir <run_dir> --model "<model>" -p "$(cat <run_dir>/PROMPT.md)"
+   ```
+
+3. **Collect and grade the submission**:
+
+   ```bash
+   node runner/collect.mjs aurora-codex-01 --model "<label>"
+   ```
+
+   `collect.mjs` records `ended_at` in `.run.json`, writes `results/submissions/<id>.diff` (including untracked files), copies the submission (excluding `node_modules`, `.venv`, `bench`, `metrics`, `.git`) to `results/submissions/<id>/`, scans for possible `hidden/` or repo-path leakage, runs `bench grade <room> <copy> --hidden`, writes `results/<id>.json` with `efficiency.wall_min` and `model`, and removes `node_modules` and `.venv` from the run folder.
+
+4. **Generate the leaderboard**:
+
+   ```bash
+   node harness/src/leaderboard.mjs
+   ```
+
+   Reads `results/*.json` and writes `results/leaderboard.md`, `site/leaderboard/data.json`, and `site/leaderboard/index.html` (offline, dark/light, responsive, with preview contact sheet links when present).

@@ -6,7 +6,10 @@ import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..", "..");
+const IS_ISOLATED_BENCH =
+  fs.existsSync(path.join(__dirname, "..", "schemas")) &&
+  !fs.existsSync(path.join(__dirname, "..", "..", "harness"));
+const DEFAULT_REPO_ROOT = IS_ISOLATED_BENCH ? path.resolve(__dirname, "..") : path.resolve(__dirname, "..", "..");
 
 const validators = new Map();
 

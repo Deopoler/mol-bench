@@ -205,9 +205,17 @@ export function resolveSpecPath(roomOrPath, { renovation = null, repoRoot = proc
     return relCandidate;
   }
   if (renovation) {
-    return path.resolve(repoRoot, "rooms", roomOrPath, "renovation", `${renovation}.json`);
+    const primary = path.resolve(repoRoot, "rooms", roomOrPath, "renovation", `${renovation}.json`);
+    if (fs.existsSync(primary)) return primary;
+    const benchSpec = path.resolve(repoRoot, "bench", "_spec", roomOrPath, "renovation", `${renovation}.json`);
+    if (fs.existsSync(benchSpec)) return benchSpec;
+    return primary;
   }
-  return path.resolve(repoRoot, "rooms", roomOrPath, "spec.json");
+  const primary = path.resolve(repoRoot, "rooms", roomOrPath, "spec.json");
+  if (fs.existsSync(primary)) return primary;
+  const benchSpec = path.resolve(repoRoot, "bench", "_spec", roomOrPath, "spec.json");
+  if (fs.existsSync(benchSpec)) return benchSpec;
+  return primary;
 }
 
 export function loadSpec(roomOrPath, opts = {}) {
@@ -226,7 +234,9 @@ export function loadSpec(roomOrPath, opts = {}) {
   // Inherit capture/limits from base room spec when loading a renovation spec.
   let baseSpec = null;
   if (rawSpec.track === "renovation") {
-    const basePath = path.resolve(repoRoot, "rooms", rawSpec.room, "spec.json");
+    const primaryBase = path.resolve(repoRoot, "rooms", rawSpec.room, "spec.json");
+    const fallbackBase = path.resolve(repoRoot, "bench", "_spec", rawSpec.room, "spec.json");
+    const basePath = fs.existsSync(primaryBase) ? primaryBase : fallbackBase;
     if (fs.existsSync(basePath)) {
       baseSpec = JSON.parse(fs.readFileSync(basePath, "utf8"));
     }
