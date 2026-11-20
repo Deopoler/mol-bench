@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Canvas Room Fixture (Deterministic WebGL2)</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="app"><canvas id="gl"></canvas></div>
+  <script>
+    (function () {
+      const host = window.__benchHost;
+      const canvas = document.getElementById('gl');
+      const gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true });
+      if (!gl) {
+        throw new Error('WebGL2 context creation failed');
+      }
+
+      const vsSrc = `#version 300 es
+        in vec2 a_pos;
+        out vec2 v_uv;
+        void main() {
+          v_uv = a_pos * 0.5 + 0.5;
+          gl_Position = vec4(a_pos, 0.0, 1.0);
+        }
+      `;
+
+      const fsSrc = `#version 300 es
+        precision highp float;
+        in vec2 v_uv;
+        uniform float u_time;
+        uniform vec3 u_color;
+        uniform vec2 u_pointer;
+        uniform vec2 u_res;
+        uniform float u_camX;
+        uniform float u_reduced;
+        out vec4 outColor;
+
+        void main() {
+          vec2 uv = gl_FragCoord.xy / u_res;
+          float t = u_reduced > 0.5 ? 0.0 : u_time * 0.001;
+          float wave = 0.5 + 0.5 * sin((uv.x + u_camX + u_pointer.x * 0.2) * 6.28318 + t);
+          float band = 0.5 + 0.5 * cos((uv.y + u_pointer.y * 0.2) * 3.14159 - t * 0.5);
+          vec3 col = mix(vec3(0.05, 0.07, 0.14), u_color, wave * band);
+          outColor = vec4(col, 1.0);
+        }
+      `;
+
+      function compile(type, src) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+          throw new Error(gl.getShaderInfoLog(s));
+        }
+        return s;
+      }
+
+      const prog = gl.createProgram();
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        throw new Error(gl.getProgramInfoLog(prog));
+      }
+
+      const vbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+
+      const locPos = gl.getAttribLocation(prog, 'a_pos');
+      const locTime = gl.getUniformLocation(prog, 'u_time');
+      const locColor = gl.getUniformLocation(prog, 'u_color');
+      const locPointer = gl.getUniformLocation(prog, 'u_pointer');
+      const locRes = gl.getUniformLocation(prog, 'u_res');
+      const locCamX = gl.getUniformLocation(prog, 'u_camX');
+      const locReduced = gl.getUniformLocation(prog, 'u_reduced');
+
+      let seedColor = [0.2, 0.8, 0.6];
+      let pointer = [0.5, 0.5];
+      let camera = { position: [0, 0, 5], target: [0, 0, 0] };
+      let orbitAngleDeg = 0;
+      let lastTickClockMs = 0;
+      let running = true;
+      let rafId = 0;
+      let mounted = true;
+      let geometries = 1;
+      let textures = 0;
+      let programs = 1;
+
+      function computeSeedState() {
+        const rng = host.rng.fork('palette');
+        seedColor = [
+          0.25 + 0.65 * rng.next(),
+          0.25 + 0.65 * rng.next(),
+          0.25 + 0.65 * rng.next(),
+        ];
+        orbitAngleDeg = 0;
+        lastTickClockMs = host.clock.now();
+      }
+
+      function onResize() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.max(1, Math.round(window.innerWidth * dpr));
+        const h = Math.max(1, Math.round(window.innerHeight * dpr));
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+
+      function onPointerMove(e) {
+        const w = Math.max(1, window.innerWidth);
+        const h = Math.max(1, window.innerHeight);
+        pointer = [e.clientX / w, e.clientY / h];
+      }
+
+      window.addEventListener('resize', onResize);
+      window.addEventListener('pointermove', onPointerMove);
+
+      function updateOrbitFromClock() {
+        const now = host.clock.now();
+        // Pure function of clock time: 36 deg/sec (independent of rAF rate!)
+        orbitAngleDeg = ((now * 0.036) % 360 + 360) % 360;
+        lastTickClockMs = now;
+      }
+
+      function draw() {
+        onResize();
+        updateOrbitFromClock();
+        const now = host.clock.now();
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 1.0 : 0.0;
+
+        // If params.cameraPath exists, interpolate camera position deterministically from clock
+        if (host.params && Array.isArray(host.params.cameraPath) && host.params.cameraPath.length > 0) {
+          const idx = Math.min(host.params.cameraPath.length - 1, Math.floor(now / 16.667));
+          const p = host.params.cameraPath[idx];
+          if (p && p.position) camera = p;
+        }
+
+        gl.useProgram(prog);
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.enableVertexAttribArray(locPos);
+        gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+        gl.uniform1f(locTime, now);
+        gl.uniform3f(locColor, seedColor[0], seedColor[1], seedColor[2]);
+        gl.uniform2f(locPointer, pointer[0], pointer[1]);
+        gl.uniform2f(locRes, canvas.width, canvas.height);
+        gl.uniform1f(locCamX, (camera.position?.[0] || 0) * 0.1);
+        gl.uniform1f(locReduced, reduced);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.finish();
+      }
+
+      function loop() {
+        if (!running) return;
+        draw();
+        rafId = requestAnimationFrame(loop);
+      }
+
+      computeSeedState();
+      draw();
+      rafId = requestAnimationFrame(loop);
+
+      window.__bench = {
+        version: 1,
+        ready: Promise.resolve(),
+        setSeed() {
+          computeSeedState();
+        },
+        seek() {
+          running = false;
+          cancelAnimationFrame(rafId);
+          updateOrbitFromClock();
+        },
+        resume() {
+          if (!running) {
+            running = true;
+            lastTickClockMs = host.clock.now();
+            rafId = requestAnimationFrame(loop);
+          }
+        },
+        async renderFrame() {
+          draw();
+        },
+        setCamera(cam) {
+          if (cam) camera = cam;
+        },
+        state() {
+          return {
+            seed: host.seed,
+            color: seedColor,
+            pointer: [...pointer],
+            reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+            orbitAngleDeg,
+            camera,
+            clockMs: host.clock.now(),
+          };
+        },
+        stats() {
+          return {
+            drawCalls: 1,
+            triangles: 1,
+            geometries,
+            textures,
+            programs,
+            listeners: mounted ? 2 : 0,
+          };
+        },
+        async unmount() {
+          if (!mounted) return;
+          mounted = false;
+          running = false;
+          cancelAnimationFrame(rafId);
+          window.removeEventListener('resize', onResize);
+          window.removeEventListener('pointermove', onPointerMove);
+          geometries = 0;
+          programs = 0;
+        },
+        async mount() {
+          if (mounted) return;
+          mounted = true;
+          window.addEventListener('resize', onResize);
+          window.addEventListener('pointermove', onPointerMove);
+          geometries = 1;
+          programs = 1;
+        },
+      };
+    })();
+  </script>
+</body>
+</html>
