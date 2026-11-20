@@ -5,7 +5,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 rid=$1; flag=${2:-}
 CONTEST_LOG=${CONTEST_LOG:-$REPO/.orchestra/runs.tsv}
-line=$(grep -P "^\Q$rid\E\t" "$CONTEST_LOG" | tail -1)
+line=$(awk -F'\t' -v r="$rid" '$1==r' "$CONTEST_LOG" | tail -1)
 label=$(echo "$line" | cut -f2); term=$(echo "$line" | cut -f4)
 [ "$flag" = "--timeout" ] && hc interrupt "$term" >/dev/null 2>&1 || true
 hc kill "$term" >/dev/null 2>&1 || true

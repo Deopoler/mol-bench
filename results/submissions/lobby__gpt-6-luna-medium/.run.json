@@ -1,0 +1,10 @@
+{
+  "run_id": "lobby__gpt-6-luna-medium",
+  "room": "lobby",
+  "track": "build",
+  "seed": null,
+  "created_at": "2026-11-20T18:40:00.840Z",
+  "ended_at": "2026-11-20T18:54:42.341Z",
+  "wall_min": 14.6917,
+  "model": "GPT-6-Luna (medium)"
+}
