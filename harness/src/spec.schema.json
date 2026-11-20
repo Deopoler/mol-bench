@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mol-bench.dev/schemas/spec.schema.json",
+  "title": "MoL-Bench Room Specification",
+  "description": "Schema for rooms/<room>/spec.json and rooms/<room>/renovation/*.json",
+  "type": "object",
+  "required": [
+    "room",
+    "spec_version",
+    "track",
+    "title",
+    "time_limit_min",
+    "scope",
+    "deliverables",
+    "gates",
+    "composite",
+    "metrics"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "room": { "type": "string", "minLength": 1 },
+    "renovation": { "type": "string", "minLength": 1 },
+    "spec_version": { "type": "string", "minLength": 1 },
+    "track": { "enum": ["build", "renovation"] },
+    "title": { "type": "string", "minLength": 1 },
+    "brief": { "type": "string" },
+    "start": { "type": "string" },
+    "time_limit_min": { "type": "number", "exclusiveMinimum": 0 },
+    "load_timeout_ms": { "type": "number", "exclusiveMinimum": 0 },
+    "max_raster_asset_kb": { "type": "number", "minimum": 0 },
+    "max_raster_total_kb": { "type": "number", "minimum": 0 },
+    "contract": { "type": "string" },
+    "asset_name": { "type": "string" },
+    "scope": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "deliverables": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "generator": { "type": "object" },
+    "blueprint": { "type": "object" },
+    "dom_contract": { "type": "object" },
+    "state_contract": { "type": "object" },
+    "root_cause_codes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "root_cause_codes_notes": { "type": "string" },
+    "bug_pool": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "root_cause", "ref_fix_lines", "report", "metrics"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string" },
+            "root_cause": { "type": "string" },
+            "ref_fix_lines": { "type": "number", "minimum": 0 },
+            "report": { "$ref": "#/$defs/bilingualText" },
+            "metrics": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/subMetric" }
+            }
+          }
+        }
+      }
+    },
+    "protected": {
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "elements": { "type": "array", "items": { "type": "string" } },
+        "allowed_to_change": { "type": "array", "items": { "type": "string" } },
+        "compare_at": { "type": "array", "items": { "type": "string" } },
+        "color_schemes": { "type": "array", "items": { "enum": ["light", "dark"] } },
+        "language": { "type": "string" }
+      }
+    },
+    "preservation_exclude": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "min_diff": { "type": "string" },
+    "requests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "text", "weight", "metrics"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": {
+            "enum": ["vague_aesthetic", "bug_report", "concrete", "concrete_local", "preserve", "conflicting"]
+          },
+          "text": { "$ref": "#/$defs/bilingualText" },
+          "weight": { "type": "number", "exclusiveMinimum": 0 },
+          "expected_decision": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "status": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "enum": ["done", "partial", "declined"] }
+              },
+              "reason": {
+                "type": "array",
+                "items": {
+                  "enum": ["PERF_BUDGET", "CONFLICT", "INFEASIBLE", "OUT_OF_SCOPE", "AMBIGUOUS_RESOLVED", "NONE"]
+                }
+              }
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/subMetric" }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "properties": {
+        "renderer": { "type": "string" },
+        "dpr": { "type": "number", "exclusiveMinimum": 0 },
+        "viewports": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^\\d+x\\d+$" }
+        },
+        "color_schemes": {
+          "type": "array",
+          "items": { "enum": ["light", "dark"] }
+        },
+        "virtual_time": { "type": "string" },
+        "public_seeds": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "seeds": {},
+        "public_timestamps_ms": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0 }
+        },
+        "timestamps_ms": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0 }
+        },
+        "hidden": { "type": "string" },
+        "studio_scene": { "type": "string" },
+        "public_views": { "type": "array", "items": { "type": "string" } },
+        "hidden_views": { "type": "string" },
+        "turntable": { "type": "string" },
+        "web_check": { "type": "string" }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "pattern": "^G-[a-z0-9-]+$" }
+    },
+    "extra_gates": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "composite": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "enum": ["craft", "visual_quality", "revision", "reliability"] },
+      "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/topMetric" }
+    },
+    "hidden_tests": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "attacks": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "if": { "properties": { "track": { "const": "renovation" } } },
+  "then": { "required": ["renovation", "requests"] },
+  "$defs": {
+    "bilingualText": {
+      "type": "object",
+      "required": ["en", "ko"],
+      "properties": {
+        "en": { "type": "string" },
+        "ko": { "type": "string" }
+      }
+    },
+    "bandTuple": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": ["number", "null"] }
+    },
+    "bandPair": {
+      "type": "object",
+      "required": ["ideal", "zero"],
+      "additionalProperties": false,
+      "properties": {
+        "ideal": { "$ref": "#/$defs/bandTuple" },
+        "zero": { "$ref": "#/$defs/bandTuple" }
+      }
+    },
+    "scoreSpec": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "enum": ["range", "relative"] },
+            "ideal": { "$ref": "#/$defs/bandTuple" },
+            "zero": { "$ref": "#/$defs/bandTuple" },
+            "by_script": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": { "$ref": "#/$defs/bandPair" }
+            }
+          },
+          "oneOf": [
+            { "required": ["ideal", "zero"] },
+            { "required": ["by_script"] }
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "enum": ["lower", "higher"] },
+            "full": { "type": "number" },
+            "zero": { "type": "number" }
+          },
+          "required": ["full", "zero"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "type": { "enum": ["pass", "ratio"] }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "metricBase": {
+      "type": "object",
+      "required": ["id", "weight", "score"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "weight": { "type": "number", "exclusiveMinimum": 0 },
+        "score": { "$ref": "#/$defs/scoreSpec" },
+        "at": { "type": "string" },
+        "agg": { "enum": ["median", "mean", "worst"] },
+        "calibrate": { "type": "boolean" },
+        "notes": { "type": "string" },
+        "mask": { "type": "string" },
+        "checks": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "subMetric": {
+      "allOf": [{ "$ref": "#/$defs/metricBase" }],
+      "unevaluatedProperties": false
+    },
+    "topMetric": {
+      "allOf": [{ "$ref": "#/$defs/metricBase" }],
+      "required": ["axis"],
+      "properties": {
+        "axis": { "enum": ["craft", "visual_quality", "revision", "reliability"] }
+      },
+      "unevaluatedProperties": false
+    }
+  }
+}
