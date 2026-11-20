@@ -136,6 +136,7 @@ export async function gradeSubmission({
 
   let captureGates = {};
   let captureRes = null;
+  const adapter = await loadRoomAdapter(spec.room);
 
   if (!noCapture) {
     const capturePlanPath = path.join(__dirname, "capture", "plan.mjs");
@@ -145,7 +146,6 @@ export async function gradeSubmission({
       );
     }
     const { executePlan } = await import(pathToFileURL(capturePlanPath).href);
-    const adapter = await loadRoomAdapter(spec.room);
     fs.mkdirSync(resolvedWorkDir, { recursive: true });
     captureRes = await executePlan(plan, {
       submissionDir: resolvedSub,
@@ -194,6 +194,27 @@ export async function gradeSubmission({
       const pyMetrics = runPythonMetrics(captureRes.manifestPath, spec._specPath, pyOut, repoRoot);
       Object.assign(rawMetrics, pyMetrics);
     }
+  }
+
+  if (adapter && typeof adapter.extraMetrics === "function") {
+    await adapter.extraMetrics(
+      {
+        room: spec.room,
+        submissionDir: resolvedSub,
+        workDir: resolvedWorkDir,
+        repoRoot,
+        spec,
+        plan,
+        seeds,
+        timestamps,
+        hidden,
+        noCapture,
+        noPython,
+        staticRes,
+        captureRes
+      },
+      rawMetrics
+    );
   }
 
   const gates = combineGates(spec.gates, staticRes.gates, captureGates, { captureSkipped: noCapture });

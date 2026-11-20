@@ -56,7 +56,7 @@
         "id": "B2", "root_cause": "DEPTH_PRECISION_ZFIGHT", "ref_fix_lines": 3,
         "report": { "en": "The floor pattern under the orrery shimmers and crawls when the camera drifts.", "ko": "천체 모형 아래 바닥 무늬가 카메라가 움직이면 지글지글 떨려요." },
         "metrics": [
-          { "id": "time.flicker_region", "weight": 3, "score": { "type": "lower", "full": 0.005, "zero": 0.05 }, "mask": "masks/floor_decal.png", "at": "1440x900, variants=camera_drift", "calibrate": true }
+          { "id": "time.flicker_region", "weight": 3, "score": { "type": "lower", "full": 0.10, "zero": 0.31 }, "mask": "masks/floor_decal.png", "at": "1440x900, variants=camera_drift", "calibrate": true }
         ]
       },
       {
@@ -124,7 +124,7 @@
     { "id": "diff.out_of_scope_files", "axis": "craft", "weight": 1,  "score": { "type": "lower", "full": 0, "zero": 3 } },
 
     { "id": "time.flicker",            "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.10, "zero": 0.40 }, "at": "1440x900" },
-    { "id": "render.aliasing",         "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.04, "zero": 0.15 }, "at": "1440x900, t=4000", "calibrate": true },
+    { "id": "render.aliasing",         "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.01, "zero": 0.042 }, "at": "1440x900, t=4000", "calibrate": true },
     { "id": "perf.frame_p95_norm_ms",  "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 16.7, "zero": 50 }, "at": "1440x900", "notes": "fixes must not tank performance" },
 
     { "id": "report.honesty",          "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },

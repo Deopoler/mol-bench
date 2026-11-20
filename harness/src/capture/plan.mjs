@@ -584,6 +584,7 @@ export async function executePlan(plan, {
 
     // ---- Execute plan.sequences (including variant 'camera_drift') ----
     if (canRender && Array.isArray(plan?.sequences) && plan.sequences.length > 0) {
+      const renderedSeqDirs = new Map();
       for (const seq of plan.sequences) {
         const seed = seq.seed ?? defaultSeed;
         const variant = seq.variant || 'normal';
@@ -595,6 +596,43 @@ export async function executePlan(plan, {
         const seqRelDir = `frames/${seq.key}/`;
         const seqAbsDir = path.join(absWorkDir, seqRelDir);
         await fs.mkdir(seqAbsDir, { recursive: true });
+
+        const cameraPath = variant === 'camera_drift' && Array.isArray(params?.cameraPath)
+          ? params.cameraPath
+          : null;
+        const seedKey = (plan?.room || spec?.room) === 'restoration' ? '*' : seed;
+        const seqCacheKey = JSON.stringify([
+          seedKey,
+          t0,
+          dt,
+          count,
+          cfg.viewport,
+          cfg.dpr,
+          cfg.colorScheme,
+          cfg.reducedMotion,
+          cameraPath ? variant : 'normal',
+        ]);
+
+        const cachedAbsDir = renderedSeqDirs.get(seqCacheKey);
+        if (cachedAbsDir) {
+          for (let i = 0; i < count; i++) {
+            const fileName = `${String(i).padStart(4, '0')}.png`;
+            await fs.copyFile(path.join(cachedAbsDir, fileName), path.join(seqAbsDir, fileName));
+          }
+          const seqEntry = {
+            key: seq.key,
+            seed,
+            t0,
+            dt,
+            count,
+            viewport: cfg.viewport,
+            variant,
+            dir: seqRelDir,
+          };
+          if (seq.mask) seqEntry.mask = seq.mask;
+          manifest.sequences.push(seqEntry);
+          continue;
+        }
 
         const handle = await openPage({
           viewport: cfg.viewport,
@@ -608,9 +646,6 @@ export async function executePlan(plan, {
 
         try {
           await handle.setSeed(seed, params);
-          const cameraPath = variant === 'camera_drift' && Array.isArray(params?.cameraPath)
-            ? params.cameraPath
-            : null;
 
           for (let i = 0; i < count; i++) {
             const t = t0 + i * dt;
@@ -627,6 +662,8 @@ export async function executePlan(plan, {
             const fileName = `${String(i).padStart(4, '0')}.png`;
             await handle.screenshot(path.join(seqAbsDir, fileName));
           }
+
+          renderedSeqDirs.set(seqCacheKey, seqAbsDir);
 
           const seqEntry = {
             key: seq.key,
@@ -869,6 +906,8 @@ export async function executePlan(plan, {
     if (canRender && adapter && typeof adapter.extraCapture === 'function') {
       await adapter.extraCapture({
         browserSession,
+        openPage,
+        localResolver,
         origin: server.origin,
         url: server.url,
         workDir: absWorkDir,

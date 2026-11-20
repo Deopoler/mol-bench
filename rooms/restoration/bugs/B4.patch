@@ -1,0 +1,16 @@
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -526,5 +526,6 @@
+   function handleResize() {
+     if (!renderer || !camera) return;
+     const { width, height } = getViewportSize();
+-    renderer.setSize(width, height, false);
+-    camera.aspect = width / height;
+-    camera.updateProjectionMatrix();
++    if (width < height) {
++      camera.aspect = width / height;
++      camera.updateProjectionMatrix();
++    }
+     updateSceneAtTime(currentClockMs);
+     renderer.render(scene, camera);
+   }

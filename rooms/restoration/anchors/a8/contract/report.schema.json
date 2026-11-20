@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mol-bench.dev/schemas/report.schema.json",
+  "title": "MoL-Bench agent report",
+  "description": "Written by the agent at repo root as report.json before finishing. Claims are re-measured by the grader; false claims are penalized (docs/SCORING.md#reliability).",
+  "type": "object",
+  "required": ["schema_version", "summary", "deliverables", "claims", "blocked"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "summary": { "type": "string", "maxLength": 600 },
+    "deliverables": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Repo-relative paths the agent considers its deliverables."
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric_id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "metric_id": { "type": "string", "description": "A metric id from the room spec, or a gate id (G-*)." },
+          "status": { "enum": ["verified", "not_verified"] },
+          "meets_target": { "type": "boolean", "description": "Agent asserts the metric is inside its full-score band (or the gate passes)." },
+          "measured_value": { "type": "number", "description": "Value the agent measured with `bench selfcheck` on public seeds." },
+          "method": { "type": "string", "maxLength": 200 }
+        }
+      }
+    },
+    "blocked": { "type": "boolean" },
+    "blocked_reason": {
+      "enum": ["ENVIRONMENT", "MISSING_DEPENDENCY", "SPEC_CONTRADICTION", "TIME", "OTHER"],
+      "description": "Required when blocked is true."
+    },
+    "room": {
+      "type": "object",
+      "description": "Room-specific extension. Restoration uses { bugs: [...] }.",
+      "properties": {
+        "bugs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["report_id", "root_cause"],
+            "additionalProperties": false,
+            "properties": {
+              "report_id": { "type": "string" },
+              "root_cause": { "type": "string", "description": "One code from the room's public root_cause_codes list." },
+              "files": { "type": "array", "items": { "type": "string" } },
+              "test": { "type": "string", "description": "Path of the regression test that covers this bug." }
+            }
+          }
+        }
+      }
+    }
+  },
+  "if": { "properties": { "blocked": { "const": true } } },
+  "then": { "required": ["blocked_reason"] }
+}

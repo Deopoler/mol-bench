@@ -1,0 +1,16 @@
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -577,6 +577,7 @@
+   function tick() {
+     if (!isMounted) return;
+     if (!isPaused) {
+-      currentClockMs = host.clock.now();
+-      updateSceneAtTime(currentClockMs);
+-      renderer.render(scene, camera);
++      const frameStepMs = 16.667;
++      currentClockMs = currentClockMs + frameStepMs;
++      updateSceneAtTime(currentClockMs);
++      renderer.render(scene, camera);
+     }
+     rafId = requestAnimationFrame(tick);
+   }
