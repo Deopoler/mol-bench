@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "requests": [
+    {
+      "request_id": "AT-R1",
+      "status": "done",
+      "reason": "NONE",
+      "tradeoff": "Scaled Handle ring by 1.25x across all three axes while leaving all non-Handle parts unchanged."
+    },
+    {
+      "request_id": "AT-R2",
+      "status": "done",
+      "reason": "NONE",
+      "tradeoff": "Removed unnecessary subdivision cuts to reduce total triangles from ~41k to ~4.4k (< 8,000) while preserving silhouette."
+    },
+    {
+      "request_id": "AT-R3",
+      "status": "done",
+      "reason": "AMBIGUOUS_RESOLVED",
+      "tradeoff": "Added procedural aged brass patina texture (base color + roughness variation, higher mean roughness, lower chroma) and beveled metal edges."
+    },
+    {
+      "request_id": "AT-R4",
+      "status": "partial",
+      "reason": "CONFLICT",
+      "tradeoff": "Swinging 180 degrees around the flush hinge line collides with the left Frame post; preserved 90-degree collision-free swing without altering Frame."
+    }
+  ]
+}

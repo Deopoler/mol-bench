@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "summary": "Renovated lantern from a5: scaled Handle ring by 25% (AT-R1), reduced triangle count under 8,000 (AT-R2), added procedural aged brass patina and beveled edges (AT-R3), and preserved collision-free 90-degree door opening without altering Frame (AT-R4).",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json",
+    "decisions.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "topo.manifold",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "rig.hinge",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "npm run selfcheck"
+    }
+  ],
+  "blocked": false
+}

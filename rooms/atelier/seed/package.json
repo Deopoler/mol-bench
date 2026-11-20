@@ -1,0 +1,11 @@
+{
+  "name": "mol-bench-room-atelier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "blender-run": "node bench/cli.mjs blender-run",
+    "selfcheck": "node bench/cli.mjs selfcheck",
+    "preview": "node bench/cli.mjs preview --room atelier"
+  }
+}

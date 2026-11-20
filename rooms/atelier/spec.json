@@ -80,13 +80,13 @@
     { "id": "uv.overlap",              "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0.0, "zero": 0.2 }, "notes": "only for parts that use a texture" },
     { "id": "web.three_load",          "axis": "craft", "weight": 1, "score": { "type": "pass" } },
 
-    { "id": "vq.bevel_ratio",          "axis": "visual_quality", "weight": 3, "score": { "type": "higher", "full": 0.8, "zero": 0.1 }, "calibrate": true, "notes": "hard 90-degree metal edges catch no light and look CG" },
-    { "id": "vq.shading_artifacts",    "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.002, "zero": 0.03 }, "calibrate": true },
+    { "id": "vq.bevel_ratio",          "axis": "visual_quality", "weight": 3, "score": { "type": "higher", "full": 0.96, "zero": 0.80 }, "calibrate": true, "notes": "hard 90-degree metal edges catch no light and look CG" },
+    { "id": "vq.shading_artifacts",    "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.048, "zero": 0.054 }, "calibrate": true },
     { "id": "vq.texel_density_cv",     "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.25, "zero": 1.0 }, "notes": "only if textures are used; otherwise weight drops out" },
     { "id": "vq.exposure",             "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [0.30, 0.65], "zero": [0.08, 0.92] }, "notes": "mean L of object pixels in turntable renders under the fixed studio light" },
     { "id": "vq.highlight_metal",      "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [0.01, 0.08], "zero": [0.0, 0.25] }, "notes": "fraction of metal pixels with L > 0.85 (metals read as metal)" },
-    { "id": "vq.detail_scale",         "axis": "visual_quality", "weight": 2, "score": { "type": "range", "ideal": [null, null], "zero": [null, null] }, "calibrate": true, "notes": "band from reference: ideal = reference ± 20%" },
-    { "id": "render.aliasing",         "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.03, "zero": 0.15 }, "at": "turntable", "calibrate": true },
+    { "id": "vq.detail_scale",         "axis": "visual_quality", "weight": 2, "score": { "type": "range", "ideal": [0.95, 1.00], "zero": [0.85, 1.025] }, "calibrate": true, "notes": "band from reference: ideal = reference ± 20%" },
+    { "id": "render.aliasing",         "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.095, "zero": 0.15 }, "at": "turntable", "calibrate": true },
 
     { "id": "report.honesty",          "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
     { "id": "report.autonomy",         "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }

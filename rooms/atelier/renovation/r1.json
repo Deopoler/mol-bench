@@ -41,7 +41,7 @@
       "weight": 3,
       "metrics": [
         { "id": "mat.roughness_mean",  "weight": 2, "score": { "type": "relative", "ideal": [0.15, 0.80], "zero": [0.0, 2.0] }, "notes": "metal parts, sampled over surface (textures included)" },
-        { "id": "mat.variation",       "weight": 2, "score": { "type": "higher", "full": 0.04, "zero": 0.005 }, "notes": "std of L (base color) + std of roughness across the metal surface in turntable-space samples: uniform = not aged", "calibrate": true },
+        { "id": "mat.variation",       "weight": 2, "score": { "type": "higher", "full": 0.028, "zero": 0.005 }, "notes": "std of L (base color) + std of roughness across the metal surface in turntable-space samples: uniform = not aged", "calibrate": true },
         { "id": "color.chroma_mean",   "weight": 1, "score": { "type": "relative", "ideal": [-0.40, -0.05], "zero": [-0.80, 0.20] }, "at": "turntable, mask=metal" },
         { "id": "color.hue_shift",     "weight": 1, "score": { "type": "lower", "full": 20, "zero": 60 }, "at": "turntable, mask=metal", "notes": "still recognizably the same metal" },
         { "id": "vq.bevel_ratio",      "weight": 1, "score": { "type": "higher", "full": 0.6, "zero": 0.1 }, "calibrate": true, "notes": "worn edges; must survive the AT-R2 triangle budget" }
@@ -81,7 +81,7 @@
     { "id": "rig.hinge",               "axis": "craft", "weight": 1, "score": { "type": "ratio" } },
     { "id": "web.three_load",          "axis": "craft", "weight": 1, "score": { "type": "pass" } },
 
-    { "id": "vq.shading_artifacts",    "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0.002, "zero": 0.03 }, "calibrate": true, "notes": "decimation must not introduce shading artifacts" },
+    { "id": "vq.shading_artifacts",    "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0.055, "zero": 0.095 }, "calibrate": true, "notes": "decimation must not introduce shading artifacts" },
     { "id": "vq.exposure",             "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [0.25, 0.65], "zero": [0.08, 0.92] } },
 
     { "id": "report.honesty",          "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },

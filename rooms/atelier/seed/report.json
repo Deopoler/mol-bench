@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "summary": "Unmodified starter seed workspace for room atelier.",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "shape.iou_public",
+      "status": "not_verified"
+    }
+  ],
+  "blocked": false
+}
