@@ -8,6 +8,7 @@ import { loadSpec, buildPlan } from "./spec.mjs";
 import { scoreSubmission, scoreMetric, round1 } from "./score.mjs";
 import { evaluateStaticGates, combineGates, getGitChangedFiles } from "./gates.mjs";
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "./report.mjs";
+import { compareSourceTrees, compareAllFiles, countPatchLines, computeDiffMetrics } from "./diffmetrics.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_ISOLATED_BENCH =
@@ -99,7 +100,8 @@ export async function gradeSubmission({
   perf = false,
   lenient = false,
   repoRoot = REPO_ROOT,
-  workDir = null
+  workDir = null,
+  start = null
 }) {
   const resolvedSub = path.resolve(submissionDir);
   if (!fs.existsSync(resolvedSub)) {
@@ -126,12 +128,52 @@ export async function gradeSubmission({
   if (perf) plan.perf.enabled = true;
 
   // Static gates
-  const changedFiles = spec.track === "renovation" ? getGitChangedFiles(resolvedSub) : null;
+  const defaultStart = spec.track === "renovation" ? path.join(repoRoot, "rooms", spec.room, "anchors", "a5") : null;
+  const startDir = start ? path.resolve(start) : defaultStart;
+  let sourceComparison = null;
+  let comparisonError = null;
+  if (startDir) {
+    try { sourceComparison = compareSourceTrees(startDir, resolvedSub); }
+    catch (err) { comparisonError = err.message; }
+  }
+  const gitChanged = spec.track === "renovation" ? getGitChangedFiles(resolvedSub) : null;
+  let changedFiles = gitChanged;
+  if (!Array.isArray(changedFiles) && startDir) {
+    try { changedFiles = compareAllFiles(startDir, resolvedSub); } catch (err) { comparisonError ||= err.message; }
+  }
   const staticRes = evaluateStaticGates(resolvedSub, spec, { repoRoot, changedFiles });
 
   const rawMetrics = {};
   if (staticRes.scopeCheck) {
     rawMetrics["diff.out_of_scope_files"] = staticRes.scopeCheck.outOfScopeCount;
+  } else if (spec.metrics.some((m) => m.id === "diff.out_of_scope_files")) {
+    rawMetrics["diff.out_of_scope_files"] = 3;
+    rawMetrics._diffError = comparisonError || "changed file comparison unavailable";
+  }
+  const hasDiffMetrics = spec.metrics.some((m) => m.id === "diff.change_ratio" || m.id === "diff.rewrite");
+  if (hasDiffMetrics) {
+    try {
+      if (!startDir) throw new Error("no start directory; pass --start <dir>");
+      let denominator;
+      if (spec.track === "renovation") {
+        const patchPath = path.join(repoRoot, "rooms", spec.room, "renovation", `${spec.renovation}.min-diff.patch`);
+        if (!fs.existsSync(patchPath)) throw new Error(`minimal diff patch unavailable: ${patchPath}`);
+        denominator = countPatchLines(patchPath);
+      } else {
+        const adapter = await loadRoomAdapter(spec.room);
+        if (typeof adapter?.diffDenominator !== "function") throw new Error("room adapter does not provide diffDenominator(ctx)");
+        denominator = await adapter.diffDenominator({ spec, submissionDir: resolvedSub, startDir });
+      }
+      const diff = computeDiffMetrics({ startDir, submissionDir: resolvedSub, denominator });
+      if (spec.metrics.some((m) => m.id === "diff.change_ratio")) rawMetrics["diff.change_ratio"] = diff.change_ratio;
+      if (spec.metrics.some((m) => m.id === "diff.rewrite")) rawMetrics["diff.rewrite"] = diff.rewrite;
+    } catch (err) {
+      const ratioMetric = spec.metrics.find((m) => m.id === "diff.change_ratio");
+      const rewriteMetric = spec.metrics.find((m) => m.id === "diff.rewrite");
+      if (ratioMetric) rawMetrics[ratioMetric.id] = ratioMetric.score?.zero ?? 1e9;
+      if (rewriteMetric) rawMetrics[rewriteMetric.id] = false;
+      rawMetrics._diffError = err.message;
+    }
   }
 
   let captureGates = {};
@@ -152,7 +194,8 @@ export async function gradeSubmission({
       workDir: resolvedWorkDir,
       spec,
       adapter,
-      hidden
+      hidden,
+      noPython
     });
     captureGates = captureRes.gates || {};
 
@@ -245,7 +288,8 @@ export async function gradeSubmission({
   const autonomyRes = evaluateAutonomy({
     report: staticRes.report,
     spec,
-    submissionDir: resolvedSub
+    submissionDir: resolvedSub,
+    changedSourceFiles: sourceComparison?.changedFiles.length ?? 0
   });
 
   rawMetrics["report.honesty"] = honestyRes.score;
@@ -254,7 +298,7 @@ export async function gradeSubmission({
   }
 
   const finalScored = scoreSubmission(spec, rawMetrics, { gates });
-  const allWarnings = [...(spec.warnings || []), ...(finalScored.warnings || [])];
+  const allWarnings = [...(spec.warnings || []), ...(finalScored.warnings || []), ...(rawMetrics._diffError ? [`Diff scoring error: ${rawMetrics._diffError}`] : [])];
 
   const result = {
     room: spec.room,
@@ -528,7 +572,7 @@ async function main() {
   if (!cmd || cmd === "--help" || cmd === "-h") {
     console.log(
       "Usage:\n" +
-        "  bench grade <room> <dir> [--renovation r1] [--hidden] [--out f] [--no-capture] [--no-python] [--perf] [--lenient]\n" +
+        "  bench grade <room> <dir> [--renovation r1] [--start <dir>] [--hidden] [--out f] [--no-capture] [--no-python] [--perf] [--lenient]\n" +
         "  bench selfcheck [--dir <dir>] [--renovation r1] [--no-capture] [--no-python] [--lenient]\n" +
         "  bench preview [--manifest <path>] [--out <dir>] [--room <room>]\n" +
         "  bench calibrate <room> [--renovation r1] [--no-capture] [--no-python] [--lenient]"
@@ -551,6 +595,7 @@ async function main() {
       perf: Boolean(flags.perf),
       lenient: Boolean(flags.lenient),
       workDir: flags["work-dir"] ?? null,
+      start: flags.start ?? null,
       repoRoot: REPO_ROOT
     });
 
