@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "summary": "Built the Museum of Light editorial lobby at lobby/index.html with responsive light/dark themes, Korean primary and English toggle (persisted in localStorage), data-driven room cards with OKLCH light-field apertures, distinct non-navigable coming-soon cards, empty state, visitor guide, hash-routed room stage with 320ms/reduced-motion transition, and deterministic window.__bench v1 contract. Uses local system serif/sans font stacks (no offline OFL font was vendored, so zero font requests are made).",
+  "deliverables": [
+    "lobby/index.html",
+    "lobby/styles.css",
+    "lobby/app.js",
+    "tests/verify-lobby.mjs",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "G-load",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-console",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-contract",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-determinism",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-offline",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-raster",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck (0.0KB raster assets)"
+    },
+    {
+      "metric_id": "G-report",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "G-fonts-local",
+      "status": "verified",
+      "meets_target": true,
+      "method": "npm run selfcheck (0 font requests, system stacks)"
+    },
+    {
+      "metric_id": "data.rooms_rendered",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "npm run selfcheck (public seeds 1-3, all viewports)"
+    },
+    {
+      "metric_id": "data.long_title",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "npm run selfcheck and tests/verify-lobby.mjs (long_title at 360x780)"
+    },
+    {
+      "metric_id": "data.empty_state",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "npm run selfcheck and tests/verify-lobby.mjs (empty_rooms)"
+    },
+    {
+      "metric_id": "tests.hidden",
+      "status": "not_verified",
+      "method": "Hidden tests are not disclosed; public smoke tests and 24 regression checks pass via tests/verify-lobby.mjs"
+    },
+    {
+      "metric_id": "nav.routes",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "npm run selfcheck (public seeds 1-3)"
+    },
+    {
+      "metric_id": "layout.overflow_count",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "npm run selfcheck (all viewports, light and dark)"
+    },
+    {
+      "metric_id": "text.clipped_count",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "npm run selfcheck (all viewports)"
+    },
+    {
+      "metric_id": "a11y.axe_violations",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "npm run selfcheck (all viewports, light and dark)"
+    },
+    {
+      "metric_id": "a11y.keyboard_reach",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "npm run selfcheck (public seeds 1-3)"
+    },
+    {
+      "metric_id": "a11y.focus_visible",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "npm run selfcheck (public seeds 1-3)"
+    },
+    {
+      "metric_id": "theme.both_valid",
+      "status": "verified",
+      "meets_target": true,
+      "method": "tests/verify-lobby.mjs via probeThemeBothValid (light/dark pixel diff, 0 contrast violations)"
+    },
+    {
+      "metric_id": "a11y.reduced_motion_transition_ms",
+      "status": "verified",
+      "meets_target": true,
+      "method": "tests/verify-lobby.mjs via probeNavTransitionMs (reducedMotion=reduce, <= 16ms)"
+    },
+    {
+      "metric_id": "lh.lcp_ms",
+      "status": "not_verified",
+      "method": "Lighthouse runner is stubbed (null) in selfcheck"
+    },
+    {
+      "metric_id": "lh.cls",
+      "status": "not_verified",
+      "method": "Lighthouse runner is stubbed (null) in selfcheck"
+    },
+    {
+      "metric_id": "budget.transfer_kb",
+      "status": "not_verified",
+      "method": "Not populated by selfcheck; lobby/ files measure 47.7KB raw and 13.1KB gzipped"
+    },
+    {
+      "metric_id": "text.hangul_midword_breaks",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "npm run selfcheck (all viewports)"
+    },
+    {
+      "metric_id": "text.line_length",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 38,
+      "method": "npm run selfcheck (Hangul median at 768x1024 and 1440x900)"
+    },
+    {
+      "metric_id": "text.line_height",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.75,
+      "method": "npm run selfcheck (Hangul median)"
+    },
+    {
+      "metric_id": "type.size_steps",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 5,
+      "method": "npm run selfcheck (1440x900: 13, 16, 20, 28, 48 px)"
+    },
+    {
+      "metric_id": "type.scale_ratio_min",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.2308,
+      "method": "npm run selfcheck (1440x900: 16/13 = 1.2308)"
+    },
+    {
+      "metric_id": "space.grid4_frac",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "npm run selfcheck (all viewports)"
+    },
+    {
+      "metric_id": "align.column_count",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 3.5,
+      "method": "npm run selfcheck (median across space/align probes; 4 at 1440x900)"
+    },
+    {
+      "metric_id": "nav.transition_ms",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 288,
+      "method": "tests/verify-lobby.mjs via probeNavTransitionMs (CDP virtual time)"
+    },
+    {
+      "metric_id": "visual.congestion",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.1134,
+      "method": "npm run selfcheck (1440x900 light, public seeds 1-3 median)"
+    }
+  ],
+  "blocked": false
+}

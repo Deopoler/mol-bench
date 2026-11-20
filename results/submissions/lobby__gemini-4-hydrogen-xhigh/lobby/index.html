@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>빛의 미술관 · Museum of Light</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content" id="skip-link">본문으로 건너뛰기</a>
+
+  <div class="site-shell" id="top">
+    <header class="site-header" data-bench="header">
+      <div class="header-inner">
+        <a class="brand" href="#/lobby" id="brand-link" aria-label="빛의 미술관 로비">
+          <svg class="brand-mark" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="12" cy="12" r="3.5" fill="currentColor"/>
+            <line x1="12" y1="1.5" x2="12" y2="5" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="12" y1="19" x2="12" y2="22.5" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <span class="brand-title" id="brand-title">빛의 미술관</span>
+        </a>
+
+        <nav class="header-controls" aria-label="표시 설정" id="header-nav">
+          <button
+            type="button"
+            class="control-btn"
+            data-bench="lang-toggle"
+            id="lang-toggle"
+            aria-label="영어로 전환"
+          >EN</button>
+          <button
+            type="button"
+            class="control-btn"
+            data-bench="theme-toggle"
+            id="theme-toggle"
+            aria-pressed="false"
+            aria-label="어두운 테마로 전환"
+          >다크</button>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content" class="main-content" tabindex="-1">
+      <div id="lobby-view" class="lobby-view">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow" id="hero-eyebrow" lang="en">SEOUL · DIGITAL PAVILION</p>
+            <h1 id="hero-title" class="hero-title" data-bench="hero-title">빛이 머무는 디지털 전시실</h1>
+            <p class="body-prose" data-bench="body" id="hero-lead">빛의 미술관은 빛과 색채, 그리고 시간의 결을 따라 사유하는 디지털 공간입니다. 방문객이 천천히 머물며 자신만의 속도로 풍경을 읽을 수 있도록 열려 있습니다.</p>
+            <div class="hero-stats" aria-live="polite">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span id="collection-summary" class="hero-meta">전시 공간을 불러오는 중입니다</span>
+            </div>
+          </div>
+
+          <figure class="hero-pavilion" aria-hidden="true">
+            <div class="pavilion-frame" id="pavilion-art"></div>
+          </figure>
+        </section>
+
+        <section class="collection-section" aria-labelledby="collection-heading">
+          <div class="section-header">
+            <h2 id="collection-heading" class="section-heading">전시 공간</h2>
+            <p class="section-caption" id="collection-caption">각 방을 선택해 빛의 공간으로 입장하세요</p>
+          </div>
+
+          <div id="rooms" class="room-grid"></div>
+
+          <section class="empty-state" data-bench="empty-state" aria-labelledby="empty-title" hidden>
+            <div class="empty-inner">
+              <svg class="empty-glyph" width="40" height="40" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+                <rect x="6" y="8" width="28" height="24" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="20" cy="20" r="5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2 2"/>
+              </svg>
+              <h2 id="empty-title" class="empty-title">아직 공개된 방이 없습니다</h2>
+              <p id="empty-copy" class="empty-copy">새로운 빛의 전시가 준비되는 대로 이 로비에서 차례로 공개됩니다. 잠시 후 다시 방문해 주세요.</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="guide-section" aria-labelledby="guide-heading">
+          <div class="section-header">
+            <h2 id="guide-heading" class="section-heading">관람 안내</h2>
+          </div>
+
+          <div class="guide-grid">
+            <p class="body-prose" data-bench="body" id="guide-body">이곳의 모든 방은 별도의 설치 없이 오프라인 환경에서도 온전하게 작동하도록 지어졌습니다. 상단의 언어와 화면 테마 전환을 통해 낮의 석회석 갤러리와 밤의 고요한 어둠을 오가며 차분하게 전시를 둘러보실 수 있습니다.</p>
+
+            <dl class="guide-facts">
+              <div class="fact-item">
+                <dt id="fact-hours-label">개관 안내</dt>
+                <dd id="fact-hours-val">상시 개방 · 24시간 디지털 아카이브</dd>
+              </div>
+              <div class="fact-item">
+                <dt id="fact-access-label">관람 환경</dt>
+                <dd id="fact-access-val">키보드 탐색, 동작 감소 및 고대비 지원</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+      </div>
+
+      <section id="room-view" class="room-view" aria-labelledby="room-view-title" hidden>
+        <div class="room-topbar">
+          <a href="#/lobby" class="back-link" id="room-back-link">
+            <span aria-hidden="true">←</span>
+            <span id="room-back-label">로비로 돌아가기</span>
+          </a>
+          <span class="room-view-index" id="room-view-index">ROOM 01</span>
+        </div>
+
+        <article class="room-stage">
+          <div class="room-stage-visual" id="room-stage-visual" aria-hidden="true"></div>
+          <div class="room-stage-content">
+            <p class="eyebrow" id="room-view-eyebrow">OPEN EXHIBITION</p>
+            <h2 id="room-view-title" class="room-view-title">전시실</h2>
+            <p class="body-prose" id="room-view-summary"></p>
+
+            <dl class="room-specs">
+              <div class="spec-item">
+                <dt id="spec-spectrum-label">빛의 스펙트럼</dt>
+                <dd id="spec-spectrum-val">OKLCH</dd>
+              </div>
+              <div class="spec-item">
+                <dt id="spec-status-label">전시 상태</dt>
+                <dd id="spec-status-val">관람 가능</dd>
+              </div>
+            </dl>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="site-footer" data-bench="footer">
+      <div class="footer-inner">
+        <p class="footer-colophon" id="footer-colophon">빛의 미술관 · Museum of Light · Seoul</p>
+        <a href="#/lobby" class="footer-link" id="footer-top-link">로비 처음으로</a>
+      </div>
+    </footer>
+  </div>
+
+  <div id="transition-veil" class="transition-veil" aria-hidden="true" hidden></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
