@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "summary": "Attack baseline: near-black sky with sparse stars, zero aurora, zero motion.",
+  "deliverables": ["room/index.html", "report.json"],
+  "claims": [
+    { "metric_id": "render.banding", "status": "not_verified" }
+  ],
+  "blocked": false
+}

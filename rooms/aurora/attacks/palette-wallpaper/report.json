@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "summary": "Attack baseline: static full-screen OKLCH palette stripes without sky, stars, or motion.",
+  "deliverables": ["room/index.html", "report.json"],
+  "claims": [
+    { "metric_id": "color.palette_fidelity", "status": "not_verified" }
+  ],
+  "blocked": false
+}

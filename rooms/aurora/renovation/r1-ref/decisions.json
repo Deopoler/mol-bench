@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "requests": [
+    {
+      "request_id": "A-R1",
+      "status": "done",
+      "reason": "AMBIGUOUS_RESOLVED",
+      "tradeoff": "Scaled motion speed down (~60% lower) and toned down oversaturation and luminance boost while keeping the sky visible and hues faithful to the palette, adding spatial IGN dithering to avoid dark-sky banding."
+    },
+    {
+      "request_id": "A-R2",
+      "status": "done",
+      "reason": "NONE"
+    },
+    {
+      "request_id": "A-R3",
+      "status": "done",
+      "reason": "NONE"
+    },
+    {
+      "request_id": "A-R4",
+      "status": "done",
+      "reason": "NONE"
+    }
+  ]
+}

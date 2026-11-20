@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "summary": "Mediocre anchor and renovation r1 start: WebGL2 aurora with restless motion (~3x nominal), oversaturated palette, stale star aspect on resize, no dithering, and no reduced-motion support.",
+  "deliverables": ["room/index.html", "report.json"],
+  "claims": [
+    { "metric_id": "G-load", "status": "verified", "meets_target": true },
+    { "metric_id": "G-contract", "status": "verified", "meets_target": true },
+    { "metric_id": "perf.frame_p95_norm_ms", "status": "not_verified", "method": "not measured on reference GPU" }
+  ],
+  "blocked": false
+}

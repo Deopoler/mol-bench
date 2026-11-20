@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "summary": "Reference polished WebGL2 fragment-shader aurora with layered domain-warped curtains, vertical rays, OKLCH palette conversion, twinkling stars, procedural horizon silhouette, pointer parallax, IGN dithering, and reduced-motion support.",
+  "deliverables": ["room/index.html", "report.json"],
+  "claims": [
+    { "metric_id": "G-load", "status": "verified", "meets_target": true, "method": "bench grade" },
+    { "metric_id": "G-contract", "status": "verified", "meets_target": true, "method": "bench grade" },
+    { "metric_id": "G-determinism", "status": "verified", "meets_target": true, "method": "bench grade" },
+    { "metric_id": "color.palette_fidelity", "status": "verified", "meets_target": true, "measured_value": 0.8632, "method": "bench grade public seeds" },
+    { "metric_id": "color.palette_coverage", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench grade public seeds" },
+    { "metric_id": "lum.mean", "status": "verified", "meets_target": true, "measured_value": 0.263, "method": "bench grade public seeds" },
+    { "metric_id": "scene.silhouette", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench grade public seeds" },
+    { "metric_id": "render.banding", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench grade public seeds" },
+    { "metric_id": "render.aliasing", "status": "verified", "meets_target": true, "measured_value": 0.0138, "method": "bench grade public seeds" },
+    { "metric_id": "perf.frame_p95_norm_ms", "status": "not_verified", "method": "not measured on reference GPU" }
+  ],
+  "blocked": false
+}

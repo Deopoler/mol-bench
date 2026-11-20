@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aurora — Seed</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #05070c;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="aurora-canvas"></canvas>
+  <script type="module">
+    const canvas = document.getElementById("aurora-canvas");
+    const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, preserveDrawingBuffer: true });
+
+    let currentSeed = 1;
+    let seekTimeMs = null;
+
+    function syncSize() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(1, Math.round(window.innerWidth * dpr));
+      const h = Math.max(1, Math.round(window.innerHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      if (gl) {
+        gl.viewport(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    function drawFrame() {
+      if (!gl) return;
+      // Minimal placeholder clear (replace with full fragment-shader aurora)
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.clearColor(0.02, 0.03, 0.05, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+
+    syncSize();
+    drawFrame();
+
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed(seed) {
+        currentSeed = seed;
+        seekTimeMs = null;
+      },
+      seek(tMs) {
+        seekTimeMs = tMs;
+      },
+      resume() {
+        seekTimeMs = null;
+      },
+      async renderFrame() {
+        drawFrame();
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      },
+      state() {
+        return {
+          palette: [],
+          reducedMotion: false,
+          pointer: [0.5, 0.5]
+        };
+      },
+      stats() {
+        return {
+          drawCalls: 0,
+          triangles: 0,
+          geometries: 0,
+          textures: 0,
+          programs: 0,
+          listeners: 0
+        };
+      }
+    };
+  </script>
+</body>
+</html>

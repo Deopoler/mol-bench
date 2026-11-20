@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aurora</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #04060c;
+    }
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="aurora-canvas"></canvas>
+  <script type="module">
+    const VERT_SRC = `#version 300 es
+    void main() {
+      vec2 pos = vec2(
+        (gl_VertexID == 1) ? 3.0 : -1.0,
+        (gl_VertexID == 2) ? 3.0 : -1.0
+      );
+      gl_Position = vec4(pos, 0.0, 1.0);
+    }`;
+
+    const FRAG_SRC = `#version 300 es
+    precision highp float;
+
+    uniform vec2 uResolution;
+    uniform float uStarAspect;
+    uniform float uTime;
+    uniform vec2 uPointer;
+    uniform vec3 uPal0;
+    uniform vec3 uPal1;
+    uniform vec3 uPal2;
+    uniform float uSkyBaseL;
+    uniform float uStarDensity;
+    uniform float uMotionScale;
+    uniform vec4 uSeedVec;
+
+    out vec4 outColor;
+
+    const float PI = 3.14159265359;
+    const float SPEED_MULT = 1.65;
+    const float CHROMA_MULT = 1.00;
+    const float LUM_MULT = 1.04;
+
+    vec3 oklchToOklab(vec3 lch) {
+      float h = radians(lch.z);
+      return vec3(lch.x, lch.y * cos(h), lch.y * sin(h));
+    }
+
+    vec3 oklabToLinearSrgb(vec3 lab) {
+      float l_ = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
+      float m_ = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;
+      float s_ = lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z;
+      float l = l_ * l_ * l_;
+      float m = m_ * m_ * m_;
+      float s = s_ * s_ * s_;
+      return vec3(
+        +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+      );
+    }
+
+    vec3 linearToSrgb(vec3 lin) {
+      vec3 c = clamp(lin, 0.0, 1.0);
+      vec3 lo = 12.92 * c;
+      vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;
+      return mix(lo, hi, step(vec3(0.0031308), c));
+    }
+
+    float hash12(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+      p3 += dot(p3, p3.yzx + 33.33);
+      return fract((p3.x + p3.y) * p3.z);
+    }
+
+    vec3 hash23(vec2 p) {
+      vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+      p3 += dot(p3, p3.yxz + 33.33);
+      return fract((p3.xxy + p3.yxx) * p3.zyx);
+    }
+
+    float vnoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      vec2 u = f * f * (3.0 - 2.0 * f);
+      float a = hash12(i);
+      float b = hash12(i + vec2(1.0, 0.0));
+      float c = hash12(i + vec2(0.0, 1.0));
+      float d = hash12(i + vec2(1.0, 1.0));
+      return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+    }
+
+    float fbm(vec2 p) {
+      float sum = 0.0;
+      float amp = 0.5;
+      mat2 rot = mat2(0.80, -0.60, 0.60, 0.80);
+      for (int i = 0; i < 4; i++) {
+        sum += amp * vnoise(p);
+        p = rot * p * 2.03 + vec2(11.3, 7.1);
+        amp *= 0.5;
+      }
+      return sum;
+    }
+
+    float ridge1D(float x) {
+      float a = sin(x * 1.15 + 0.4) * 0.45;
+      float b = sin(x * 2.35 + 1.9) * 0.28;
+      float c = sin(x * 4.70 + 3.1) * 0.16;
+      float d = (vnoise(vec2(x * 1.6, 2.7)) - 0.5) * 0.40;
+      return 0.5 + 0.35 * (a + b + c + d);
+    }
+
+    float coniferProfile(float x, float cellWidth, float seedOff) {
+      float gx = x / cellWidth;
+      float id = floor(gx);
+      float f = fract(gx) - 0.5;
+      float h = hash12(vec2(id, seedOff));
+      float present = step(0.28, h);
+      float treeH = mix(0.012, 0.036, fract(h * 7.13));
+      float width = mix(0.32, 0.46, fract(h * 3.71));
+      float body = clamp(1.0 - abs(f) / width, 0.0, 1.0);
+      float tier = body * (0.86 + 0.14 * cos(body * 14.0));
+      return present * treeH * tier;
+    }
+
+    float auroraRibbon(vec2 p, float t, float baseHeight, float span, float phase, float rayScale) {
+      float w1 = fbm(vec2(p.x * 1.35 + phase + t * 0.25, t * 0.36 + phase * 0.37));
+      float w2 = fbm(vec2(p.x * 2.25 - t * 0.30 + w1 * 1.5, p.y * 1.4 + phase * 1.7));
+      float center = baseHeight + (w1 - 0.5) * 0.21 + (w2 - 0.5) * 0.09;
+
+      float tilt = (p.x - 0.5) * 0.16 * max(p.y - center, 0.0);
+      float rx = (p.x - tilt) * rayScale + w1 * 1.9 + phase * 3.1;
+
+      float raysA = vnoise(vec2(rx * 4.4 + t * 0.65, t * 0.50 + phase));
+      float raysB = vnoise(vec2(rx * 9.0 - t * 0.85, t * 0.62 + phase * 2.3));
+      float rays = 0.46 + 0.54 * smoothstep(0.20, 0.84, 0.60 * raysA + 0.40 * raysB);
+
+      float dy = (p.y - center) / span;
+      float lowerEdge = smoothstep(-0.08, 0.12, dy);
+      float upperFade = exp(-2.15 * max(dy, 0.0));
+      float curtain = lowerEdge * upperFade * rays;
+
+      float sweep = 0.74 + 0.26 * sin(p.x * 2.2 + phase * 2.4 + t * 0.15);
+      return clamp(curtain * sweep * 1.24, 0.0, 1.0);
+    }
+
+    vec3 starLayer(vec2 starUv, float cellsY, float densityProb, float t, float radiusUv, float baseBright, float seedTag) {
+      vec2 scaled = starUv * cellsY;
+      vec2 cell = floor(scaled);
+      vec2 local = fract(scaled) - 0.5;
+      vec3 h = hash23(cell + uSeedVec.xy * 19.7 + vec2(seedTag, seedTag * 1.7));
+
+      if (h.x > densityProb) return vec3(0.0);
+
+      vec2 jitter = (hash23(cell * 1.37 + uSeedVec.zw * 13.1).xy - 0.5) * 0.56;
+      float dist = length(local - jitter);
+      float r = radiusUv * mix(0.85, 1.15, h.y);
+
+      float core = exp(-2.8 * (dist * dist) / (r * r));
+      float halo = 0.18 * exp(-0.45 * (dist * dist) / (r * r));
+      float freq = mix(0.45, 2.20, h.z);
+      float twinkle = 0.72 + 0.28 * sin(2.0 * PI * freq * t + h.x * 37.0);
+
+      float mag = baseBright * mix(0.65, 1.25, fract(h.y * 9.3)) * twinkle * (core + halo);
+      return vec3(0.97, 0.98, 1.02) * mag;
+    }
+
+    void main() {
+      vec2 uv = gl_FragCoord.xy / uResolution;
+      float aspect = uResolution.x / max(uResolution.y, 1.0);
+      vec2 ptr = uPointer - 0.5;
+
+      float t = uTime * uMotionScale * SPEED_MULT * 9.5;
+
+      vec2 p = vec2((uv.x - 0.5) * min(aspect, 1.75) * 0.78 + 0.5, uv.y);
+      p += vec2(ptr.x * 0.045, ptr.y * 0.022);
+
+      float skyGrad = pow(1.0 - uv.y, 1.85);
+      float horizonAirglow = smoothstep(0.56, 0.18, uv.y) * 0.335;
+      float skyL = clamp(uSkyBaseL * LUM_MULT * (0.85 + 0.70 * skyGrad) + horizonAirglow, 0.05, 0.39);
+      vec3 skyLab = oklchToOklab(vec3(skyL, 0.026, 248.0));
+
+      float s0 = uSeedVec.x * 6.2831;
+      float s1 = uSeedVec.y * 6.2831;
+      float s2 = uSeedVec.z * 6.2831;
+
+      float d0 = auroraRibbon(p, t, 0.29, 0.30, 0.4 + s0 * 0.2, 4.2);
+      float d1 = auroraRibbon(p + vec2(0.18, 0.03), t * 0.92, 0.38, 0.30, 2.5 + s1 * 0.2, 3.6);
+      float d2 = auroraRibbon(p - vec2(0.15, -0.02), t * 1.08, 0.47, 0.28, 4.7 + s2 * 0.2, 4.8);
+
+      float dMax = max(max(d0, d1), d2);
+      float dRest = (d0 + d1 + d2) - dMax;
+      float auroraAmt = clamp(dMax + 0.22 * dRest, 0.0, 1.0);
+
+      vec3 lab0 = oklchToOklab(uPal0);
+      vec3 lab1 = oklchToOklab(uPal1);
+      vec3 lab2 = oklchToOklab(uPal2);
+
+      vec3 w = pow(vec3(d0, d1, d2) + vec3(1e-4), vec3(7.5));
+      w /= (w.x + w.y + w.z);
+      vec3 palLab = w.x * lab0 + w.y * lab1 + w.z * lab2;
+      float palC = length(palLab.yz);
+
+      float tGlow = smoothstep(0.02, 0.23, auroraAmt);
+      float tBody = smoothstep(0.23, 0.31, auroraAmt);
+      float tCore = smoothstep(0.62, 0.98, auroraAmt);
+
+      vec3 glowLab = vec3(
+        max(skyLab.x, mix(skyLab.x, 0.22, tGlow)),
+        mix(skyLab.y, (palLab.y / max(palC, 1e-4)) * 0.033, tGlow),
+        mix(skyLab.z, (palLab.z / max(palC, 1e-4)) * 0.033, tGlow)
+      );
+
+      float bodyL = clamp(palLab.x - 0.02 + 0.065 * tCore, 0.32, 0.92);
+      float bodyCScale = CHROMA_MULT * (0.95 + 0.05 * tCore);
+      vec3 bodyLab = vec3(bodyL, palLab.y * bodyCScale, palLab.z * bodyCScale);
+
+      vec3 skyAndAuroraLab = mix(glowLab, bodyLab, tBody);
+      vec3 linCol = max(oklabToLinearSrgb(skyAndAuroraLab), vec3(0.0));
+
+      vec2 starUv = vec2(uv.x * uStarAspect, uv.y) + ptr * vec2(-0.008, 0.005);
+      float pDense = clamp(0.46 * uStarDensity, 0.18, 0.94);
+      vec3 starsBig = starLayer(starUv, 21.0, pDense, t, 0.034, 1.35, 1.0);
+      vec3 starsSmall = starLayer(starUv + vec2(0.017, 0.029), 39.0, pDense * 0.55, t, 0.024, 0.24, 5.0);
+
+      float starVis = 1.0 - 0.45 * tBody;
+      linCol += (starsBig + starsSmall) * starVis * smoothstep(0.14, 0.32, uv.y);
+
+      // Horizon silhouette (preserved across r1)
+      float hAspect = clamp(aspect, 0.9, 1.6);
+      float xFar = uv.x * hAspect * 1.15 + ptr.x * 0.014 + uSeedVec.w * 2.0;
+      float hFar = 0.095 + 0.175 * ridge1D(xFar * 3.1 + 1.2);
+      float xNear = uv.x * hAspect * 1.15 + ptr.x * 0.034 + uSeedVec.w * 4.5;
+      float hMount = 0.078 + 0.105 * ridge1D(xNear * 3.4 + 5.7);
+      float trees = coniferProfile(xNear, 0.022, 3.1) + coniferProfile(xNear + 0.011, 0.029, 7.9) * 0.7;
+      float hNear = max(0.068, hMount + trees);
+
+      float aaNear = max(fwidth(uv.y - hNear), 0.0014);
+      float aaFar = max(fwidth(uv.y - hFar), 0.0020);
+      float nearMask = 1.0 - smoothstep(-aaNear, aaNear, uv.y - hNear);
+      float farMask = (1.0 - smoothstep(-aaFar, aaFar, uv.y - hFar)) * (1.0 - nearMask);
+
+      vec3 farColor = max(oklabToLinearSrgb(oklchToOklab(vec3(0.035, 0.018, 245.0))), vec3(0.0));
+      vec3 nearColor = vec3(0.0002, 0.0003, 0.0005);
+
+      linCol = mix(linCol, farColor, farMask);
+      linCol = mix(linCol, nearColor, nearMask);
+
+      // Spatial-only triangular IGN dither to suppress banding in deeper sky
+      vec3 srgb = linearToSrgb(linCol);
+      float n1 = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+      float n2 = fract(52.9829189 * fract(dot(gl_FragCoord.xy + vec2(17.0, 31.0), vec2(0.06711056, 0.00583715))));
+      float triDither = ((n1 + n2 - 1.0) / 255.0) * (1.0 - nearMask);
+      outColor = vec4(clamp(srgb + triDither, 0.0, 1.0), 1.0);
+    }`;
+
+    const canvas = document.getElementById("aurora-canvas");
+    const gl = canvas.getContext("webgl2", {
+      antialias: false,
+      alpha: false,
+      depth: false,
+      stencil: false,
+      preserveDrawingBuffer: true
+    });
+    if (!gl) throw new Error("WebGL2 context unavailable");
+
+    function compile(type, src) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        throw new Error(gl.getShaderInfoLog(sh) || "Shader compile error");
+      }
+      return sh;
+    }
+
+    const vs = compile(gl.VERTEX_SHADER, VERT_SRC);
+    const fs = compile(gl.FRAGMENT_SHADER, FRAG_SRC);
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(program) || "Program link error");
+    }
+
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.useProgram(program);
+
+    const loc = {
+      uResolution: gl.getUniformLocation(program, "uResolution"),
+      uStarAspect: gl.getUniformLocation(program, "uStarAspect"),
+      uTime: gl.getUniformLocation(program, "uTime"),
+      uPointer: gl.getUniformLocation(program, "uPointer"),
+      uPal0: gl.getUniformLocation(program, "uPal0"),
+      uPal1: gl.getUniformLocation(program, "uPal1"),
+      uPal2: gl.getUniformLocation(program, "uPal2"),
+      uSkyBaseL: gl.getUniformLocation(program, "uSkyBaseL"),
+      uStarDensity: gl.getUniformLocation(program, "uStarDensity"),
+      uMotionScale: gl.getUniformLocation(program, "uMotionScale"),
+      uSeedVec: gl.getUniformLocation(program, "uSeedVec")
+    };
+
+    const FALLBACK_PALETTE = [[0.78, 0.17, 160], [0.62, 0.15, 300], [0.70, 0.14, 350]];
+    const DENSITY_MAP = { sparse: 0.5, normal: 1.0, dense: 1.8 };
+
+    function mulberry32(seed) {
+      let a = seed >>> 0;
+      return () => {
+        a |= 0;
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    const mql = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+    let reducedMotion = Boolean(mql.matches);
+    let pointer = [0.5, 0.5];
+    let paused = false;
+    let frozenTimeMs = 0;
+    let resumeOffsetMs = 0;
+    let rafId = null;
+    let activeListeners = 0;
+    let currentSeed = 1;
+    let currentParams = null;
+    let seedVec = [0.13, 0.47, 0.71, 0.29];
+    const seedVecCache = new Map();
+    let starAspect = (window.innerWidth || 1440) / Math.max(1, window.innerHeight || 900);
+
+    function readHostNow() {
+      return window.__benchHost?.clock?.now ? window.__benchHost.clock.now() : performance.now();
+    }
+
+    function readParamsForSeed(seed) {
+      const host = window.__benchHost;
+      if (host && host.params && Array.isArray(host.params.palette) && host.params.palette.length >= 3) {
+        return {
+          palette: host.params.palette.map((c) => [Number(c[0]), Number(c[1]), Number(c[2])]),
+          skyBaseL: typeof host.params.skyBaseL === "number" ? host.params.skyBaseL : 0.08,
+          starDensity: host.params.starDensity || "normal",
+          motionScale: typeof host.params.motionScale === "number" ? host.params.motionScale : 1.0
+        };
+      }
+      return {
+        palette: FALLBACK_PALETTE.map((c) => [...c]),
+        skyBaseL: 0.08,
+        starDensity: "normal",
+        motionScale: 1.0
+      };
+    }
+
+    function computeSeedVec(seed) {
+      const key = `${seed}:${JSON.stringify(currentParams?.palette || [])}`;
+      if (seedVecCache.has(key)) return seedVecCache.get(key);
+      const host = window.__benchHost;
+      let vec;
+      if (host && host.rng && typeof host.rng.next === "function") {
+        const stream = typeof host.rng.fork === "function" ? host.rng.fork("aurora-shader") : host.rng;
+        vec = [stream.next(), stream.next(), stream.next(), stream.next()];
+      } else {
+        const r = mulberry32(seed);
+        vec = [r(), r(), r(), r()];
+      }
+      seedVecCache.set(key, vec);
+      return vec;
+    }
+
+    function applySeed(seed) {
+      currentSeed = seed;
+      currentParams = readParamsForSeed(seed);
+      seedVec = computeSeedVec(seed);
+    }
+
+    function syncViewport() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(1, Math.round(window.innerWidth * dpr));
+      const h = Math.max(1, Math.round(window.innerHeight * dpr));
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      starAspect = canvas.width / Math.max(1, canvas.height);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    function currentTimeMs() {
+      if (paused) return frozenTimeMs;
+      return readHostNow() + resumeOffsetMs;
+    }
+
+    function draw() {
+      reducedMotion = Boolean(mql.matches);
+      syncViewport();
+      const params = currentParams || readParamsForSeed(currentSeed);
+      const tSec = reducedMotion ? 0.0 : currentTimeMs() * 0.001;
+      const pal = params.palette;
+      const ptr = reducedMotion ? [0.5, 0.5] : pointer;
+
+      gl.useProgram(program);
+      gl.bindVertexArray(vao);
+      gl.uniform2f(loc.uResolution, canvas.width, canvas.height);
+      gl.uniform1f(loc.uStarAspect, starAspect);
+      gl.uniform1f(loc.uTime, tSec);
+      gl.uniform2f(loc.uPointer, ptr[0], 1.0 - ptr[1]);
+      gl.uniform3f(loc.uPal0, pal[0][0], pal[0][1], pal[0][2]);
+      gl.uniform3f(loc.uPal1, pal[1][0], pal[1][1], pal[1][2]);
+      gl.uniform3f(loc.uPal2, pal[2][0], pal[2][1], pal[2][2]);
+      gl.uniform1f(loc.uSkyBaseL, params.skyBaseL);
+      gl.uniform1f(loc.uStarDensity, DENSITY_MAP[params.starDensity] ?? 1.0);
+      gl.uniform1f(loc.uMotionScale, params.motionScale);
+      gl.uniform4f(loc.uSeedVec, seedVec[0], seedVec[1], seedVec[2], seedVec[3]);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    function tick() {
+      if (paused) {
+        rafId = null;
+        return;
+      }
+      draw();
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function startLoop() {
+      if (rafId === null && !paused) {
+        rafId = requestAnimationFrame(tick);
+      }
+    }
+
+    function stopLoop() {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    }
+
+    function onResize() {
+      draw();
+    }
+
+    function onPointerMove(e) {
+      const w = Math.max(1, window.innerWidth);
+      const h = Math.max(1, window.innerHeight);
+      pointer = [
+        Math.min(1, Math.max(0, e.clientX / w)),
+        Math.min(1, Math.max(0, e.clientY / h))
+      ];
+    }
+
+    function onReducedMotionChange(e) {
+      reducedMotion = Boolean(e.matches);
+      draw();
+    }
+
+    const initDpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(window.innerWidth * initDpr));
+    canvas.height = Math.max(1, Math.round(window.innerHeight * initDpr));
+    starAspect = canvas.width / Math.max(1, canvas.height);
+
+    window.addEventListener("resize", onResize);
+    activeListeners++;
+    window.addEventListener("pointermove", onPointerMove);
+    activeListeners++;
+    window.addEventListener("pointerdown", onPointerMove);
+    activeListeners++;
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onReducedMotionChange);
+      activeListeners++;
+    }
+
+    applySeed(window.__benchHost?.seed ?? 1);
+    draw();
+    startLoop();
+
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed(seed) {
+        paused = false;
+        frozenTimeMs = 0;
+        resumeOffsetMs = 0;
+        applySeed(seed);
+        startLoop();
+      },
+      seek(tMs) {
+        paused = true;
+        frozenTimeMs = Number(tMs) || 0;
+        stopLoop();
+      },
+      resume() {
+        if (paused) {
+          resumeOffsetMs = frozenTimeMs - readHostNow();
+          paused = false;
+        }
+        startLoop();
+      },
+      async renderFrame() {
+        draw();
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      },
+      state() {
+        reducedMotion = Boolean(mql.matches);
+        const params = currentParams || readParamsForSeed(currentSeed);
+        return {
+          palette: params.palette.map((c) => [...c]),
+          reducedMotion,
+          pointer: [...pointer]
+        };
+      },
+      stats() {
+        return {
+          drawCalls: 1,
+          triangles: 1,
+          geometries: 1,
+          textures: 0,
+          programs: 1,
+          listeners: activeListeners
+        };
+      }
+    };
+  </script>
+</body>
+</html>

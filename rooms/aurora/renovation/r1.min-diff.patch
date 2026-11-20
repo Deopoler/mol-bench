@@ -1,0 +1,164 @@
+diff --git a/room/index.html b/room/index.html
+--- a/room/index.html
++++ b/room/index.html
+@@ -52,9 +52,9 @@
+     out vec4 outColor;
+ 
+     const float PI = 3.14159265359;
+-    const float SPEED_MULT = 4.85;
+-    const float CHROMA_MULT = 1.82;
+-    const float LUM_MULT = 1.64;
++    const float SPEED_MULT = 1.65;
++    const float CHROMA_MULT = 1.00;
++    const float LUM_MULT = 1.04;
+ 
+     vec3 oklchToOklab(vec3 lch) {
+       float h = radians(lch.z);
+@@ -147,8 +147,8 @@
+       float rx = (p.x - tilt) * rayScale + w1 * 1.9 + phase * 3.1;
+ 
+       float raysA = vnoise(vec2(rx * 4.4 + t * 0.65, t * 0.50 + phase));
+-      float raysB = vnoise(vec2(rx * 9.0 - t * 1.45, t * 1.15 + phase * 2.3));
+-      float rays = 0.44 + 0.56 * smoothstep(0.20, 0.84, 0.55 * raysA + 0.45 * raysB);
++      float raysB = vnoise(vec2(rx * 9.0 - t * 0.85, t * 0.62 + phase * 2.3));
++      float rays = 0.46 + 0.54 * smoothstep(0.20, 0.84, 0.60 * raysA + 0.40 * raysB);
+ 
+       float dy = (p.y - center) / span;
+       float lowerEdge = smoothstep(-0.08, 0.12, dy);
+@@ -192,8 +192,8 @@
+ 
+       float skyGrad = pow(1.0 - uv.y, 1.85);
+       float horizonAirglow = smoothstep(0.56, 0.18, uv.y) * 0.335;
+-      float skyL = clamp(uSkyBaseL * LUM_MULT * (0.85 + 0.70 * skyGrad) + horizonAirglow, 0.05, 0.45);
+-      vec3 skyLab = oklchToOklab(vec3(skyL, 0.032, 248.0));
++      float skyL = clamp(uSkyBaseL * LUM_MULT * (0.85 + 0.70 * skyGrad) + horizonAirglow, 0.05, 0.39);
++      vec3 skyLab = oklchToOklab(vec3(skyL, 0.026, 248.0));
+ 
+       float s0 = uSeedVec.x * 6.2831;
+       float s1 = uSeedVec.y * 6.2831;
+@@ -221,13 +221,13 @@
+       float tCore = smoothstep(0.62, 0.98, auroraAmt);
+ 
+       vec3 glowLab = vec3(
+-        max(skyLab.x, mix(skyLab.x, 0.25, tGlow)),
+-        mix(skyLab.y, (palLab.y / max(palC, 1e-4)) * 0.042, tGlow),
+-        mix(skyLab.z, (palLab.z / max(palC, 1e-4)) * 0.042, tGlow)
++        max(skyLab.x, mix(skyLab.x, 0.22, tGlow)),
++        mix(skyLab.y, (palLab.y / max(palC, 1e-4)) * 0.033, tGlow),
++        mix(skyLab.z, (palLab.z / max(palC, 1e-4)) * 0.033, tGlow)
+       );
+ 
+-      float bodyL = clamp(palLab.x + 0.06 + 0.10 * tCore + 0.08 * (LUM_MULT - 1.0), 0.34, 0.96);
+-      float bodyCScale = CHROMA_MULT * (0.94 + 0.08 * tCore);
++      float bodyL = clamp(palLab.x - 0.02 + 0.065 * tCore, 0.32, 0.92);
++      float bodyCScale = CHROMA_MULT * (0.95 + 0.05 * tCore);
+       vec3 bodyLab = vec3(bodyL, palLab.y * bodyCScale, palLab.z * bodyCScale);
+ 
+       vec3 skyAndAuroraLab = mix(glowLab, bodyLab, tBody);
+@@ -250,8 +250,8 @@
+       float trees = coniferProfile(xNear, 0.022, 3.1) + coniferProfile(xNear + 0.011, 0.029, 7.9) * 0.7;
+       float hNear = max(0.068, hMount + trees);
+ 
+-      float aaNear = 0.0002;
+-      float aaFar = 0.0002;
++      float aaNear = max(fwidth(uv.y - hNear), 0.0014);
++      float aaFar = max(fwidth(uv.y - hFar), 0.0020);
+       float nearMask = 1.0 - smoothstep(-aaNear, aaNear, uv.y - hNear);
+       float farMask = (1.0 - smoothstep(-aaFar, aaFar, uv.y - hFar)) * (1.0 - nearMask);
+ 
+@@ -261,9 +261,12 @@
+       linCol = mix(linCol, farColor, farMask);
+       linCol = mix(linCol, nearColor, nearMask);
+ 
+-      // No dithering in a5 (leaves mild 8-bit banding in smooth sky gradients)
++      // Spatial-only triangular IGN dither to suppress banding in deeper sky
+       vec3 srgb = linearToSrgb(linCol);
+-      outColor = vec4(clamp(srgb, 0.0, 1.0), 1.0);
++      float n1 = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
++      float n2 = fract(52.9829189 * fract(dot(gl_FragCoord.xy + vec2(17.0, 31.0), vec2(0.06711056, 0.00583715))));
++      float triDither = ((n1 + n2 - 1.0) / 255.0) * (1.0 - nearMask);
++      outColor = vec4(clamp(srgb + triDither, 0.0, 1.0), 1.0);
+     }`;
+ 
+     const canvas = document.getElementById("aurora-canvas");
+@@ -328,6 +331,8 @@
+       };
+     }
+ 
++    const mql = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
++    let reducedMotion = Boolean(mql.matches);
+     let pointer = [0.5, 0.5];
+     let paused = false;
+     let frozenTimeMs = 0;
+@@ -389,11 +394,10 @@
+       const w = Math.max(1, Math.round(window.innerWidth * dpr));
+       const h = Math.max(1, Math.round(window.innerHeight * dpr));
+       if (canvas.width !== w || canvas.height !== h) {
+-        // Stale aspect bug: captures previous buffer aspect before updating canvas size
+-        starAspect = canvas.width / Math.max(1, canvas.height);
+         canvas.width = w;
+         canvas.height = h;
+       }
++      starAspect = canvas.width / Math.max(1, canvas.height);
+       gl.viewport(0, 0, canvas.width, canvas.height);
+     }
+ 
+@@ -403,17 +407,19 @@
+     }
+ 
+     function draw() {
++      reducedMotion = Boolean(mql.matches);
+       syncViewport();
+       const params = currentParams || readParamsForSeed(currentSeed);
+-      const tSec = currentTimeMs() * 0.001;
++      const tSec = reducedMotion ? 0.0 : currentTimeMs() * 0.001;
+       const pal = params.palette;
++      const ptr = reducedMotion ? [0.5, 0.5] : pointer;
+ 
+       gl.useProgram(program);
+       gl.bindVertexArray(vao);
+       gl.uniform2f(loc.uResolution, canvas.width, canvas.height);
+       gl.uniform1f(loc.uStarAspect, starAspect);
+       gl.uniform1f(loc.uTime, tSec);
+-      gl.uniform2f(loc.uPointer, pointer[0], 1.0 - pointer[1]);
++      gl.uniform2f(loc.uPointer, ptr[0], 1.0 - ptr[1]);
+       gl.uniform3f(loc.uPal0, pal[0][0], pal[0][1], pal[0][2]);
+       gl.uniform3f(loc.uPal1, pal[1][0], pal[1][1], pal[1][2]);
+       gl.uniform3f(loc.uPal2, pal[2][0], pal[2][1], pal[2][2]);
+@@ -459,7 +465,11 @@
+       ];
+     }
+ 
+-    // Initialize buffer dimensions once before first draw
++    function onReducedMotionChange(e) {
++      reducedMotion = Boolean(e.matches);
++      draw();
++    }
++
+     const initDpr = window.devicePixelRatio || 1;
+     canvas.width = Math.max(1, Math.round(window.innerWidth * initDpr));
+     canvas.height = Math.max(1, Math.round(window.innerHeight * initDpr));
+@@ -471,6 +481,10 @@
+     activeListeners++;
+     window.addEventListener("pointerdown", onPointerMove);
+     activeListeners++;
++    if (typeof mql.addEventListener === "function") {
++      mql.addEventListener("change", onReducedMotionChange);
++      activeListeners++;
++    }
+ 
+     applySeed(window.__benchHost?.seed ?? 1);
+     draw();
+@@ -503,10 +517,11 @@
+         await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+       },
+       state() {
++        reducedMotion = Boolean(mql.matches);
+         const params = currentParams || readParamsForSeed(currentSeed);
+         return {
+           palette: params.palette.map((c) => [...c]),
+-          reducedMotion: false,
++          reducedMotion,
+           pointer: [...pointer]
+         };
+       },
