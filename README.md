@@ -47,7 +47,7 @@ Code: Apache-2.0. Assets and reference renders: CC-BY-4.0. (To be added before f
 
 Run contestants locally in isolated per-run directories (outside the repo so `hidden/` is never reachable), collect diffs and graded results, and build the leaderboard:
 
-1. **Prepare an isolated run folder** (default root `C:/Users/seonj/molbench-runs`, overridable via `MOLBENCH_RUNS` or `--root`):
+1. **Prepare an isolated run folder** (default root `~/molbench-runs`, overridable via `MOLBENCH_RUNS` or `--root`):
 
    ```bash
    node runner/prepare.mjs aurora --run-id aurora-codex-01 --seed 1

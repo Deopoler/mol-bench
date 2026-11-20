@@ -1,6 +1,6 @@
 # OpenAI Codex CLI command template for MoL-Bench local runs.
 # Verified against `codex --help` and `codex exec --help`
-# (binary: C:/Users/seonj/AppData/Local/Programs/OpenAI/Codex/bin/codex.exe).
+# (on Windows the binary is usually under %LOCALAPPDATA%/Programs/OpenAI/Codex/bin/codex.exe).
 #
 # Placeholders:
 #   {run_dir}  Absolute path printed by `node runner/prepare.mjs ...`

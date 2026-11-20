@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -7,7 +8,7 @@ import { generatePreviewContactSheets } from "../harness/src/cli.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..");
-const DEFAULT_RUNS_ROOT = "C:/Users/seonj/molbench-runs";
+const DEFAULT_RUNS_ROOT = path.join(os.homedir(), "molbench-runs");
 const EXCLUDED_SUBMISSION_DIRS = new Set([
   "node_modules",
   ".venv",
