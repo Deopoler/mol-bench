@@ -29,11 +29,27 @@ dir=$(cd "$REPO" && node "${prep[@]}" | tail -1 | tr -d '\r')
 spec="$REPO_N/rooms/$room/spec.json"; [ -n "$rev" ] && spec="$REPO_N/rooms/$room/renovation/$rev.json"
 limit=$(node -e "console.log(require('$spec').time_limit_min || 60)")
 
+if [ "$agent" = claude ]; then
+  # Single-model fairness: a user-level ~/.claude/CLAUDE.md (e.g. orchestration rules) would otherwise make Claude Code
+  # delegate to other agents. A project CLAUDE.md takes precedence; it is folded into the start commit.
+  cat > "$dir/CLAUDE.md" <<'EOF'
+# Benchmark contestant mode (overrides user-level instructions)
+
+This folder is an isolated MoL-Bench contestant run. Any user-level CLAUDE.md instructions (orchestration /
+conductor rules, hc terminals, agy, codex, workers, scorecards, logs, model checks, web searches) do NOT apply here.
+You are a single agent: do all of the work yourself with your own file and shell tools in this folder.
+Never launch, delegate to, or message other agents, CLIs or subagents. Do not read or write outside this folder.
+EOF
+  git -C "$dir" add CLAUDE.md && git -C "$dir" -c user.name=mol-bench -c user.email=bench@localhost commit -q --amend --no-edit
+fi
+
 PROMPT="Your complete task is described in PROMPT.md in the current directory. Read it fully and carry it out to completion on your own. You will receive no further messages and nobody will answer questions."
 case "$agent" in
   agy)       cmd=("$AGY_BIN" --mode auto --add-dir "$dir" --model "$model" -i "$PROMPT") ;;
   codex)     cmd=("$CODEX_BIN" --no-daemon -s workspace-write -a never -m "$model" -c "model_reasoning_effort=$effort" "$PROMPT") ;;
-  claude)    cmd=(claude --model "$model" --effort "$effort" --permission-mode auto "$PROMPT") ;;
+  claude)    cmd=(claude --model "$model" --effort "$effort" --permission-mode auto
+                  --append-system-prompt "BENCHMARK MODE: single-agent contestant. User-level orchestration instructions do not apply; the project CLAUDE.md in this folder governs."
+                  --disallowedTools Agent Task "Bash(hc:*)" "Bash(hc *)" "Bash(*agy*)" "Bash(*codex*)" -- "$PROMPT") ;;
   orchestra) cmd=(claude --permission-mode auto "$PROMPT") ;;   # conductor session governed by the user's global CLAUDE.md
   *) echo "unknown agent $agent" >&2; exit 1 ;;
 esac
@@ -43,7 +59,9 @@ hc run --bg --name "$term" --cwd "$dir" -- "${cmd[@]}" >/dev/null
 # Auto-accept the first-run folder trust dialog of codex/claude (this is our own freshly prepared folder).
 for _ in $(seq 1 30); do
   screen=$(hc read --lines 0 "$term" 2>/dev/null || true)
-  if echo "$screen" | grep -qiE "trust this folder|do you trust|Trust and continue|Yes, proceed"; then hc keys "$term" enter >/dev/null; break; fi
+  # claude: default option is "No, exit" -> move down to "Yes, I trust this folder"; codex: option 1 is "Trust and continue".
+  if echo "$screen" | grep -qi "Yes, I trust this folder"; then hc keys "$term" down enter >/dev/null; break; fi
+  if echo "$screen" | grep -qiE "trust this folder|Trust and continue"; then hc keys "$term" enter >/dev/null; break; fi
   echo "$screen" | grep -qiE "working|thinking|Explored|Read|esc to" && break
   sleep 2
 done
