@@ -52,7 +52,8 @@ async function scanRasterGate(submissionDir, spec) {
       return;
     }
     for (const entry of entries) {
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      // Bench tooling dirs and scratch output are never part of the submission's assets.
+      if (['node_modules', '.git', '.venv', 'bench', 'metrics', 'work', 'preview', '__pycache__'].includes(entry.name)) continue;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         await walk(full);

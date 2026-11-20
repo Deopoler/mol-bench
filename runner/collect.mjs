@@ -16,7 +16,9 @@ const EXCLUDED_SUBMISSION_DIRS = new Set([
   "metrics",
   ".git",
   "__pycache__",
-  ".pytest_cache"
+  ".pytest_cache",
+  "work",        // bench tool scratch output (selfcheck/preview), not part of the submission
+  "preview"
 ]);
 const BINARY_EXTENSIONS = new Set([
   ".png",
@@ -71,7 +73,7 @@ function parseArgs(argv) {
 function copySubmissionFiltered(srcDir, dstDir) {
   fs.mkdirSync(dstDir, { recursive: true });
   for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
-    if (EXCLUDED_SUBMISSION_DIRS.has(entry.name) || entry.name.endsWith(".pyc")) continue;
+    if (EXCLUDED_SUBMISSION_DIRS.has(entry.name) || entry.name.endsWith(".pyc") || entry.name === "selfcheck.json") continue;
     const srcPath = path.join(srcDir, entry.name);
     const dstPath = path.join(dstDir, entry.name);
     if (entry.isDirectory()) {
