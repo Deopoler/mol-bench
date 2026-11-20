@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>빛의 박물관 로비 테스트</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --card-bg: #f2f4f8;
+      --accent: #0044cc;
+      --border: #ccd2de;
+      --focus: #d9006c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111318;
+        --fg: #f4f6fa;
+        --card-bg: #1e222b;
+        --accent: #7ab0ff;
+        --border: #3a4152;
+        --focus: #ff66b2;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+    }
+    header {
+      padding: 16px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 36px;
+      line-height: 1.25;
+      font-family: Georgia, serif;
+    }
+    h2 {
+      margin: 0 0 12px 0;
+      font-size: 24px;
+      line-height: 1.35;
+    }
+    main {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      max-width: 720px;
+    }
+    .body-copy {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.65;
+      word-break: keep-all;
+      max-width: 560px;
+    }
+    /* Deliberate Hangul mid-word break case: narrow box with break-all */
+    .midword-bug {
+      width: 52px;
+      font-size: 16px;
+      line-height: 1.6;
+      word-break: break-all;
+      padding: 8px;
+      border: 1px solid var(--border);
+    }
+    /* Deliberate horizontal overflow element outside any overflow-x clipping ancestor */
+    .overflow-bug {
+      width: 2000px;
+      height: 24px;
+      background: var(--card-bg);
+      padding: 4px 8px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .cards {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 16px;
+      border-radius: 8px;
+      min-width: 200px;
+    }
+    .card a, footer a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+      min-height: 48px;
+      padding: 8px 16px;
+      color: var(--accent);
+      text-decoration: underline;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    a:focus-visible, a:focus, button:focus-visible, button:focus {
+      outline: 4px solid var(--focus);
+      outline-offset: 2px;
+    }
+    #view {
+      padding: 24px;
+      min-height: 160px;
+      background: #1b2a4a;
+      color: #ffffff;
+      border: 1px solid var(--border);
+      opacity: 1;
+      transition: opacity 160ms linear;
+    }
+    #view.entering {
+      opacity: 0.05;
+      transition: none;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #view {
+        transition: none;
+      }
+    }
+    footer {
+      margin-top: 24px;
+      padding: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header data-bench="header">
+    <h1 data-bench="hero-title">빛의 박물관</h1>
+  </header>
+
+  <main>
+    <p class="body-copy" data-bench="body">
+      빛의 박물관은 실시간 그래픽과 타이포그래피의 조화를 탐구하는 전시 공간입니다.
+      방문객은 다양한 전시실을 자유롭게 이동하며 여러 작품을 천천히 감상할 수 있습니다.
+      각 전시실은 고유한 빛과 움직임을 담아내며 누구나 편안하게 읽고 탐색할 수 있도록 설계되었습니다.
+    </p>
+
+    <div class="midword-bug">대한민국박물관</div>
+
+    <div class="overflow-bug">가로 오버플로우 테스트 요소</div>
+
+    <section aria-label="전시실 목록">
+      <h2>전시실</h2>
+      <div class="cards">
+        <article class="card" data-bench="room-card">
+          <a href="#/room/aurora">오로라 전시실</a>
+        </article>
+        <article class="card" data-bench="room-card">
+          <a href="#/room/orrery">천체 모형실</a>
+        </article>
+      </div>
+    </section>
+
+    <div id="view" aria-live="polite">현재 위치: 로비</div>
+  </main>
+
+  <footer data-bench="footer">
+    <a href="#/about">박물관 안내</a>
+  </footer>
+
+  <script>
+    (function () {
+      const viewEl = document.getElementById('view');
+      let currentRoute = 'lobby';
+      let savedScroll = 0;
+
+      function syncRoute() {
+        const hash = window.location.hash || '';
+        const m = /^#\/room\/([a-z0-9_-]+)$/i.exec(hash);
+        const nextRoute = m ? m[1] : 'lobby';
+        if (nextRoute !== currentRoute) {
+          if (currentRoute === 'lobby') {
+            savedScroll = window.scrollY;
+          }
+          currentRoute = nextRoute;
+          viewEl.classList.add('entering');
+          viewEl.textContent = currentRoute === 'lobby'
+            ? '현재 위치: 로비'
+            : '현재 위치: ' + currentRoute;
+          // Force style flush so removing .entering starts the CSS transition deterministically
+          void viewEl.offsetWidth;
+          viewEl.classList.remove('entering');
+          if (currentRoute === 'lobby') {
+            window.scrollTo(0, savedScroll);
+          }
+        }
+      }
+
+      window.addEventListener('hashchange', syncRoute);
+      syncRoute();
+
+      window.__bench = {
+        version: 1,
+        ready: Promise.resolve(),
+        setSeed() {},
+        seek() {},
+        resume() {},
+        async renderFrame() {
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        },
+        state() {
+          const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          return {
+            route: currentRoute,
+            lang: document.documentElement.lang || 'ko',
+            theme: dark ? 'dark' : 'light',
+          };
+        },
+        stats() {
+          return { drawCalls: 0, triangles: 0, listeners: 1 };
+        },
+      };
+    })();
+  </script>
+</body>
+</html>
