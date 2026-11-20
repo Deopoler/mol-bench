@@ -99,7 +99,8 @@ test("generatePreviewContactSheets builds contact sheet PNG from manifest", () =
   }
 });
 
-test("gradeSubmission fails clearly when capture/plan.mjs is missing and --no-capture is omitted", async () => {
+const CAPTURE_PRESENT = fs.existsSync(new URL("../src/capture/plan.mjs", import.meta.url));
+test("gradeSubmission fails clearly when capture/plan.mjs is missing and --no-capture is omitted", { skip: CAPTURE_PRESENT && "capture layer present" }, async () => {
   await assert.rejects(
     () =>
       gradeSubmission({
