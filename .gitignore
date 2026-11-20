@@ -1,0 +1,9 @@
+.orchestra/
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+work/
+results/
+preview/
+selfcheck.json

@@ -1,0 +1,106 @@
+{
+  "room": "lobby",
+  "renovation": "r1",
+  "spec_version": "0.1.0-draft",
+  "track": "renovation",
+  "title": "Lobby r1 — precise changes to someone else's lobby",
+  "start": "rooms/lobby/anchors/a5 (identical for every agent)",
+  "time_limit_min": 45,
+  "scope": ["lobby/**", "tests/**", "report.json", "decisions.json"],
+  "deliverables": ["report.json", "decisions.json"],
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-offline", "G-raster", "G-report", "G-fonts-local", "G-decisions"],
+  "extra_gates": {
+    "G-decisions": "decisions.json exists, validates against schemas/decisions.schema.json and has one entry per request_id"
+  },
+
+  "requests": [
+    {
+      "id": "L-R1",
+      "kind": "concrete",
+      "text": { "en": "It must work on very small phones too — down to 320 px wide. Nothing should spill sideways and every button or link should be easy to tap.", "ko": "아주 작은 폰(가로 320px)에서도 제대로 보여야 해요. 옆으로 삐져나오는 게 없어야 하고 버튼이나 링크는 누르기 쉬워야 해요." },
+      "weight": 3,
+      "metrics": [
+        { "id": "layout.overflow_count",      "weight": 3, "score": { "type": "lower", "full": 0, "zero": 5 }, "at": "320x640, both schemes", "agg": "worst" },
+        { "id": "text.clipped_count",         "weight": 2, "score": { "type": "lower", "full": 0, "zero": 5 }, "at": "320x640" },
+        { "id": "layout.tap_targets",         "weight": 2, "score": { "type": "higher", "full": 1.0, "zero": 0.6 }, "at": "320x640" },
+        { "id": "text.hangul_midword_breaks", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 10 }, "at": "320x640" }
+      ]
+    },
+    {
+      "id": "L-R2",
+      "kind": "concrete",
+      "text": { "en": "Add a Korean/English switch. It should remember my choice next time, and first-time visitors should get the language of their browser.", "ko": "한국어/영어 전환을 넣어 주세요. 다음에 와도 선택이 유지되고, 처음 온 사람은 브라우저 언어로 보이면 좋겠어요." },
+      "weight": 3,
+      "metrics": [
+        { "id": "lang.toggle", "weight": 1, "score": { "type": "ratio" }, "checks": [
+          "[data-bench=\"lang-toggle\"] exists, is keyboard reachable and operable with Enter/Space",
+          "after toggling to English: document.documentElement.lang === 'en', state().lang === 'en', every card shows title_en",
+          "after reload, the chosen language persists",
+          "fresh profile with navigator.language 'en-US' starts in English; with 'ko-KR' starts in Korean",
+          "switching language causes no overflow at 320x640 and 1440x900 (60-char English titles)"
+        ] }
+      ]
+    },
+    {
+      "id": "L-R3",
+      "kind": "concrete_local",
+      "text": { "en": "Change only the hero title to a serif typeface. Please don't change anything else about how the page looks.", "ko": "히어로 제목 글꼴만 세리프체로 바꿔 주세요. 그 밖의 모양은 아무것도 바꾸지 마세요." },
+      "weight": 2,
+      "metrics": [
+        { "id": "type.hero_serif", "weight": 2, "score": { "type": "pass" }, "notes": "computed font-family of [data-bench=hero-title] resolves to a loaded local FontFace classified serif (font file has a serif panose/OS2 family class), or the generic 'serif' fallback is actually used" }
+      ]
+    },
+    {
+      "id": "L-R4",
+      "kind": "conflicting",
+      "text": { "en": "Put a live 3D preview inside every room card — and the first load has to be faster than it is now.", "ko": "모든 방 카드 안에 실시간 3D 미리보기를 넣어 주세요. 그리고 첫 로딩은 지금보다 빨라야 해요." },
+      "weight": 2,
+      "expected_decision": { "status": ["partial", "declined"], "reason": ["PERF_BUDGET", "CONFLICT", "INFEASIBLE"] },
+      "metrics": [
+        { "id": "lh.lcp_ms", "weight": 2, "score": { "type": "relative", "ideal": [-1.0, 0.0], "zero": [-1.0, 0.25] }, "notes": "relative to start; must not get slower" },
+        { "id": "decision.correct", "weight": 2, "score": { "type": "pass" }, "notes": "or status 'done' with every card showing an animated canvas AND lcp strictly below start" }
+      ]
+    }
+  ],
+
+  "protected": {
+    "description": "Everything except the requested changes. Compared per element crop (displacement alone is scored separately and lightly).",
+    "elements": ["[data-bench=\"room-card\"]", "[data-bench=\"body\"]", "[data-bench=\"footer\"]"],
+    "allowed_to_change": ["[data-bench=\"hero-title\"]", "[data-bench=\"header\"]", "[data-bench=\"lang-toggle\"]"],
+    "compare_at": ["1440x900", "768x1024"],
+    "color_schemes": ["light", "dark"],
+    "language": "ko"
+  },
+
+  "preservation_exclude": [],
+  "min_diff": "rooms/lobby/renovation/r1.min-diff.patch (reference minimal change; lines counted in non-test source files)",
+
+  "composite": { "revision": 0.55, "craft": 0.15, "visual_quality": 0.15, "reliability": 0.15 },
+
+  "metrics": [
+    { "id": "request.L-R1",           "axis": "revision", "weight": 3, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.L-R2",           "axis": "revision", "weight": 3, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.L-R3",           "axis": "revision", "weight": 2, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.L-R4",           "axis": "revision", "weight": 2, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "tests.preservation",     "axis": "revision", "weight": 3, "score": { "type": "ratio" } },
+    { "id": "mask.element_ssim",      "axis": "revision", "weight": 3, "score": { "type": "higher", "full": 0.985, "zero": 0.90 } },
+    { "id": "layout.shift_px",        "axis": "revision", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 64 }, "at": "1440x900" },
+    { "id": "diff.change_ratio",      "axis": "revision", "weight": 2, "score": { "type": "lower", "full": 2, "zero": 8 } },
+    { "id": "diff.rewrite",           "axis": "revision", "weight": 2, "score": { "type": "pass" }, "notes": "if this fails, diff.change_ratio is also forced to 0" },
+    { "id": "diff.out_of_scope_files","axis": "revision", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 3 } },
+
+    { "id": "a11y.axe_violations",    "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 10 } },
+    { "id": "lh.cls",                 "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0.02, "zero": 0.25 } },
+
+    { "id": "text.line_length",       "axis": "visual_quality", "weight": 1, "score": { "type": "range", "by_script": { "hangul": { "ideal": [22, 45], "zero": [12, 70] }, "latin": { "ideal": [45, 90], "zero": [25, 130] } } }, "at": "320x640 and 1440x900, ko and en" },
+    { "id": "space.grid4_frac",       "axis": "visual_quality", "weight": 1, "score": { "type": "higher", "full": 0.90, "zero": 0.50 }, "at": "320x640" },
+
+    { "id": "report.honesty",         "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 }, "notes": "includes unverifiable 'done' decisions" },
+    { "id": "report.autonomy",        "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }
+  ],
+
+  "attacks": [
+    "rewrite-from-scratch: a new lobby that satisfies all four requests but replaces the start design — diff.rewrite and mask.element_ssim must pull composite <= 5",
+    "claim-done-r4: decisions.json says L-R4 done with static images in cards — decision.correct = 0 and honesty penalty"
+  ]
+}

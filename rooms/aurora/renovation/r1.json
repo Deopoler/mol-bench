@@ -1,0 +1,102 @@
+{
+  "room": "aurora",
+  "renovation": "r1",
+  "spec_version": "0.1.0-draft",
+  "track": "renovation",
+  "title": "Aurora r1 — vague feedback, measured as direction",
+  "start": "rooms/aurora/anchors/a5 (identical for every agent). Known traits of a5: motion ~2.5x nominal, oversaturated, stars stretch after resize, no reduced-motion support.",
+  "time_limit_min": 45,
+  "scope": ["room/**", "tests/**", "report.json", "decisions.json"],
+  "deliverables": ["report.json", "decisions.json"],
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-offline", "G-raster", "G-report", "G-decisions"],
+  "extra_gates": {
+    "G-decisions": "decisions.json exists, validates against schemas/decisions.schema.json and has one entry per request_id"
+  },
+  "capture": {
+    "renderer": "swiftshader",
+    "dpr": 1,
+    "viewports": ["1440x900", "768x1024"],
+    "seeds": "same public and hidden seeds as the aurora Build spec",
+    "timestamps_ms": [0, 1000, 2500, 4000, 7000, 12000]
+  },
+
+  "requests": [
+    {
+      "id": "A-R1",
+      "kind": "vague_aesthetic",
+      "text": { "en": "It feels too busy and restless. I want it calmer — a quieter, deeper night.", "ko": "너무 정신없고 들떠 보여요. 더 차분하게, 고요하고 깊은 밤 느낌이면 좋겠어요." },
+      "weight": 4,
+      "metrics": [
+        { "id": "time.motion",       "weight": 3, "score": { "type": "relative", "ideal": [-0.70, -0.30], "zero": [-0.95, 0.0] }, "notes": "calmer but not frozen; beyond -70% counts as over-correction" },
+        { "id": "color.chroma_mean", "weight": 2, "score": { "type": "relative", "ideal": [-0.35, -0.10], "zero": [-0.70, 0.05] } },
+        { "id": "lum.mean",          "weight": 1, "score": { "type": "relative", "ideal": [-0.25, 0.0], "zero": [-0.60, 0.15] } },
+        { "id": "lum.floor",         "weight": 1, "score": { "type": "pass" }, "notes": "the sky must stay visible" },
+        { "id": "color.hue_shift",   "weight": 2, "score": { "type": "lower", "full": 15, "zero": 45 }, "notes": "hues were not part of the request; keep the palette identity" },
+        { "id": "time.flicker",      "weight": 1, "score": { "type": "lower", "full": 0.15, "zero": 0.50 }, "notes": "no new flicker introduced" }
+      ]
+    },
+    {
+      "id": "A-R2",
+      "kind": "bug_report",
+      "text": { "en": "When I resize the window, the stars turn into little ovals.", "ko": "창 크기를 바꾸면 별이 작은 타원으로 변해요." },
+      "weight": 2,
+      "metrics": [
+        { "id": "scene.star_roundness", "weight": 1, "score": { "type": "range", "ideal": [0.8, 1.25], "zero": [0.5, 2.0] }, "at": "after resize sequence", "agg": "worst" }
+      ]
+    },
+    {
+      "id": "A-R3",
+      "kind": "concrete",
+      "text": { "en": "Some visitors get dizzy from motion. Please respect their system setting for reduced motion.", "ko": "움직임에 어지러움을 느끼는 관람객이 있어요. 시스템의 '동작 줄이기' 설정을 따라 주세요." },
+      "weight": 2,
+      "metrics": [
+        { "id": "a11y.reduced_motion", "weight": 2, "score": { "type": "lower", "full": 0.003, "zero": 0.015 } },
+        { "id": "reduced_motion.not_blank", "weight": 1, "score": { "type": "pass" }, "notes": "with reduced motion, lum.mean stays within ±20% of normal mode and scene.star_count within ±30% (no blank screen)" }
+      ]
+    },
+    {
+      "id": "A-R4",
+      "kind": "preserve",
+      "text": { "en": "Keep the horizon silhouette exactly as it is.", "ko": "지평선 실루엣은 지금 모양 그대로 두세요." },
+      "weight": 2,
+      "metrics": [
+        { "id": "scene.silhouette_iou",   "weight": 2, "score": { "type": "higher", "full": 0.97, "zero": 0.85 }, "agg": "worst" },
+        { "id": "mask.silhouette_delta",  "weight": 1, "score": { "type": "lower", "full": 0.02, "zero": 0.10 } }
+      ]
+    }
+  ],
+
+  "preservation_exclude": [
+    "time.motion band (re-targeted by A-R1)",
+    "color.chroma_mean-dependent palette_fidelity threshold is relaxed to full 0.75 for this track"
+  ],
+  "min_diff": "rooms/aurora/renovation/r1.min-diff.patch",
+
+  "composite": { "revision": 0.55, "craft": 0.15, "visual_quality": 0.15, "reliability": 0.15 },
+
+  "metrics": [
+    { "id": "request.A-R1",            "axis": "revision", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.A-R2",            "axis": "revision", "weight": 2, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.A-R3",            "axis": "revision", "weight": 2, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.A-R4",            "axis": "revision", "weight": 2, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "tests.preservation",      "axis": "revision", "weight": 3, "score": { "type": "ratio" } },
+    { "id": "diff.change_ratio",       "axis": "revision", "weight": 2, "score": { "type": "lower", "full": 2, "zero": 8 } },
+    { "id": "diff.rewrite",            "axis": "revision", "weight": 2, "score": { "type": "pass" }, "notes": "if this fails, diff.change_ratio is also forced to 0" },
+    { "id": "diff.out_of_scope_files", "axis": "revision", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 3 } },
+
+    { "id": "color.palette_fidelity",  "axis": "craft", "weight": 1, "score": { "type": "higher", "full": 0.75, "zero": 0.40 } },
+    { "id": "perf.frame_p95_norm_ms",  "axis": "craft", "weight": 2, "score": { "type": "lower", "full": 16.7, "zero": 50 }, "at": "1440x900" },
+
+    { "id": "render.banding",          "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0.005, "zero": 0.05 }, "calibrate": true, "notes": "a darker, calmer sky makes banding more likely — this is intentional" },
+    { "id": "render.aliasing",         "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.03, "zero": 0.15 }, "calibrate": true },
+
+    { "id": "report.honesty",          "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "report.autonomy",         "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }
+  ],
+
+  "attacks": [
+    "freeze: motion set to zero and colors greyed — A-R1 over-correction bands must hold request.A-R1 below 4",
+    "black-out: reduced-motion mode renders a black screen — reduced_motion.not_blank fails",
+    "rewrite: new shader from scratch with a different silhouette — A-R4 and diff.rewrite must pull composite <= 5"
+  ]
+}

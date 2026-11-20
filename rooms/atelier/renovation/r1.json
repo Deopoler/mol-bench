@@ -1,0 +1,96 @@
+{
+  "room": "atelier",
+  "renovation": "r1",
+  "spec_version": "0.1.0-draft",
+  "track": "renovation",
+  "title": "Atelier r1 — change someone else's lantern",
+  "start": "rooms/atelier/anchors/a5 (build.py + out/, identical for every agent). Known traits of a5: no bevels, uniform glossy metal, 41k triangles, door hinge pivot correct.",
+  "time_limit_min": 60,
+  "contract": "contract/blender.md",
+  "scope": ["build.py", "out/**", "tests/**", "report.json", "decisions.json"],
+  "deliverables": ["build.py", "out/lantern.glb", "out/lantern.blend", "report.json", "decisions.json"],
+  "gates": ["G-blender-run", "G-reproducible", "G-provenance", "G-gltf-valid", "G-offline", "G-report", "G-decisions"],
+
+  "requests": [
+    {
+      "id": "AT-R1",
+      "kind": "concrete_local",
+      "text": { "en": "Make the handle ring 25% larger. Leave everything else exactly as it is.", "ko": "손잡이 고리를 25% 크게 해 주세요. 나머지는 그대로 두세요." },
+      "weight": 2,
+      "metrics": [
+        { "id": "dims.part_scale", "weight": 2, "score": { "type": "range", "ideal": [1.23, 1.27], "zero": [1.0, 1.5] }, "notes": "Handle bbox size ratio vs start (all three axes, worst); ring section thickness may stay or scale" },
+        { "id": "geo.others_hausdorff_mm", "weight": 2, "score": { "type": "lower", "full": 0.5, "zero": 5 }, "notes": "max one-sided Hausdorff distance of every non-Handle part vs start (after AT-R2 LOD this is replaced by silhouette check, see notes)" }
+      ]
+    },
+    {
+      "id": "AT-R2",
+      "kind": "concrete",
+      "text": { "en": "We want to use it in a game engine: get it under 8,000 triangles, but it should look the same.", "ko": "게임 엔진에서 쓰려고 해요. 삼각형 8,000개 이하로 줄이되 겉보기는 똑같아야 해요." },
+      "weight": 3,
+      "metrics": [
+        { "id": "budget.triangles_abs",   "weight": 2, "score": { "type": "lower", "full": 8000, "zero": 16000 } },
+        { "id": "shape.iou_vs_start",     "weight": 2, "score": { "type": "higher", "full": 0.96, "zero": 0.85 }, "at": "12 hidden views", "agg": "median", "notes": "compared against start with AT-R1 handle change applied to the start reference" },
+        { "id": "render.flip_vs_start",   "weight": 1, "score": { "type": "lower", "full": 0.06, "zero": 0.20 }, "at": "turntable" }
+      ],
+      "notes": "Because AT-R2 legitimately changes topology, geo.others_hausdorff_mm in AT-R1 uses a 1.5 mm full band when triangles < 16000."
+    },
+    {
+      "id": "AT-R3",
+      "kind": "vague_aesthetic",
+      "text": { "en": "It looks too new — kind of plastic. Make it feel like an old antique.", "ko": "너무 새것 같고 플라스틱처럼 보여요. 오래된 골동품 느낌이 나게 해 주세요." },
+      "weight": 3,
+      "metrics": [
+        { "id": "mat.roughness_mean",  "weight": 2, "score": { "type": "relative", "ideal": [0.15, 0.80], "zero": [0.0, 2.0] }, "notes": "metal parts, sampled over surface (textures included)" },
+        { "id": "mat.variation",       "weight": 2, "score": { "type": "higher", "full": 0.04, "zero": 0.005 }, "notes": "std of L (base color) + std of roughness across the metal surface in turntable-space samples: uniform = not aged", "calibrate": true },
+        { "id": "color.chroma_mean",   "weight": 1, "score": { "type": "relative", "ideal": [-0.40, -0.05], "zero": [-0.80, 0.20] }, "at": "metal pixels of turntable renders" },
+        { "id": "color.hue_shift",     "weight": 1, "score": { "type": "lower", "full": 20, "zero": 60 }, "at": "metal pixels", "notes": "still recognizably the same metal" },
+        { "id": "vq.bevel_ratio",      "weight": 1, "score": { "type": "higher", "full": 0.6, "zero": 0.1 }, "calibrate": true, "notes": "worn edges; must survive the AT-R2 triangle budget" }
+      ]
+    },
+    {
+      "id": "AT-R4",
+      "kind": "conflicting",
+      "text": { "en": "The door should swing open a full 180 degrees. Don't change the frame.", "ko": "문이 180도까지 활짝 열리게 해 주세요. 틀은 바꾸지 마세요." },
+      "weight": 2,
+      "expected_decision": { "status": ["partial", "declined", "done"], "reason": ["CONFLICT", "INFEASIBLE", "AMBIGUOUS_RESOLVED", "NONE"] },
+      "metrics": [
+        { "id": "rig.no_collision",  "weight": 3, "score": { "type": "pass" }, "notes": "BVH overlap between Door(+Door_Glass) and Frame/Roof/Base at every frame of door_open is zero (tolerance 0.1 mm)" },
+        { "id": "rig.open_angle",    "weight": 1, "score": { "type": "higher", "full": 90, "zero": 45 }, "notes": "final opening angle (degrees) actually achieved" },
+        { "id": "geo.frame_unchanged", "weight": 2, "score": { "type": "lower", "full": 0.5, "zero": 5 }, "notes": "Hausdorff (mm) of Frame vs start (with the AT-R2 band relaxation)" },
+        { "id": "decision.correct",  "weight": 2, "score": { "type": "pass" }, "notes": "180 deg without collision and without changing the frame is possible only by moving the hinge outward on the door (offset pivot). 'done' is correct only if rig.no_collision passes, rig.open_angle >= 175 and geo.frame_unchanged scores >= 7. Otherwise partial/declined with CONFLICT/INFEASIBLE is correct." }
+      ]
+    }
+  ],
+
+  "preservation_exclude": ["budget.triangles (re-targeted by AT-R2)", "dims.key_measurements: handle ring diameter (changed by AT-R1)"],
+  "min_diff": "rooms/atelier/renovation/r1.min-diff.patch",
+
+  "composite": { "revision": 0.55, "craft": 0.15, "visual_quality": 0.15, "reliability": 0.15 },
+
+  "metrics": [
+    { "id": "request.AT-R1",           "axis": "revision", "weight": 2, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.AT-R2",           "axis": "revision", "weight": 3, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.AT-R3",           "axis": "revision", "weight": 3, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "request.AT-R4",           "axis": "revision", "weight": 2, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "tests.preservation",      "axis": "revision", "weight": 3, "score": { "type": "ratio" } },
+    { "id": "diff.change_ratio",       "axis": "revision", "weight": 1, "score": { "type": "lower", "full": 2.5, "zero": 10 } },
+    { "id": "diff.rewrite",            "axis": "revision", "weight": 2, "score": { "type": "pass" } },
+    { "id": "diff.out_of_scope_files", "axis": "revision", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 3 } },
+
+    { "id": "topo.manifold",           "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 50 } },
+    { "id": "rig.hinge",               "axis": "craft", "weight": 1, "score": { "type": "ratio" } },
+    { "id": "web.three_load",          "axis": "craft", "weight": 1, "score": { "type": "pass" } },
+
+    { "id": "vq.shading_artifacts",    "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0.002, "zero": 0.03 }, "calibrate": true, "notes": "decimation must not introduce shading artifacts" },
+    { "id": "vq.exposure",             "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [0.25, 0.65], "zero": [0.08, 0.92] } },
+
+    { "id": "report.honesty",          "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "report.autonomy",         "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }
+  ],
+
+  "attacks": [
+    "decimate-only: Blender Decimate modifier to 8k on everything (no other change) — AT-R3 fails, shading artifacts rise, composite <= 5",
+    "texture-noise: aged look via extreme random noise on roughness/color — color.hue_shift and vq.exposure bands catch it",
+    "claim-180: decisions.json 'done' with a door that passes through the frame — rig.no_collision fails, honesty penalty"
+  ]
+}

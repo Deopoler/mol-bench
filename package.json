@@ -1,0 +1,22 @@
+{
+  "name": "mol-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Museum of Light: one-shot, auto-graded visual agent benchmark",
+  "bin": { "bench": "harness/src/cli.mjs" },
+  "scripts": {
+    "test": "node --test harness/test/",
+    "bench": "node harness/src/cli.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "playwright": "1.56.1",
+    "ajv": "8.17.1",
+    "ajv-formats": "3.0.1",
+    "pngjs": "7.0.0",
+    "axe-core": "4.11.0",
+    "three": "0.180.0",
+    "lighthouse": "12.8.2"
+  }
+}

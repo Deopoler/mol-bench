@@ -1,0 +1,103 @@
+{
+  "room": "lobby",
+  "spec_version": "0.1.0-draft",
+  "track": "build",
+  "title": "Lobby — the museum entrance",
+  "brief": "The museum's landing page: hero, a grid of room cards generated from rooms.json (Korean primary, English secondary), navigation into rooms with a transition, an info section and a footer. Light and dark themes. Mobile to desktop. No frameworks beyond those vendored in the seed; fonts must be local.",
+  "time_limit_min": 60,
+  "load_timeout_ms": 8000,
+  "max_raster_asset_kb": 64,
+  "max_raster_total_kb": 256,
+  "scope": ["lobby/**", "tests/**", "report.json"],
+  "deliverables": ["lobby/index.html", "report.json"],
+
+  "generator": {
+    "description": "params.rooms = generated rooms.json. Public seeds: 8-12 rooms with realistic titles. Hidden variants additionally include: a 38-syllable Hangul title, 0 rooms, 1 room, 24 rooms, a room with status 'coming_soon', and English titles of 60 characters.",
+    "room_fields": {
+      "id": "slug",
+      "route": "#/room/<id>",
+      "title_ko": "string, 2-38 Hangul syllables plus spaces",
+      "title_en": "string, 4-60 chars",
+      "summary_ko": "string, 40-160 chars",
+      "accent_oklch": "[L, C, h]",
+      "status": "'open' | 'coming_soon'"
+    }
+  },
+
+  "dom_contract": {
+    "required_data_bench_attributes": {
+      "header": "site header",
+      "hero-title": "the main hero heading",
+      "room-card": "each room card (one per room), containing a link to the room's route",
+      "body": "running-text blocks (used by text.line_length / text.line_height)",
+      "empty-state": "shown when rooms is empty",
+      "footer": "site footer"
+    }
+  },
+
+  "state_contract": {
+    "route": "current route string ('lobby' or the room id)",
+    "lang": "'ko' | 'en' (Build: always 'ko' unless navigator.language is English — informational only)",
+    "theme": "'light' | 'dark' as currently rendered"
+  },
+
+  "capture": {
+    "renderer": "swiftshader",
+    "dpr": 1,
+    "viewports": ["360x780", "768x1024", "1440x900"],
+    "color_schemes": ["light", "dark"],
+    "virtual_time": "CDP virtual time; CSS animations and transitions are stepped deterministically",
+    "public_seeds": [1, 2, 3],
+    "hidden": "hidden/lobby/grade.json (3 seeds + edge variants listed in generator)"
+  },
+
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-offline", "G-raster", "G-report", "G-fonts-local"],
+  "extra_gates": {
+    "G-fonts-local": "every font resource is served from the local origin; document.fonts.ready resolves within load_timeout_ms"
+  },
+
+  "composite": { "craft": 0.35, "visual_quality": 0.50, "reliability": 0.15 },
+
+  "metrics": [
+    { "id": "data.rooms_rendered",               "axis": "craft", "weight": 3, "score": { "type": "ratio" }, "at": "all viewports" , "agg": "worst" },
+    { "id": "data.long_title",                   "axis": "craft", "weight": 1, "score": { "type": "pass" } },
+    { "id": "data.empty_state",                  "axis": "craft", "weight": 1, "score": { "type": "pass" } },
+    { "id": "nav.routes",                        "axis": "craft", "weight": 2, "score": { "type": "ratio" } },
+    { "id": "layout.overflow_count",             "axis": "craft", "weight": 3, "score": { "type": "lower", "full": 0, "zero": 5 }, "at": "all viewports, both schemes", "agg": "worst" },
+    { "id": "text.clipped_count",                "axis": "craft", "weight": 2, "score": { "type": "lower", "full": 0, "zero": 5 }, "at": "all viewports", "agg": "worst" },
+    { "id": "a11y.axe_violations",               "axis": "craft", "weight": 2, "score": { "type": "lower", "full": 0, "zero": 10 } },
+    { "id": "a11y.keyboard_reach",               "axis": "craft", "weight": 2, "score": { "type": "ratio" }, "notes": "required targets: every room card, theme control if any, footer links" },
+    { "id": "a11y.focus_visible",                "axis": "craft", "weight": 1, "score": { "type": "ratio" } },
+    { "id": "theme.both_valid",                  "axis": "craft", "weight": 1, "score": { "type": "pass" } },
+    { "id": "a11y.reduced_motion_transition_ms", "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 100, "zero": 400 } },
+    { "id": "lh.lcp_ms",                         "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 1200, "zero": 4000 } },
+    { "id": "lh.cls",                            "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0.02, "zero": 0.25 } },
+    { "id": "budget.transfer_kb",                "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 400, "zero": 2000 } },
+
+    { "id": "text.hangul_midword_breaks",        "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0, "zero": 10 }, "at": "all viewports", "agg": "worst" },
+    { "id": "text.line_length",                  "axis": "visual_quality", "weight": 2, "score": { "type": "range", "by_script": { "hangul": { "ideal": [22, 45], "zero": [12, 70] }, "latin": { "ideal": [45, 90], "zero": [25, 130] } } }, "at": "1440x900 and 768x1024" },
+    { "id": "text.line_height",                  "axis": "visual_quality", "weight": 1, "score": { "type": "range", "by_script": { "hangul": { "ideal": [1.5, 1.9], "zero": [1.2, 2.4] }, "latin": { "ideal": [1.4, 1.8], "zero": [1.1, 2.3] } } } },
+    { "id": "type.size_steps",                   "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [3, 6], "zero": [1, 10] }, "at": "1440x900" },
+    { "id": "type.scale_ratio_min",              "axis": "visual_quality", "weight": 1, "score": { "type": "higher", "full": 1.125, "zero": 1.02 }, "at": "1440x900" },
+    { "id": "space.grid4_frac",                  "axis": "visual_quality", "weight": 2, "score": { "type": "higher", "full": 0.90, "zero": 0.50 }, "at": "all viewports" },
+    { "id": "align.column_count",                "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 8, "zero": 20 }, "at": "1440x900" },
+    { "id": "nav.transition_ms",                 "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [150, 600], "zero": [0, 1500] } },
+    { "id": "visual.congestion",                 "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [null, null], "zero": [null, null] }, "at": "1440x900 first viewport", "calibrate": true, "notes": "band set from anchors: ideal = [a8 - 15%, a8 + 15%]" },
+
+    { "id": "report.honesty",                    "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "report.autonomy",                   "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }
+  ],
+
+  "hidden_tests": [
+    "coming_soon rooms are rendered and visibly distinguished, and are not navigable (or navigate to a placeholder) — state().route never becomes a coming_soon id",
+    "24-room variant renders all cards without overflow at 360x780",
+    "1-room variant does not stretch a single card wider than 720px at 1440x900",
+    "document has exactly one h1; headings do not skip levels",
+    "html lang attribute matches state().lang"
+  ],
+
+  "attacks": [
+    "plain-list: unstyled semantic list of links (passes a11y and layout, near-zero visual design) — must score composite <= 5 via visual_quality and transition metrics",
+    "image-page: entire lobby rendered as one raster image with an image map — blocked by G-raster and text metrics"
+  ]
+}

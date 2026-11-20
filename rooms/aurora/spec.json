@@ -1,0 +1,85 @@
+{
+  "room": "aurora",
+  "spec_version": "0.1.0-draft",
+  "track": "build",
+  "title": "Aurora — a night sky in one fragment shader",
+  "brief": "Full-viewport real-time aurora over a starry night sky with a procedural horizon silhouette. Colors come from a seeded palette. Subtle pointer parallax. Must honor prefers-reduced-motion.",
+  "time_limit_min": 60,
+  "load_timeout_ms": 15000,
+  "max_raster_asset_kb": 64,
+  "max_raster_total_kb": 128,
+  "scope": ["room/**", "tests/**", "report.json"],
+  "deliverables": ["room/index.html", "report.json"],
+
+  "generator": {
+    "description": "params = generate(seed). Public seeds use the palettes as listed; hidden seeds rotate every hue by a seeded offset in [-10, +10] degrees and jitter L by ±0.03.",
+    "palettes_oklch": [
+      [[0.78, 0.17, 160], [0.62, 0.15, 300], [0.70, 0.14, 350]],
+      [[0.82, 0.16, 175], [0.70, 0.12, 220], [0.58, 0.16, 290]],
+      [[0.76, 0.18, 145], [0.80, 0.12, 95],  [0.60, 0.15, 320]],
+      [[0.74, 0.14, 195], [0.66, 0.17, 265], [0.72, 0.13, 10]],
+      [[0.80, 0.15, 130], [0.64, 0.14, 180], [0.56, 0.17, 305]],
+      [[0.72, 0.16, 210], [0.78, 0.10, 60],  [0.62, 0.16, 280]]
+    ],
+    "params": {
+      "palette": "palettes_oklch[seed % 6] (+ hidden perturbation)",
+      "skyBaseL": "0.06 + 0.04 * rng.next()",
+      "starDensity": "one of ['sparse','normal','dense'] by rng.int(3) — expected star_count bands scale x0.5 / x1 / x1.8 (grader uses the band for the generated value)",
+      "motionScale": "0.8 + 0.4 * rng.next() (1.0 = nominal speed)"
+    }
+  },
+
+  "state_contract": {
+    "palette": "the OKLCH palette actually used, as received from params",
+    "reducedMotion": "boolean, true when prefers-reduced-motion: reduce is active",
+    "pointer": "[x, y] normalized pointer position used for parallax"
+  },
+
+  "capture": {
+    "renderer": "swiftshader",
+    "dpr": 1,
+    "viewports": ["1440x900", "768x1024", "360x780"],
+    "public_seeds": [1, 2, 3, 4, 5, 6],
+    "public_timestamps_ms": [0, 1000, 2500, 4000, 7000, 12000],
+    "hidden": "hidden/aurora/grade.json (3 seeds, 6 timestamps, same viewports)"
+  },
+
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-offline", "G-raster", "G-report"],
+
+  "composite": { "craft": 0.45, "visual_quality": 0.40, "reliability": 0.15 },
+
+  "metrics": [
+    { "id": "color.palette_fidelity",   "axis": "craft", "weight": 3, "score": { "type": "higher", "full": 0.85, "zero": 0.40 }, "at": "all viewports, all timestamps" },
+    { "id": "color.palette_coverage",   "axis": "craft", "weight": 2, "score": { "type": "higher", "full": 1.0,  "zero": 0.33 }, "at": "1440x900, all timestamps", "agg": "median" },
+    { "id": "lum.mean",                 "axis": "craft", "weight": 2, "score": { "type": "range", "ideal": [0.12, 0.28], "zero": [0.03, 0.50] }, "at": "all viewports, all timestamps" },
+    { "id": "lum.highlight_frac",       "axis": "craft", "weight": 1, "score": { "type": "range", "ideal": [0.003, 0.06], "zero": [0.0, 0.20] }, "at": "1440x900, all timestamps" },
+    { "id": "scene.star_count",         "axis": "craft", "weight": 1, "score": { "type": "range", "ideal": [80, 600], "zero": [0, 3000] }, "at": "1440x900, t=0", "notes": "band is multiplied by the starDensity factor" },
+    { "id": "scene.star_roundness",     "axis": "craft", "weight": 2, "score": { "type": "range", "ideal": [0.8, 1.25], "zero": [0.5, 2.0] }, "at": "after resize sequence", "agg": "worst" },
+    { "id": "scene.silhouette",         "axis": "craft", "weight": 1, "score": { "type": "pass" }, "at": "all viewports, t=4000", "agg": "worst" },
+    { "id": "interact.pointer_response","axis": "craft", "weight": 1, "score": { "type": "range", "ideal": [0.01, 0.08], "zero": [0.0, 0.25] }, "at": "1440x900, t=4000" },
+    { "id": "a11y.reduced_motion",      "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0.003, "zero": 0.015 }, "at": "1440x900" },
+    { "id": "perf.frame_p95_norm_ms",   "axis": "craft", "weight": 3, "score": { "type": "lower", "full": 16.7, "zero": 50 }, "at": "1440x900" },
+    { "id": "budget.bundle_gz_kb",      "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 150, "zero": 600 } },
+    { "id": "budget.draw_calls",        "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 4, "zero": 40 } },
+
+    { "id": "time.motion",              "axis": "visual_quality", "weight": 2, "score": { "type": "range", "ideal": [0.002, 0.015], "zero": [0.0, 0.06] }, "at": "1440x900", "notes": "alive but smooth; band is multiplied by motionScale" },
+    { "id": "time.flicker",             "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.15, "zero": 0.50 }, "at": "1440x900, t0=2500" },
+    { "id": "render.banding",           "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.005, "zero": 0.05 }, "at": "all viewports, all timestamps", "calibrate": true },
+    { "id": "render.aliasing",          "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0.03, "zero": 0.15 }, "at": "1440x900, t=4000", "calibrate": true },
+
+    { "id": "report.honesty",           "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "report.autonomy",          "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }
+  ],
+
+  "hidden_tests": [
+    "state().palette equals params.palette (after hidden perturbation)",
+    "setSeed(a) then setSeed(b) then setSeed(a) reproduces the first frame bit-exactly",
+    "resume() after seek continues from the frozen clock (no jump > 1 frame)",
+    "window resize at runtime keeps the canvas at full viewport with correct drawing-buffer size"
+  ],
+
+  "attacks": [
+    "flat-black: solid near-black frame with a few stars (zero banding, zero flicker) — must score composite <= 4",
+    "palette-wallpaper: static full-screen palette stripes (perfect palette metrics, no motion, no sky) — must score composite <= 4"
+  ]
+}

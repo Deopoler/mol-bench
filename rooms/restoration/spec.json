@@ -1,0 +1,139 @@
+{
+  "room": "restoration",
+  "spec_version": "0.1.0-draft",
+  "track": "build",
+  "title": "Restoration — the broken orrery room",
+  "brief": "A working Three.js orrery room (brass rings, planets, a wall plaque with a color chart, a decal floor) ships with four planted bugs. The agent receives only visitor complaints, must find root causes, fix them minimally, add a red-green regression test per bug, and report root-cause codes.",
+  "time_limit_min": 90,
+  "load_timeout_ms": 20000,
+  "max_raster_asset_kb": 256,
+  "max_raster_total_kb": 1024,
+  "scope": ["room/src/**", "tests/regression/**", "report.json"],
+  "deliverables": ["report.json", "tests/regression/"],
+
+  "generator": {
+    "description": "seed selects one bug from each category (2 x 2 x 2 x 2 = 16 variants). Public seeds 1-4 cover each bug at least twice; hidden seeds use the remaining combinations. Camera path and orbit phases are also seeded.",
+    "bug_selection": "for each category in order [color, depth, lifecycle, view_time]: pick pool[category][rng.int(2)]"
+  },
+
+  "state_contract": {
+    "focusedIndex": "index of the focused planet",
+    "orbitAngleDeg": "orbit angle of the reference planet (planet 0), degrees, wrapped to [0, 360)",
+    "chartPatches": "array of 12 {x, y} pixel centers of the color-chart patches in the current frame",
+    "camera": "{position:[x,y,z], target:[x,y,z]}",
+    "route": "'orrery'"
+  },
+
+  "root_cause_codes": [
+    "COLOR_SPACE_DOUBLE_ENCODE", "TEXTURE_COLOR_SPACE", "TONE_MAPPING_MISSING", "PREMULTIPLIED_ALPHA",
+    "DEPTH_PRECISION_ZFIGHT", "SHADOW_BIAS", "NORMAL_MAP_Y_FLIP", "MIPMAP_MISSING",
+    "RESOURCE_NOT_DISPOSED", "LISTENER_NOT_REMOVED", "RACE_ASSET_LOAD", "TIMER_NOT_CLEARED",
+    "ASPECT_NOT_UPDATED", "FRAME_RATE_DEPENDENT_UPDATE", "PIXEL_RATIO_MISMATCH", "FLOAT_PRECISION_SHADER",
+    "OTHER"
+  ],
+  "root_cause_codes_notes": "Public list given to the agent verbatim. Contains decoys; only 8 codes are ever planted.",
+
+  "bug_pool": {
+    "color": [
+      {
+        "id": "B1", "root_cause": "COLOR_SPACE_DOUBLE_ENCODE", "ref_fix_lines": 2,
+        "report": { "en": "Everything looks washed out and grey, like there is fog over the whole room.", "ko": "방 전체가 뿌옇고 색이 바랬어요. 안개 낀 것 같아요." },
+        "metrics": [
+          { "id": "ref.flip",      "weight": 2, "score": { "type": "lower", "full": 0.05, "zero": 0.20 }, "at": "1440x900, t in [1000, 4000, 9000]" },
+          { "id": "ref.lum_delta", "weight": 1, "score": { "type": "lower", "full": 0.03, "zero": 0.15 }, "at": "1440x900, t in [1000, 4000, 9000]" }
+        ]
+      },
+      {
+        "id": "B8", "root_cause": "TEXTURE_COLOR_SPACE", "ref_fix_lines": 1,
+        "report": { "en": "The color chart on the wall plaque looks much darker and muddier than the printed one.", "ko": "벽 안내판 색상표가 실제 인쇄본보다 훨씬 어둡고 탁해요." },
+        "metrics": [
+          { "id": "color.patch_delta", "weight": 3, "score": { "type": "lower", "full": 0.02, "zero": 0.10 }, "at": "1440x900, t=1000" }
+        ]
+      }
+    ],
+    "depth": [
+      {
+        "id": "B2", "root_cause": "DEPTH_PRECISION_ZFIGHT", "ref_fix_lines": 3,
+        "report": { "en": "The floor pattern under the orrery shimmers and crawls when the camera drifts.", "ko": "천체 모형 아래 바닥 무늬가 카메라가 움직이면 지글지글 떨려요." },
+        "metrics": [
+          { "id": "time.flicker_region", "weight": 3, "score": { "type": "lower", "full": 0.005, "zero": 0.05 }, "mask": "masks/floor_decal.png", "at": "1440x900, cameraPath micro-drift", "calibrate": true }
+        ]
+      },
+      {
+        "id": "B6", "root_cause": "SHADOW_BIAS", "ref_fix_lines": 2,
+        "report": { "en": "There are weird stripes all over the brass rings, like a moire pattern.", "ko": "황동 고리에 물결 같은 이상한 줄무늬가 잔뜩 있어요." },
+        "metrics": [
+          { "id": "render.stripe_energy", "weight": 3, "score": { "type": "lower", "full": 1.2, "zero": 3.0 }, "mask": "masks/rings.png", "at": "1440x900, t in [1000, 4000]", "calibrate": true }
+        ]
+      }
+    ],
+    "lifecycle": [
+      {
+        "id": "B3", "root_cause": "RESOURCE_NOT_DISPOSED", "ref_fix_lines": 8,
+        "report": { "en": "If I go in and out of the room a bunch of times, everything gets slower and slower.", "ko": "방을 여러 번 들어갔다 나왔다 하면 점점 느려져요." },
+        "metrics": [
+          { "id": "mem.resource_baseline", "weight": 2, "score": { "type": "pass" } },
+          { "id": "mem.heap_growth_mb",    "weight": 1, "score": { "type": "lower", "full": 2, "zero": 30 } }
+        ]
+      },
+      {
+        "id": "B7", "root_cause": "LISTENER_NOT_REMOVED", "ref_fix_lines": 4,
+        "report": { "en": "After visiting the room a few times, one click makes the planet jump several steps at once.", "ko": "몇 번 다녀오면 한 번 클릭했는데 행성이 여러 칸 넘어가요." },
+        "metrics": [
+          { "id": "mem.listener_baseline",  "weight": 1, "score": { "type": "pass" } },
+          { "id": "interact.single_step",   "weight": 2, "score": { "type": "pass" } }
+        ]
+      }
+    ],
+    "view_time": [
+      {
+        "id": "B4", "root_cause": "ASPECT_NOT_UPDATED", "ref_fix_lines": 3,
+        "report": { "en": "When I rotate my tablet or resize the window, the planets turn into eggs.", "ko": "창 크기를 바꾸거나 태블릿을 돌리면 행성이 달걀 모양이 돼요." },
+        "metrics": [
+          { "id": "shape.circularity", "weight": 3, "score": { "type": "higher", "full": 0.97, "zero": 0.85 }, "at": "after resize 1440x900 -> 768x1024 -> 1200x700", "agg": "worst" }
+        ]
+      },
+      {
+        "id": "B5", "root_cause": "FRAME_RATE_DEPENDENT_UPDATE", "ref_fix_lines": 4,
+        "report": { "en": "On my gaming monitor the planets spin way too fast, and on my old laptop they crawl.", "ko": "게이밍 모니터에선 행성이 너무 빨리 돌고, 오래된 노트북에선 엄청 느려요." },
+        "metrics": [
+          { "id": "anim.clock_independence", "weight": 3, "score": { "type": "lower", "full": 0.5, "zero": 20 } }
+        ]
+      }
+    ]
+  },
+
+  "capture": {
+    "renderer": "swiftshader",
+    "dpr": 1,
+    "viewports": ["1440x900", "768x1024"],
+    "public_seeds": [1, 2, 3, 4],
+    "hidden": "hidden/restoration/grade.json (4 seeds covering combinations not in public seeds)"
+  },
+
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-offline", "G-report"],
+
+  "composite": { "craft": 0.65, "visual_quality": 0.15, "reliability": 0.20 },
+
+  "metrics": [
+    { "id": "bugs.fixed",              "axis": "craft", "weight": 12, "score": { "type": "higher", "full": 10, "zero": 0 }, "notes": "mean over the 4 planted bugs of each bug's weighted metric score (bug_pool)" },
+    { "id": "tests.hidden",            "axis": "craft", "weight": 3,  "score": { "type": "ratio" }, "notes": "orrery still works: orbits, focus cycling, plaque, camera drift, mount/unmount" },
+    { "id": "tests.redgreen",          "axis": "craft", "weight": 2,  "score": { "type": "ratio" } },
+    { "id": "rootcause.accuracy",      "axis": "craft", "weight": 2,  "score": { "type": "ratio" } },
+    { "id": "diff.change_ratio",       "axis": "craft", "weight": 1,  "score": { "type": "lower", "full": 2, "zero": 8 }, "notes": "denominator = sum of ref_fix_lines of the 4 planted bugs" },
+    { "id": "diff.out_of_scope_files", "axis": "craft", "weight": 1,  "score": { "type": "lower", "full": 0, "zero": 3 } },
+
+    { "id": "time.flicker",            "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.10, "zero": 0.40 }, "at": "1440x900, static camera" },
+    { "id": "render.aliasing",         "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.04, "zero": 0.15 }, "at": "1440x900, t=4000", "calibrate": true },
+    { "id": "perf.frame_p95_norm_ms",  "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 16.7, "zero": 50 }, "at": "1440x900", "notes": "fixes must not tank performance" },
+
+    { "id": "report.honesty",          "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "report.autonomy",         "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }
+  ],
+
+  "attacks": [
+    "symptom-mask: B1 'fixed' by a post-process curve that matches mean L but not colors — ref.flip must stay above full band",
+    "freeze-orbit: B5 'fixed' by stopping the orbit — tests.hidden (orbit advances) must fail",
+    "no-unmount: B3/B7 'fixed' by never unmounting (room kept alive) — mount/unmount hidden test must fail"
+  ]
+}

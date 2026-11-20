@@ -1,0 +1,107 @@
+{
+  "room": "atelier",
+  "spec_version": "0.1.0-draft",
+  "track": "build",
+  "title": "Atelier — build the museum lantern from a blueprint",
+  "brief": "Model a hanging museum lantern in Blender, by script only, from a blueprint: three orthographic silhouettes, a dimension sheet, a material sheet and a part list. Glass panes, a metal frame, a ring handle, a candle with an emissive flame, and a hinged door with an 'door_open' action. The result is exported to glTF and placed in the museum.",
+  "time_limit_min": 90,
+  "contract": "contract/blender.md",
+  "asset_name": "lantern",
+  "scope": ["build.py", "out/**", "tests/**", "report.json"],
+  "deliverables": ["build.py", "out/lantern.glb", "out/lantern.blend", "report.json"],
+
+  "generator": {
+    "description": "One seed per benchmark version, the same for every agent (comparability). The hidden reference builder hidden/atelier/reference_build.py creates the true lantern for the seed; the harness renders the blueprint and the hidden views from it. The agent never receives the parameter list — only drawings and sheets.",
+    "hidden_params": {
+      "sides": "5..8",
+      "body_height_mm": "220..340",
+      "body_width_mm": "140..220 (across flats)",
+      "roof": "'pyramid' | 'dome' | 'stepped'",
+      "base": "'flat' | 'footed'",
+      "handle_ring_inner_d_mm": "40..80",
+      "door_side": "which face carries the door; hinge on its left or right vertical frame bar",
+      "frame_bar_mm": "6..12 (square or round section)",
+      "metal": "'brass' | 'aged_iron' | 'copper'"
+    }
+  },
+
+  "blueprint": {
+    "files": {
+      "front.png": "orthographic silhouette, 2048x2048, 0.25 mm/px, with scale bar",
+      "side.png": "orthographic silhouette, same scale",
+      "top.png": "orthographic silhouette, same scale",
+      "dimensions.json": "overall bbox (mm), handle ring inner diameter, frame bar section, door face index and hinge side, door opening angle (90 deg), origin rule",
+      "materials.json": "per part: OKLCH base color swatch, metallic, roughness range, transmission/IOR for glass, emission color/strength for flame",
+      "parts.json": "required object names and parent hierarchy, which parts must be watertight",
+      "budget.json": "triangle budget (default 30000), texture budget (<= 2 textures, <= 1024 px)"
+    },
+    "required_hierarchy": {
+      "Lantern": ["Frame", "Roof", "Base", "Handle", "Glass", "Candle", "Flame"],
+      "Frame": ["Door"],
+      "Door": ["Door_Glass"]
+    },
+    "origin_rule": "Lantern root origin at the bottom center of the base, lowest point at z = 0 (Blender Z-up), all object scales applied (1,1,1)."
+  },
+
+  "capture": {
+    "renderer": "Blender Cycles CPU, pinned version, fixed seed, 128 samples, denoiser off, single fixed thread count",
+    "studio_scene": "harness/blender/studio.blend (3-point lights + CC0 HDRI, neutral grey backdrop); submission is linked in, never edited",
+    "public_views": ["front_ortho", "side_ortho", "top_ortho"],
+    "hidden_views": "8 oblique orthographic views (azimuth 0..315 step 45, elevation +25) + 4 from below (elevation -30); used only by shape.iou_hidden",
+    "turntable": "8 perspective beauty renders at 1024x1024 for visual metrics and the Judge Console",
+    "web_check": "the .glb is also loaded into the lobby's three.js pedestal scene under SwiftShader"
+  },
+
+  "gates": ["G-blender-run", "G-reproducible", "G-provenance", "G-gltf-valid", "G-offline", "G-report"],
+  "extra_gates": {
+    "G-blender-run": "build.py exits 0 within 120 s and writes both out/ files",
+    "G-reproducible": "re-running build.py produces a .glb whose geometry hash (positions quantized to 0.01 mm, indices, per-primitive material names) equals the submitted one",
+    "G-provenance": "no imports of mesh/scene files outside blueprint/ or assets/ (runtime hook on bpy.ops.import_* and bpy.data.libraries.load)",
+    "G-gltf-valid": "Khronos glTF-Validator: 0 errors"
+  },
+
+  "composite": { "craft": 0.55, "visual_quality": 0.30, "reliability": 0.15 },
+
+  "metrics": [
+    { "id": "shape.iou_public",        "axis": "craft", "weight": 3, "score": { "type": "higher", "full": 0.97, "zero": 0.80 }, "at": "front, side, top", "agg": "worst" },
+    { "id": "shape.iou_hidden",        "axis": "craft", "weight": 5, "score": { "type": "higher", "full": 0.93, "zero": 0.75 }, "at": "12 hidden views", "agg": "median", "notes": "the real modeling test: matching three views is not enough" },
+    { "id": "dims.bbox_error",         "axis": "craft", "weight": 2, "score": { "type": "lower", "full": 0.01, "zero": 0.10 } },
+    { "id": "dims.key_measurements",   "axis": "craft", "weight": 2, "score": { "type": "ratio" }, "notes": "handle ring inner diameter ±2%, frame bar section ±10%, pane count exact, door on the specified face" },
+    { "id": "scene.hierarchy",         "axis": "craft", "weight": 1, "score": { "type": "ratio" } },
+    { "id": "scene.units_origin",      "axis": "craft", "weight": 1, "score": { "type": "ratio" } },
+    { "id": "rig.hinge",               "axis": "craft", "weight": 3, "score": { "type": "ratio" } },
+    { "id": "topo.manifold",           "axis": "craft", "weight": 2, "score": { "type": "lower", "full": 0, "zero": 50 }, "notes": "non-manifold edges on parts flagged watertight in parts.json" },
+    { "id": "topo.normals_outward",    "axis": "craft", "weight": 1, "score": { "type": "higher", "full": 1.0, "zero": 0.9 } },
+    { "id": "topo.degenerate",         "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0, "zero": 100 } },
+    { "id": "budget.triangles",        "axis": "craft", "weight": 2, "score": { "type": "lower", "full": 1.0, "zero": 4.0 }, "notes": "value = triangles / budget" },
+    { "id": "mat.assignment",          "axis": "craft", "weight": 1, "score": { "type": "ratio" } },
+    { "id": "mat.pbr_plausible",       "axis": "craft", "weight": 2, "score": { "type": "ratio" } },
+    { "id": "mat.color_delta",         "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0.03, "zero": 0.15 } },
+    { "id": "uv.overlap",              "axis": "craft", "weight": 1, "score": { "type": "lower", "full": 0.0, "zero": 0.2 }, "notes": "only for parts that use a texture" },
+    { "id": "web.three_load",          "axis": "craft", "weight": 1, "score": { "type": "pass" } },
+
+    { "id": "vq.bevel_ratio",          "axis": "visual_quality", "weight": 3, "score": { "type": "higher", "full": 0.8, "zero": 0.1 }, "calibrate": true, "notes": "hard 90-degree metal edges catch no light and look CG" },
+    { "id": "vq.shading_artifacts",    "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.002, "zero": 0.03 }, "calibrate": true },
+    { "id": "vq.texel_density_cv",     "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.25, "zero": 1.0 }, "notes": "only if textures are used; otherwise weight drops out" },
+    { "id": "vq.exposure",             "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [0.30, 0.65], "zero": [0.08, 0.92] }, "notes": "mean L of object pixels in turntable renders under the fixed studio light" },
+    { "id": "vq.highlight_metal",      "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [0.01, 0.08], "zero": [0.0, 0.25] }, "notes": "fraction of metal pixels with L > 0.85 (metals read as metal)" },
+    { "id": "vq.detail_scale",         "axis": "visual_quality", "weight": 2, "score": { "type": "range", "ideal": [null, null], "zero": [null, null] }, "calibrate": true, "notes": "band from reference: ideal = reference ± 20%" },
+    { "id": "render.aliasing",         "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 0.03, "zero": 0.15 }, "at": "turntable", "calibrate": true },
+
+    { "id": "report.honesty",          "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
+    { "id": "report.autonomy",         "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }
+  ],
+
+  "hidden_tests": [
+    "Flame material is emissive and Flame casts no shadow-blocking geometry over the glass (Flame is excluded or tiny)",
+    "Glass panes are single objects per pane or one 'Glass' object with thickness >= 1 mm (not zero-thickness planes)",
+    "Door_Glass moves with Door during door_open",
+    "glb loads in three.js with <= 12 draw calls and no console errors"
+  ],
+
+  "attacks": [
+    "three-view-extrusion: intersection of the three silhouettes extruded (perfect public IoU) — shape.iou_hidden and dims.key_measurements must pull composite <= 4",
+    "single-blob: one unnamed mesh with correct outline, no hierarchy, no hinge — must score composite <= 4",
+    "dense-mesh: 2M-triangle subdivided model — budget.triangles and web.three_load must pull composite <= 5"
+  ]
+}
