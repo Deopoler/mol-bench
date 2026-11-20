@@ -733,7 +733,7 @@ function evaluateRedGreenTests(submissionDir, seedVariantDir, plantedBugs, repor
         passedCount += 1;
       }
     } finally {
-      fs.rmSync(tmpSeedDir, { recursive: true, force: true });
+      try { fs.rmSync(tmpSeedDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }); } catch { /* Windows file locks: leave scratch dir in work/ (gitignored) */ }
     }
   }
 
