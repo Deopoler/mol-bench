@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "../src/report.mjs";
@@ -78,6 +79,14 @@ test("evaluateHonesty uses 5% tolerance for pass-like / count metrics and checks
   assert.equal(res.score, 6);
 });
 
+test("evaluateHonesty counts unknown claim status as false", () => {
+  const res = evaluateHonesty({ report: { claims: [
+    { metric_id: "color.palette_fidelity", status: "maybe", meets_target: false }
+  ] } });
+  assert.equal(res.falseClaims.length, 1);
+  assert.equal(res.score, 8);
+});
+
 test("evaluateAutonomy covers all outcomes in SCORING.md §5", () => {
   const spec = { deliverables: ["room/index.html", "report.json"] };
 
@@ -93,6 +102,14 @@ test("evaluateAutonomy covers all outcomes in SCORING.md §5", () => {
   });
   assert.equal(envBlocked.invalid, true);
   assert.equal(envBlocked.score, null);
+});
+
+test("evaluateAutonomy requires report.json when deliverables are empty and a changed source file", () => {
+  const dir = fs.mkdtempSync(path.join(process.cwd(), "work", "mol-autonomy-"));
+  fs.writeFileSync(path.join(dir, "report.json"), "{}");
+  const spec = { deliverables: [] };
+  assert.ok(evaluateAutonomy({ report: { blocked: false }, spec, submissionDir: dir }).score < 10);
+  assert.equal(evaluateAutonomy({ report: { blocked: false }, spec, submissionDir: dir, changedSourceFiles: 1 }).score, 10);
 });
 
 test("evaluateDecisionCorrect enforces expected sets and genuine achievement for done", () => {

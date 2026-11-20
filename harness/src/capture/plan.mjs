@@ -1,5 +1,7 @@
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { startServer } from './server.mjs';
 import { launchBrowser } from './browser.mjs';
@@ -10,6 +12,23 @@ import { runTests } from './testrunner.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CALIBRATION_DIR = path.join(__dirname, 'calibration');
 const PERF_REFERENCE_PATH = path.resolve(__dirname, '../../perf/reference.json');
+
+export function measureLiveFlip(imageA, imageB, { noPython = false } = {}) {
+  if (noPython) return { flip: null, pass: null, detail: 'FLIP not evaluated because Python is disabled' };
+  const pyDir = path.resolve(__dirname, '../../../metrics');
+  const py = [path.resolve(__dirname, '../../../.venv/Scripts/python.exe'), path.resolve(__dirname, '../../../.venv/bin/python')].find((p) => existsSync(p)) || 'python';
+  try {
+    const flip = Number(execFileSync(py, ['-m', 'molmetrics', 'flip', imageA, imageB], {
+      cwd: path.resolve(__dirname, '../../..'),
+      env: { ...process.env, PYTHONPATH: [pyDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
+    }).trim());
+    if (!Number.isFinite(flip)) throw new Error('molmetrics returned a non-number');
+    return { flip, pass: flip <= 0.02, detail: `FLIP=${flip.toFixed(5)} (threshold <= 0.02)` };
+  } catch (err) {
+    return { flip: null, pass: false, detail: `FLIP unavailable: ${err.message}` };
+  }
+}
 
 const RASTER_EXTS = new Set([
   '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif',
@@ -223,6 +242,7 @@ export async function executePlan(plan, {
   spec = {},
   adapter = null,
   hidden = false,
+  noPython = false,
   planTimeoutMs = null,
 } = {}) {
   if (!submissionDir) throw new Error('executePlan requires submissionDir');
@@ -357,7 +377,9 @@ export async function executePlan(plan, {
     const canRender = gates['G-load'].pass && gates['G-contract'].pass;
 
     // ---- Gate: G-determinism (same sample rendered twice in FRESH pages) ----
-    if (canRender) {
+    if (canRender && noPython) {
+      gates['G-live'] = { pass: null, detail: 'FLIP not evaluated because Python is disabled' };
+    } else if (canRender) {
       const detSample = plan?.frames?.[0] || {
         seed: defaultSeed,
         t: 1000,
@@ -489,8 +511,10 @@ export async function executePlan(plan, {
         await seekHandle.close();
       }
 
+      const flipResult = measureLiveFlip(path.join(framesDir, '_g_live_seek.png'), path.join(framesDir, '_g_live_live.png'));
+      const flip = flipResult.flip;
       const mad = pngMeanAbsDiff(seekBuf, liveBuf);
-      const livePass = mad <= 0.02;
+      const livePass = flipResult.pass;
       manifest.live_check = {
         seed: liveSeed,
         t: tActual,
@@ -499,10 +523,11 @@ export async function executePlan(plan, {
         seek_file: 'frames/_g_live_seek.png',
         live_file: 'frames/_g_live_live.png',
         mad_proxy: mad,
+        flip,
       };
       gates['G-live'] = {
         pass: livePass,
-        detail: `Seek vs live MAD proxy=${mad.toFixed(5)} at t=${tActual.toFixed(2)}ms (threshold <= 0.02; PNGs saved for Python FLIP)`,
+        detail: `Seek vs live FLIP=${flip === null ? 'unavailable' : flip.toFixed(5)} (threshold <= 0.02); MAD proxy=${mad.toFixed(5)} at t=${tActual.toFixed(2)}ms`,
       };
     } else {
       gates['G-live'] = { pass: false, detail: 'Skipped because G-load/G-contract failed' };

@@ -375,6 +375,21 @@ export function collectRun({
   if (lenient) gradeArgs.push("--lenient");
   gradeArgs.push("--work-dir", workDir);
 
+  // 5a. Export the start snapshot (first commit of the run repo) so diff metrics compare against it.
+  const startDir = path.join(resolvedRepoRoot, "work", "collect", runId, "start");
+  try {
+    fs.rmSync(startDir, { recursive: true, force: true });
+    fs.mkdirSync(startDir, { recursive: true });
+    const startCommit = execFileSync("git", ["-C", runDir, "rev-list", "--max-parents=0", "HEAD"], { encoding: "utf8" })
+      .trim().split(/\s+/)[0];
+    execFileSync("git", ["-C", runDir, "--work-tree", startDir, "checkout", startCommit, "--", "."], { stdio: "ignore" });
+    for (const heavy of ["bench", "metrics"]) fs.rmSync(path.join(startDir, heavy), { recursive: true, force: true });
+    gradeArgs.push("--start", startDir);
+  } catch (err) {
+    process.stderr.write(`collect: could not export start snapshot (${err.message}); diff metrics will fail closed
+`);
+  }
+
   const stdout = execFileSync(process.execPath, gradeArgs, {
     cwd: resolvedRepoRoot,
     env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: "0" },

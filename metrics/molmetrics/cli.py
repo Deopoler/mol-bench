@@ -486,6 +486,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to start submission manifest.json for renovation comparisons",
     )
+    flip = sub.add_parser("flip", help="Print mean FLIP between two PNG images")
+    flip.add_argument("image_a")
+    flip.add_argument("image_b")
     comp.add_argument(
         "--metric",
         action="append",
@@ -499,6 +502,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "flip":
+        from .flip import mean_flip
+
+        print(mean_flip(load_image(args.image_a), load_image(args.image_b)))
+        return 0
     if args.command == "compute":
         result = compute_metrics(
             manifest_path=args.manifest,
