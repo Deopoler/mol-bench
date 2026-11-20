@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -112,7 +113,14 @@ export async function gradeSubmission({
 
   const spec = loadSpec(room, { renovation, lenient, repoRoot });
   const runId = `${spec.room}${spec.renovation ? `_${spec.renovation}` : ""}_${Date.now()}`;
-  const resolvedWorkDir = workDir ? path.resolve(workDir) : path.join(repoRoot, "work", runId, spec.room);
+  let resolvedWorkDir = workDir ? path.resolve(workDir) : path.join(repoRoot, "work", runId, spec.room);
+  // Sandboxed agents (e.g. agy) may be unable to create folders in their workspace; fall back to the OS temp dir.
+  try { fs.mkdirSync(resolvedWorkDir, { recursive: true }); }
+  catch (err) {
+    if (workDir || !["EPERM", "EACCES"].includes(err?.code)) throw err;
+    resolvedWorkDir = path.join(os.tmpdir(), "mol-bench-work", runId, spec.room);
+    fs.mkdirSync(resolvedWorkDir, { recursive: true });
+  }
 
   // Load hidden seeds/timestamps if --hidden and hidden/<room>/grade.json exists
   let seeds = spec.capture?.public_seeds ?? [1];
