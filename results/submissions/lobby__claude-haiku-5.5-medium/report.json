@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "summary": "Finished lobby at lobby/index.html (+ styles.css, app.js): hero, room cards from window.__benchHost.params.rooms with title_ko/title_en toggle, coming-soon cards without links, empty state, hash routes #/room/<id> with back navigation, light/dark theme, reduced-motion support, system fonts only. Selfcheck: most craft and visual metrics pass; visual.congestion (0.202) is above the zero band; G-live FAILs only because the harness resolves metrics/.venv outside this folder (manual FLIP 0.0). Not measured: theme, reduced motion, LCP/CLS, transfer size, nav transition, hidden tests.",
+  "deliverables": [
+    "lobby/index.html",
+    "lobby/styles.css",
+    "lobby/app.js",
+    "tests/lobby.regression.mjs",
+    "report.json"
+  ],
+  "claims": [
+    { "metric_id": "data.rooms_rendered", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck, public seeds 1-3, 360/768/1440" },
+    { "metric_id": "data.long_title", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck, public seeds" },
+    { "metric_id": "data.empty_state", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck, public seeds" },
+    { "metric_id": "nav.routes", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck: click, hash route, state, back" },
+    { "metric_id": "layout.overflow_count", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck, all viewports and schemes" },
+    { "metric_id": "text.clipped_count", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck" },
+    { "metric_id": "a11y.axe_violations", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck (axe)" },
+    { "metric_id": "a11y.keyboard_reach", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck: Tab order, Enter validates links" },
+    { "metric_id": "a11y.focus_visible", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck: focus ring pixel diff" },
+    { "metric_id": "text.hangul_midword_breaks", "status": "verified", "meets_target": true, "measured_value": 0, "method": "bench selfcheck" },
+    { "metric_id": "text.line_length", "status": "verified", "meets_target": true, "measured_value": 37, "method": "bench selfcheck at 1440x900 and 768x1024" },
+    { "metric_id": "text.line_height", "status": "verified", "meets_target": true, "measured_value": 1.7, "method": "bench selfcheck" },
+    { "metric_id": "type.size_steps", "status": "verified", "meets_target": true, "measured_value": 5, "method": "bench selfcheck at 1440x900" },
+    { "metric_id": "type.scale_ratio_min", "status": "verified", "meets_target": true, "measured_value": 1.1429, "method": "bench selfcheck at 1440x900" },
+    { "metric_id": "space.grid4_frac", "status": "verified", "meets_target": true, "measured_value": 1, "method": "bench selfcheck" },
+    { "metric_id": "align.column_count", "status": "verified", "meets_target": true, "measured_value": 7, "method": "bench selfcheck at 1440x900" },
+    { "metric_id": "visual.congestion", "status": "verified", "meets_target": false, "measured_value": 0.202, "method": "bench selfcheck at 1440x900; ideal band 0.10-0.12, zero at 0.15" },
+    { "metric_id": "G-live", "status": "not_verified", "method": "selfcheck FAIL: harness resolves metrics/.venv relative to parent of folder. Manual molmetrics flip on the same frames = 0.0; MAD = 0.0" },
+    { "metric_id": "tests.hidden", "status": "not_verified", "method": "hidden suite not available; tests/lobby.regression.mjs written but not executed" },
+    { "metric_id": "theme.both_valid", "status": "not_verified", "method": "not measured by selfcheck" },
+    { "metric_id": "a11y.reduced_motion_transition_ms", "status": "not_verified", "method": "not measured by selfcheck; CSS sets 0.01ms under prefers-reduced-motion" },
+    { "metric_id": "lh.lcp_ms", "status": "not_verified", "method": "not measured by selfcheck" },
+    { "metric_id": "lh.cls", "status": "not_verified", "method": "not measured by selfcheck" },
+    { "metric_id": "budget.transfer_kb", "status": "not_verified", "method": "not measured by selfcheck; no raster assets, one CSS and one JS file" },
+    { "metric_id": "nav.transition_ms", "status": "not_verified", "method": "not measured by selfcheck (null); CSS transform animation 240ms" }
+  ],
+  "blocked": false
+}
