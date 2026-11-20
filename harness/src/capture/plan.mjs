@@ -248,7 +248,10 @@ export async function executePlan(plan, {
   if (!submissionDir) throw new Error('executePlan requires submissionDir');
   if (!workDir) throw new Error('executePlan requires workDir');
 
-  const watchdogMs = Number(planTimeoutMs ?? plan?.timeoutMs ?? 180_000);
+  // Restoration's functional suite drives multiple seeded mounts and resize,
+  // lifecycle, and animation captures. Allow that full plan to finish on
+  // software WebGL while retaining a finite watchdog for hung submissions.
+  const watchdogMs = Number(planTimeoutMs ?? plan?.timeoutMs ?? 600_000);
   const absWorkDir = path.resolve(workDir);
   const framesDir = path.join(absWorkDir, 'frames');
   await fs.mkdir(framesDir, { recursive: true });

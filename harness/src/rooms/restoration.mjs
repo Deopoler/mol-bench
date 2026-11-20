@@ -10,7 +10,6 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -547,7 +546,7 @@ async function ensureCachedSeedVariant(variantSeed, repoRoot) {
   if (variantSeed === 1 && fs.existsSync(path.join(seedDir, "room", "src", "orrery.js"))) {
     return seedDir;
   }
-  const cacheDir = path.join(os.tmpdir(), "mol_restoration_variants", `seed_${variantSeed}`);
+  const cacheDir = path.join(repoRoot, "work", "mol_restoration_variants", `seed_${variantSeed}`);
   if (fs.existsSync(path.join(cacheDir, "room", "src", "orrery.js"))) {
     return cacheDir;
   }
@@ -713,7 +712,9 @@ function evaluateRedGreenTests(submissionDir, seedVariantDir, plantedBugs, repor
     if (greenRun.status !== 0) continue;
 
     // 2. Apply only agent's test files onto a temporary copy of seedVariantDir -> MUST FAIL (Red)
-    const tmpSeedDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-rg-"));
+    const workTmpRoot = path.join(repoRoot, "work");
+    safeMkdirSync(workTmpRoot);
+    const tmpSeedDir = fs.mkdtempSync(path.join(workTmpRoot, "mol-rg-"));
     try {
       copyDirSafe(path.join(seedVariantDir, "room", "src"), path.join(tmpSeedDir, "room", "src"));
       copyDirSafe(path.join(submissionDir, "tests", "regression"), path.join(tmpSeedDir, "tests", "regression"));
