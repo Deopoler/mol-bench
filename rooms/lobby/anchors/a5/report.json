@@ -1,0 +1,1 @@
+{"schema_version":1,"summary":"Functional lobby reference with responsive cards, empty state, theme control, and benchmark interface. Uses system fonts because an offline OFL font was unavailable.","deliverables":["lobby/index.html","report.json"],"claims":[],"blocked":false}

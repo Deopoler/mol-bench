@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mol-bench.dev/schemas/decisions.schema.json",
+  "title": "MoL-Bench renovation decisions",
+  "description": "Written by the agent at repo root as decisions.json in the Renovation track. One entry per change request. Graded against the request's expected outcome and against measured metrics.",
+  "type": "object",
+  "required": ["schema_version", "requests"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["request_id", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "request_id": { "type": "string" },
+          "status": { "enum": ["done", "partial", "declined"] },
+          "reason": {
+            "enum": ["PERF_BUDGET", "CONFLICT", "INFEASIBLE", "OUT_OF_SCOPE", "AMBIGUOUS_RESOLVED", "NONE"],
+            "description": "Required unless status is done (use NONE or AMBIGUOUS_RESOLVED for done)."
+          },
+          "tradeoff": { "type": "string", "maxLength": 400 },
+          "expected_metrics": {
+            "type": "array",
+            "description": "Metric values the agent expects after its change. Compared with measurement (honesty).",
+            "items": {
+              "type": "object",
+              "required": ["metric_id", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "metric_id": { "type": "string" },
+                "value": { "type": "number" }
+              }
+            }
+          }
+        },
+        "if": { "properties": { "status": { "enum": ["partial", "declined"] } } },
+        "then": { "required": ["reason"] }
+      }
+    }
+  }
+}
