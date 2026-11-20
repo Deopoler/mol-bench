@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Museum of Light</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+*{margin:0;padding:0}
+:root{
+  --bg:oklch(98% .006 85);
+  --surface:oklch(96% .01 85);
+  --ink:oklch(24% .02 265);
+  --muted:oklch(42% .02 265);
+  --line:oklch(80% .012 265);
+  --focus:oklch(46% .17 262);
+  --font:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-display:"Iowan Old Style","Palatino Linotype",Georgia,Batang,serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:oklch(17% .02 265);
+    --surface:oklch(22% .022 265);
+    --ink:oklch(94% .01 85);
+    --muted:oklch(78% .02 265);
+    --line:oklch(38% .02 265);
+    --focus:oklch(80% .13 262);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:oklch(17% .02 265);
+  --surface:oklch(22% .022 265);
+  --ink:oklch(94% .01 85);
+  --muted:oklch(78% .02 265);
+  --line:oklch(38% .02 265);
+  --focus:oklch(80% .13 262);
+  color-scheme:dark;
+}
+html{background:var(--bg);color:var(--ink)}
+body{font-family:var(--font);font-size:17px;line-height:1.7;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--focus);outline-offset:4px;border-radius:4px}
+h1[tabindex="-1"]:focus{outline:none}
+main:focus{outline:none}
+
+.skip-link{position:absolute;left:16px;top:16px;z-index:10;padding:8px 16px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:999px;font-size:14px;transform:translateY(-200%)}
+.skip-link:focus{transform:none}
+
+.site-header{max-width:1120px;margin:0 auto;padding:16px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 16px}
+.brand{font-size:14px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);text-decoration:none}
+.controls{display:flex;flex-wrap:wrap;gap:8px}
+.btn{font:inherit;font-size:14px;line-height:1.4;min-height:44px;padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink);cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+
+main{max-width:1120px;margin:0 auto;padding:48px 16px 0}
+.hero-title{font-family:var(--font-display);font-size:clamp(28px,6vw + 8px,44px);line-height:1.35;font-weight:600;word-break:keep-all;overflow-wrap:break-word}
+.lead{margin-top:16px;max-width:36em;font-size:17px;line-height:1.7;word-break:keep-all;overflow-wrap:break-word}
+
+#lobby-view{margin-top:48px}
+.rooms-section{margin-top:48px}
+h2{font-family:var(--font-display);font-size:28px;line-height:1.4;font-weight:600;word-break:keep-all;overflow-wrap:break-word}
+.room-grid{margin-top:24px;display:grid;gap:24px;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr))}
+.room-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-width:0;padding-top:16px;border-top:4px solid var(--accent,var(--line));transition:transform 200ms ease}
+.room-card[data-status="open"]:hover{transform:translateY(-4px)}
+.room-card[data-status="coming_soon"]{border-top-style:dashed;border-top-color:var(--muted)}
+.room-card[data-status="coming_soon"] .card-title{color:var(--muted)}
+.status-badge{font-size:14px;line-height:1.4;padding:4px 8px;border:1px solid var(--muted);border-radius:999px;color:var(--muted)}
+.card-title{font-family:var(--font-display);font-size:22px;line-height:1.5;font-weight:600;min-width:0;word-break:keep-all;overflow-wrap:break-word}
+.card-title a{color:var(--ink);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}
+.card-title a::after{content:"";position:absolute;inset:0;border-radius:12px}
+
+.empty{margin-top:24px;padding:32px 24px;border:1px dashed var(--line);border-radius:12px;text-align:center}
+.empty p{font-size:22px;line-height:1.5;font-family:var(--font-display)}
+.empty p + p{margin-top:8px;font-family:var(--font);font-size:17px;line-height:1.7;color:var(--muted)}
+
+.info{margin-top:64px}
+.info-list{margin-top:24px;list-style:none;display:grid;gap:24px;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr))}
+.info-list li{padding-top:16px;border-top:1px solid var(--line);font-size:17px;line-height:1.7;word-break:keep-all;overflow-wrap:break-word}
+
+#room-view{margin-top:48px}
+.room-view-meta{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px}
+.swatch{width:16px;height:16px;border-radius:4px;background:var(--accent,var(--line))}
+.back-link{display:inline-block;margin-top:32px;font-size:17px;color:var(--ink);text-underline-offset:4px}
+
+.site-footer{max-width:1120px;margin:64px auto 0;padding:32px 16px 48px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px 16px;font-size:14px;line-height:1.4;color:var(--muted)}
+.site-footer a{color:var(--ink)}
+
+.is-entering{animation:enter 320ms ease-out both}
+@keyframes enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
+<header data-bench="header" class="site-header">
+  <a class="brand" href="#/" lang="en">Museum of Light</a>
+  <div class="controls">
+    <button type="button" class="btn" data-bench="theme-toggle" id="theme-toggle">어두운 테마</button>
+    <button type="button" class="btn" data-bench="lang-toggle" id="lang-toggle" lang="en">English</button>
+  </div>
+</header>
+<main id="main" tabindex="-1">
+  <h1 class="hero-title" data-bench="hero-title" id="hero-title" tabindex="-1">빛의 방에 오신 것을 환영합니다</h1>
+
+  <section id="lobby-view" aria-label="전시 입구">
+    <p class="lead" data-bench="body" data-i18n="lead">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다. 빛과 기억이 포개지는 전시를 천천히 거닐어 보세요. 머무는 동안 각자의 이야기를 발견할 수 있습니다.</p>
+    <div class="rooms-section">
+      <h2 id="rooms-heading" data-i18n="roomsHeading">전시 공간</h2>
+      <div id="rooms" class="room-grid"></div>
+      <div class="empty" data-bench="empty-state" hidden>
+        <p data-i18n="emptyTitle">아직 공개된 방이 없습니다.</p>
+        <p data-i18n="emptyBody">곧 새로운 방을 만나 보실 수 있어요.</p>
+      </div>
+    </div>
+    <section class="info" aria-labelledby="info-heading">
+      <h2 id="info-heading" data-i18n="infoHeading">관람 안내</h2>
+      <ul class="info-list">
+        <li data-i18n="info1">방 제목을 누르면 입장합니다. 브라우저의 뒤로 가기로 입구에 돌아올 수 있어요.</li>
+        <li data-i18n="info2">준비 중인 방은 아직 입장할 수 없습니다.</li>
+        <li data-i18n="info3">빛과 기억을 천천히 따라가 보세요. 서두를 필요는 없습니다.</li>
+      </ul>
+    </section>
+  </section>
+
+  <section id="room-view" class="room-view" aria-label="전시 정보" hidden>
+    <div class="room-view-meta">
+      <span class="swatch" aria-hidden="true"></span>
+      <span class="status-badge" id="room-status"></span>
+    </div>
+    <p class="lead" data-bench="body" id="room-summary"></p>
+    <a class="back-link" href="#/" data-i18n="back">← 전시 공간으로</a>
+  </section>
+</main>
+<footer data-bench="footer" class="site-footer">
+  <p lang="en">Museum of Light · Seoul</p>
+  <a href="#/" data-i18n="footerLink">입구로 돌아가기</a>
+</footer>
+<script src="./app.js" defer></script>
+</body>
+</html>

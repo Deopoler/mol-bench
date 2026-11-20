@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "summary": "Single-page lobby (lobby/index.html, style.css, app.js) rendering rooms from __benchHost.params.rooms with ko/en toggle, theme toggle, hash-route room view with 300ms fade, empty state and coming-soon cards. System font stacks only, no font or raster resources.",
+  "deliverables": ["lobby/index.html", "lobby/style.css", "lobby/app.js", "tests/lobby.mjs", "report.json"],
+  "claims": [
+    {"metric_id": "data.rooms_rendered", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck public seeds"},
+    {"metric_id": "nav.routes", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck"},
+    {"metric_id": "layout.overflow_count", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck"},
+    {"metric_id": "a11y.axe_violations", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck"},
+    {"metric_id": "a11y.keyboard_reach", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck"},
+    {"metric_id": "a11y.focus_visible", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck"},
+    {"metric_id": "text.hangul_midword_breaks", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck"},
+    {"metric_id": "space.grid4_frac", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck"},
+    {"metric_id": "visual.congestion", "status": "verified", "meets_target": false, "measured_value": 0.1709, "method": "npm run selfcheck; above the 0.10-0.12 band, text-driven, not reduced further"},
+    {"metric_id": "G-live", "status": "verified", "meets_target": false, "method": "selfcheck reports FLIP unavailable in this environment; MAD proxy 0"},
+    {"metric_id": "tests.hidden", "status": "not_verified"},
+    {"metric_id": "lh.lcp_ms", "status": "not_verified"},
+    {"metric_id": "lh.cls", "status": "not_verified"},
+    {"metric_id": "nav.transition_ms", "status": "not_verified"},
+    {"metric_id": "a11y.reduced_motion_transition_ms", "status": "not_verified"},
+    {"metric_id": "theme.both_valid", "status": "not_verified"}
+  ],
+  "blocked": false
+}

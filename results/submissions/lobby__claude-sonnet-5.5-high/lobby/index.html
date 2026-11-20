@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Museum of Light — 로비</title>
+<meta name="description" content="빛으로 지은 디지털 방들을 모아 둔 작은 박물관, Museum of Light의 로비입니다.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<script>
+(function () {
+  var r = document.documentElement, lang = 'ko', theme;
+  try {
+    var s = localStorage.getItem('mol-lang');
+    if (s === 'en' || s === 'ko') lang = s;
+  } catch (e) { /* storage blocked: stay on the Korean default */ }
+  theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  r.lang = lang;
+  r.setAttribute('data-theme', theme);
+})();
+</script>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
+
+<header class="site-header" data-bench="header">
+  <div class="container bar">
+    <a class="brand" href="#/" lang="en" aria-label="Museum of Light">Museum of Light</a>
+    <div class="controls">
+      <button type="button" class="btn" data-bench="lang-toggle" id="lang-toggle" lang="en">English</button>
+      <button type="button" class="btn" data-bench="theme-toggle" id="theme-toggle">다크 모드</button>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+  <div id="lobby-view" class="view">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container stack">
+        <p class="eyebrow" data-i18n="eyebrow">디지털 전시관 · 로비</p>
+        <h1 id="hero-title" class="hero-title" data-bench="hero-title" data-i18n="hero">빛의 방에 오신 것을 환영합니다</h1>
+        <p class="lede" data-bench="body" data-i18n="lede">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다. 서두르지 않고 천천히 거닐며, 마음이 머무는 방의 문을 열어 보세요.</p>
+        <div><button type="button" class="btn btn-primary" id="cta" data-i18n="cta">전시 공간 둘러보기</button></div>
+      </div>
+    </section>
+
+    <section class="rooms-section" aria-labelledby="rooms-title">
+      <div class="container">
+        <div class="section-head stack">
+          <h2 id="rooms-title" class="h2" tabindex="-1" data-i18n="roomsTitle">전시 공간</h2>
+          <p class="count" id="count"></p>
+        </div>
+        <ul class="grid" id="rooms" role="list"></ul>
+        <p class="empty" data-bench="empty-state" role="status" hidden data-i18n="empty">아직 공개된 방이 없습니다. 새로운 전시가 준비되면 이곳에서 가장 먼저 만나 보실 수 있습니다.</p>
+      </div>
+    </section>
+
+    <section class="info" aria-labelledby="info-title">
+      <div class="container stack">
+        <h2 id="info-title" class="h2" data-i18n="infoTitle">관람 안내</h2>
+        <p class="prose" data-bench="body" data-i18n="info1">Museum of Light는 빛으로 지은 디지털 방들을 모아 둔 작은 박물관입니다. 별도의 설치나 예약 없이 이 페이지에서 바로 각 방으로 들어갈 수 있고, 돌아올 때는 브라우저의 뒤로 가기를 쓰면 보던 자리로 돌아옵니다.</p>
+        <p class="prose" data-bench="body" data-i18n="info2">키보드만으로도 모든 방을 둘러볼 수 있습니다. 탭 키로 이동하고 엔터 키로 입장하세요. 화면 오른쪽 위에서 언어와 밝기를 바꿀 수 있으며, 움직임을 줄이는 설정을 켜 두셨다면 전환 효과는 거의 보이지 않습니다.</p>
+      </div>
+    </section>
+  </div>
+
+  <section id="room-view" class="view room" aria-labelledby="room-title" hidden>
+    <div class="container stack">
+      <div><a class="btn back" href="#/" id="back" data-i18n="back">← 로비로 돌아가기</a></div>
+      <p class="eyebrow" id="room-eyebrow"></p>
+      <h1 id="room-title" class="hero-title" tabindex="-1"></h1>
+      <p class="alt" id="room-alt"></p>
+      <div class="swatch swatch-wide" id="room-swatch" aria-hidden="true"></div>
+      <p class="prose" id="room-summary" data-bench="body" lang="ko"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer" data-bench="footer">
+  <div class="container">
+    <p><span lang="en">Museum of Light · Seoul</span> — <span data-i18n="tagline">빛으로 지은 디지털 방들</span></p>
+  </div>
+</footer>
+
+<script src="./app.js"></script>
+</body>
+</html>

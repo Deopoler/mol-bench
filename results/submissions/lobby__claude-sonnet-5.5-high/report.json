@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "summary": "Built the Museum of Light lobby: data-driven room cards (Korean primary, English via a language toggle), coming-soon cards without links, empty state, hash routing to room views with a ~360 ms fade, light/dark themes with a toggle, system-font stacks and no font or raster requests. Default language is Korean regardless of navigator.language. Lighthouse metrics, G-live FLIP and tests.hidden could not be measured here.",
+  "deliverables": ["lobby/index.html", "lobby/style.css", "lobby/app.js", "tests/lobby.regression.mjs", "report.json"],
+  "claims": [
+    { "metric_id": "data.rooms_rendered", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck, public seeds 1-3, 3 viewports" },
+    { "metric_id": "data.long_title", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck probe" },
+    { "metric_id": "data.empty_state", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck probe plus tests/lobby.regression.mjs" },
+    { "metric_id": "nav.routes", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck" },
+    { "metric_id": "layout.overflow_count", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck, all viewports and both schemes" },
+    { "metric_id": "text.clipped_count", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck" },
+    { "metric_id": "a11y.axe_violations", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck, axe-core, all viewports and schemes" },
+    { "metric_id": "a11y.keyboard_reach", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck" },
+    { "metric_id": "a11y.focus_visible", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck" },
+    { "metric_id": "theme.both_valid", "status": "verified", "meets_target": true, "method": "ran probeThemeBothValid directly: renders differ, 0 contrast violations in both schemes" },
+    { "metric_id": "a11y.reduced_motion_transition_ms", "status": "verified", "meets_target": true, "measured_value": 16, "method": "ran probeNavTransitionMs directly with reducedMotion=reduce" },
+    { "metric_id": "nav.transition_ms", "status": "verified", "meets_target": true, "measured_value": 256, "method": "ran probeNavTransitionMs directly, normal motion" },
+    { "metric_id": "text.hangul_midword_breaks", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck" },
+    { "metric_id": "text.line_length", "status": "verified", "meets_target": true, "measured_value": 41, "method": "npm run selfcheck, Korean text, median chars per line" },
+    { "metric_id": "text.line_height", "status": "verified", "meets_target": true, "measured_value": 1.75, "method": "npm run selfcheck" },
+    { "metric_id": "type.size_steps", "status": "verified", "meets_target": true, "measured_value": 5, "method": "npm run selfcheck at 1440x900" },
+    { "metric_id": "type.scale_ratio_min", "status": "verified", "meets_target": true, "measured_value": 1.1428571428571428, "method": "npm run selfcheck at 1440x900" },
+    { "metric_id": "space.grid4_frac", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck" },
+    { "metric_id": "align.column_count", "status": "verified", "meets_target": true, "measured_value": 6, "method": "npm run selfcheck at 1440x900" },
+    { "metric_id": "visual.congestion", "status": "verified", "meets_target": true, "measured_value": 0.1157, "method": "npm run selfcheck, light 1440x900; dark scheme measured about 0.15 in a manual run and is not scored" },
+    { "metric_id": "lh.lcp_ms", "status": "not_verified", "method": "Lighthouse is harness-only and was not run" },
+    { "metric_id": "lh.cls", "status": "not_verified", "method": "Lighthouse is harness-only and was not run" },
+    { "metric_id": "budget.transfer_kb", "status": "not_verified", "method": "Not measured; local files total about 30 KB uncompressed" },
+    { "metric_id": "tests.hidden", "status": "not_verified", "method": "selfcheck reports 0 because its public-tests path does not exist in this workspace; public-tests/smoke.mjs and tests/lobby.regression.mjs pass via the testrunner" },
+    { "metric_id": "G-live", "status": "not_verified", "meets_target": false, "method": "selfcheck fails with FLIP unavailable (flip_evaluator Python module missing); MAD proxy was 0.0" }
+  ],
+  "blocked": false
+}

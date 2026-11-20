@@ -1,0 +1,10 @@
+{
+  "run_id": "lobby__claude-sonnet-5.5-high",
+  "room": "lobby",
+  "track": "build",
+  "seed": null,
+  "created_at": "2026-11-20T19:18:47.720Z",
+  "ended_at": "2026-11-20T19:33:22.577Z",
+  "wall_min": 14.5809,
+  "model": "Claude Sonnet 5.5 (high)"
+}
