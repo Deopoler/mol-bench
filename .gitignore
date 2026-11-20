@@ -9,4 +9,3 @@ selfcheck.json
 hidden/
 results/**/node_modules/
 results/**/.venv/
-site/leaderboard/data.json

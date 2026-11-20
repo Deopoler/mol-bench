@@ -8,8 +8,15 @@ A one-shot, auto-graded benchmark for coding agents that build **visually rich, 
 - **Taste** is scored only by blind human pairwise votes (Judge Console). No LLM/VLM judges anywhere.
 - Two tracks: **Build** (from a seed) and **Renovation** (modify an existing work under change requests).
 
-Status: **v0.1 draft — pilot specification only.** Numbers flagged `"calibrate": true` are drafts that must be
-tuned against the anchors before the spec is frozen (see `docs/SCORING.md`).
+## Results
+
+- **[Leaderboard](https://deopoler.github.io/mol-bench/leaderboard/)** — scores by model, room and axis
+  ([markdown version](results/leaderboard.md))
+- **[Gallery](https://deopoler.github.io/mol-bench/gallery/)** — what each model actually built, running live
+- Raw per-run results: [`results/`](results/) (`<run-id>.json`, submissions and diffs under `results/submissions/`)
+
+Status: **v0.1 pilot.** Rooms are calibrated against anchors (see `docs/SCORING.md`); top models already score
+above 9 on several rooms, so v0.2 will raise difficulty.
 
 ## Pilot scope (v0.1)
 
