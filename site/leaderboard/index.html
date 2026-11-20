@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MoL-Bench Leaderboard — Museum of Light</title>
+  <style>
+    :root {
+      --bg: #f6f4ef;
+      --surface: #ffffff;
+      --surface-alt: #f0ece3;
+      --text: #161513;
+      --muted: #5c574f;
+      --border: #dfd8cb;
+      --accent: #9a6b16;
+      --accent-soft: rgba(154, 107, 22, 0.12);
+      --ok: #157347;
+      --ok-soft: rgba(21, 115, 71, 0.12);
+      --warn: #b45309;
+      --warn-soft: rgba(180, 83, 9, 0.12);
+      --bad: #b42318;
+      --bad-soft: rgba(180, 35, 24, 0.12);
+      --shadow: 0 8px 28px rgba(22, 21, 19, 0.06);
+      --radius: 12px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    html[data-theme="dark"] {
+      --bg: #0e1014;
+      --surface: #151921;
+      --surface-alt: #1b212c;
+      --text: #f3f1ec;
+      --muted: #9da4b2;
+      --border: #262e3d;
+      --accent: #e5b75c;
+      --accent-soft: rgba(229, 183, 92, 0.14);
+      --ok: #34d399;
+      --ok-soft: rgba(52, 211, 153, 0.14);
+      --warn: #fbbf24;
+      --warn-soft: rgba(251, 191, 36, 0.14);
+      --bad: #f87171;
+      --bad-soft: rgba(248, 113, 113, 0.14);
+      --shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background:
+        radial-gradient(1200px 420px at 15% -10%, var(--accent-soft), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 28px 20px 64px;
+    }
+    header.hero {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.6rem, 3vw, 2.25rem);
+      letter-spacing: -0.02em;
+      font-weight: 700;
+    }
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow);
+    }
+    .kpi-label {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .kpi-value {
+      font-size: 1.65rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    section.panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 26px;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-alt);
+    }
+    .panel-title {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tab {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab.active {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+    }
+    html[data-theme="dark"] .tab.active {
+      color: #101216;
+    }
+    .search {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      min-width: 210px;
+    }
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th, td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      white-space: nowrap;
+    }
+    th {
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: var(--surface);
+      user-select: none;
+    }
+    th.sortable { cursor: pointer; }
+    th.sortable:hover { color: var(--text); }
+    td.num, th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    tbody tr.main-row:hover {
+      background: var(--surface-alt);
+    }
+    .rank {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .score-pill {
+      display: inline-block;
+      min-width: 44px;
+      text-align: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 0.84rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 600;
+    }
+    .badge.ok { background: var(--ok-soft); color: var(--ok); }
+    .badge.warn { background: var(--warn-soft); color: var(--warn); }
+    .badge.bad { background: var(--bad-soft); color: var(--bad); }
+    .badge.neutral { background: var(--surface-alt); color: var(--muted); }
+    .mono { font-family: var(--mono); font-size: 0.84rem; }
+    .preview-links {
+      display: inline-flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .preview-link {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+    .preview-link:hover { text-decoration: underline; }
+    .detail-row td {
+      background: var(--surface-alt);
+      white-space: normal;
+      padding: 16px 20px;
+    }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .detail-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.84rem;
+    }
+    .detail-box h4 {
+      margin: 0 0 8px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .thumbs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .thumbs img {
+      max-width: 240px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: block;
+    }
+    .empty {
+      padding: 36px 20px;
+      text-align: center;
+      color: var(--muted);
+    }
+    footer {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">Museum of Light · Deterministic Benchmark</div>
+        <h1>MoL-Bench Leaderboard</h1>
+        <p class="subtitle" id="meta-line">Loading results…</p>
+      </div>
+      <div class="controls">
+        <button class="btn" id="theme-toggle" type="button">Toggle Theme</button>
+      </div>
+    </header>
+
+    <div class="kpis" id="kpis"></div>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Overall Model Standings</h2>
+      </div>
+      <div class="table-wrap" id="overall-wrap"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Submissions by Room</h2>
+        <div class="controls">
+          <div class="tabs" id="room-tabs"></div>
+          <input class="search" id="search-input" type="search" placeholder="Filter model or run ID…" aria-label="Filter model or run ID" />
+        </div>
+      </div>
+      <div class="table-wrap" id="runs-wrap"></div>
+    </section>
+
+    <footer>
+      <span>All programmatic metrics are deterministic; Taste is human-only and never estimated.</span>
+      <span id="generated-at"></span>
+    </footer>
+  </div>
+
+  <script>
+    window.__LEADERBOARD_DATA__ = {"generated_at":"2026-11-20T23:23:28.381Z","summary":{"total_runs":12,"valid_runs":12,"models_count":9,"rooms_count":4},"overall":[{"model":"Claude Haiku 5.5 (max)","composite":10,"composite_raw":9.972222222222221,"axes":{"craft":9.9,"visual_quality":10,"revision":null,"reliability":10},"reliability":10,"avg_wall_min":22.52,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":10,"runs":1}}},{"model":"Claude Sonnet 5.5 (max)","composite":10,"composite_raw":9.972222222222221,"axes":{"craft":9.9,"visual_quality":10,"revision":null,"reliability":10},"reliability":10,"avg_wall_min":46.11,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":10,"runs":1}}},{"model":"GPT-6-Luna (high)","composite":9.8,"composite_raw":9.759182957687763,"axes":{"craft":9.9,"visual_quality":9.6,"revision":null,"reliability":10},"reliability":10,"avg_wall_min":23.88,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":9.8,"runs":1}}},{"model":"GPT-6-Luna (medium)","composite":9.4,"composite_raw":9.38510101010101,"axes":{"craft":9.9,"visual_quality":8.8,"revision":null,"reliability":10},"reliability":10,"avg_wall_min":14.69,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":9.4,"runs":1}}},{"model":"GPT-6-Luna (max)","composite":9,"composite_raw":9.03968253968254,"axes":{"craft":8.8,"visual_quality":8.9,"revision":null,"reliability":10},"reliability":10,"avg_wall_min":40.99,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":9,"runs":1}}},{"model":"Claude Sonnet 5.5 (high)","composite":8.9,"composite_raw":8.85968253968254,"axes":{"craft":8.8,"visual_quality":8.9,"revision":null,"reliability":8.8},"reliability":8.8,"avg_wall_min":14.58,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":8.9,"runs":1}}},{"model":"Claude Haiku 5.5 (high)","composite":8.7,"composite_raw":8.695340468173802,"axes":{"craft":9.5,"visual_quality":6.4,"revision":8,"reliability":9.6},"reliability":9.6,"avg_wall_min":17.91,"rooms_count":4,"runs_count":4,"invalid_count":0,"leakage_count":0,"room_scores":{"atelier":{"composite":9.7,"runs":1},"lobby/r1":{"composite":7.3,"runs":1},"lobby":{"composite":9.5,"runs":1},"restoration":{"composite":8.3,"runs":1}}},{"model":"Claude Haiku 5.5 (medium)","composite":8.6,"composite_raw":8.633838383838384,"axes":{"craft":8.8,"visual_quality":8.1,"revision":null,"reliability":10},"reliability":10,"avg_wall_min":10.23,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":8.6,"runs":1}}},{"model":"Claude Sonnet 5.5 (medium)","composite":8.6,"composite_raw":8.633838383838384,"axes":{"craft":8.8,"visual_quality":8.1,"revision":null,"reliability":10},"reliability":10,"avg_wall_min":6.42,"rooms_count":1,"runs_count":1,"invalid_count":0,"leakage_count":0,"room_scores":{"lobby":{"composite":8.6,"runs":1}}}],"rooms":{"atelier":{"room_key":"atelier","room":"atelier","renovation":null,"track":"build","runs":[{"run_id":"atelier__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"atelier","renovation":null,"room_key":"atelier","track":"build","seed":null,"seeds":"hidden","composite":9.7,"composite_raw":9.662909090909091,"axes":{"craft":10,"visual_quality":8.9,"revision":null,"reliability":10},"axes_raw":{"craft":10,"visual_quality":8.876363636363635,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":9.5735,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":6,"evaluated":6,"total":6,"failed":[]},"gates_detail":{"G-blender-run":{"pass":true,"detail":"completed in 1.9s"},"G-reproducible":{"pass":true,"detail":"geometry hash match (2698ed1f6a7a)"},"G-provenance":{"pass":true,"detail":"clean provenance"},"G-gltf-valid":{"pass":true,"detail":"0 glTF 2.0 validation errors"},"G-offline":{"pass":true,"detail":"0 external network requests (Blender background mode)"},"G-report":{"pass":true,"detail":"valid report.json"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:39:48.849Z","ended_at":"2026-11-20T19:49:23.262Z","diff_file":"submissions/atelier__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"atelier_sheet_1.png","md_path":"submissions/atelier__claude-haiku-5.5-high/preview/atelier_sheet_1.png","site_path":"previews/atelier__claude-haiku-5.5-high/atelier_sheet_1.png"}]}]},"lobby":{"room_key":"lobby","room":"lobby","renovation":null,"track":"build","runs":[{"run_id":"lobby__claude-haiku-5.5-max","model":"Claude Haiku 5.5 (max)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":10,"composite_raw":9.972222222222221,"axes":{"craft":9.9,"visual_quality":10,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":10,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":22.5206,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (39596bef31377836...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=258.10ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:18:02.506Z","ended_at":"2026-11-20T19:40:33.745Z","diff_file":"submissions/lobby__claude-haiku-5.5-max.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-haiku-5.5-max/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-haiku-5.5-max/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-sonnet-5.5-max","model":"Claude Sonnet 5.5 (max)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":10,"composite_raw":9.972222222222221,"axes":{"craft":9.9,"visual_quality":10,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":10,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":46.1143,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (4ffb86635fa5fde4...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=256.70ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:29:30.535Z","ended_at":"2026-11-20T20:15:37.395Z","diff_file":"submissions/lobby__claude-sonnet-5.5-max.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-sonnet-5.5-max/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-sonnet-5.5-max/lobby_sheet_1.png"}]},{"run_id":"lobby__gpt-6-luna-high","model":"GPT-6-Luna (high)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9.8,"composite_raw":9.759182957687763,"axes":{"craft":9.9,"visual_quality":9.6,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":9.573921470931081,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":23.8848,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (04b834e9cf8023a6...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=262.70ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T18:56:50.660Z","ended_at":"2026-11-20T19:20:43.747Z","diff_file":"submissions/lobby__gpt-6-luna-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__gpt-6-luna-high/preview/lobby_sheet_1.png","site_path":"previews/lobby__gpt-6-luna-high/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9.5,"composite_raw":9.517676767676768,"axes":{"craft":9.9,"visual_quality":9.1,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":9.090909090909092,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":12.8554,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (3bae67d8f199b597...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=260.10ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:18:22.052Z","ended_at":"2026-11-20T19:31:13.374Z","diff_file":"submissions/lobby__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-haiku-5.5-high/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-haiku-5.5-high/lobby_sheet_1.png"}]},{"run_id":"lobby__gpt-6-luna-medium","model":"GPT-6-Luna (medium)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9.4,"composite_raw":9.38510101010101,"axes":{"craft":9.9,"visual_quality":8.8,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":8.825757575757576,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":14.6917,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (351a14658883660a...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=251.00ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T18:40:00.840Z","ended_at":"2026-11-20T18:54:42.341Z","diff_file":"submissions/lobby__gpt-6-luna-medium.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__gpt-6-luna-medium/preview/lobby_sheet_1.png","site_path":"previews/lobby__gpt-6-luna-medium/lobby_sheet_1.png"}]},{"run_id":"lobby__gpt-6-luna-max","model":"GPT-6-Luna (max)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9,"composite_raw":9.03968253968254,"axes":{"craft":8.8,"visual_quality":8.9,"revision":null,"reliability":10},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.928571428571427,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":40.9911,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (ed1ee36360d42871...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=53.1KB/64KB, total=53.1KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=250.30ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T18:57:12.289Z","ended_at":"2026-11-20T19:38:11.752Z","diff_file":"submissions/lobby__gpt-6-luna-max.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__gpt-6-luna-max/preview/lobby_sheet_1.png","site_path":"previews/lobby__gpt-6-luna-max/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-sonnet-5.5-high","model":"Claude Sonnet 5.5 (high)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":8.9,"composite_raw":8.85968253968254,"axes":{"craft":8.8,"visual_quality":8.9,"revision":null,"reliability":8.8},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.928571428571427,"revision":null,"reliability":8.8},"reliability":8.8,"taste":null,"efficiency":{"wall_min":14.5809,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (fc5443a888a9e989...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=252.10ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:18:47.720Z","ended_at":"2026-11-20T19:33:22.577Z","diff_file":"submissions/lobby__claude-sonnet-5.5-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-sonnet-5.5-high/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-sonnet-5.5-high/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-sonnet-5.5-medium","model":"Claude Sonnet 5.5 (medium)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":8.6,"composite_raw":8.633838383838384,"axes":{"craft":8.8,"visual_quality":8.1,"revision":null,"reliability":10},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.116883116883116,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":6.4217,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (7caa5e87cf51ce4c...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=262.70ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:30:41.508Z","ended_at":"2026-11-20T19:37:06.810Z","diff_file":"submissions/lobby__claude-sonnet-5.5-medium.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-sonnet-5.5-medium/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-sonnet-5.5-medium/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-haiku-5.5-medium","model":"Claude Haiku 5.5 (medium)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":8.6,"composite_raw":8.633838383838384,"axes":{"craft":8.8,"visual_quality":8.1,"revision":null,"reliability":10},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.116883116883116,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":10.2309,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (cfce061190e2ce10...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=263.60ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:17:33.835Z","ended_at":"2026-11-20T19:27:47.689Z","diff_file":"submissions/lobby__claude-haiku-5.5-medium.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-haiku-5.5-medium/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-haiku-5.5-medium/lobby_sheet_1.png"}]}]},"lobby/r1":{"room_key":"lobby/r1","room":"lobby","renovation":"r1","track":"renovation","runs":[{"run_id":"lobby-r1__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"lobby","renovation":"r1","room_key":"lobby/r1","track":"renovation","seed":null,"seeds":"hidden","composite":7.3,"composite_raw":7.251490299823633,"axes":{"craft":9.5,"visual_quality":0,"revision":8,"reliability":9.4},"axes_raw":{"craft":9.5,"visual_quality":0,"revision":8.029982363315696,"reliability":9.4},"reliability":9.4,"taste":null,"efficiency":{"wall_min":12.8743,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":10,"evaluated":10,"total":10,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (1fab48a22883443b...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-decisions":{"pass":true,"detail":"valid decisions.json"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=258.00ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:40:04.295Z","ended_at":"2026-11-20T19:52:56.753Z","diff_file":"submissions/lobby-r1__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby-r1__claude-haiku-5.5-high/preview/lobby_sheet_1.png","site_path":"previews/lobby-r1__claude-haiku-5.5-high/lobby_sheet_1.png"}]}]},"restoration":{"room_key":"restoration","room":"restoration","renovation":null,"track":"build","runs":[{"run_id":"restoration__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"restoration","renovation":null,"room_key":"restoration","track":"build","seed":5,"seeds":"hidden","composite":8.3,"composite_raw":8.349285714285715,"axes":{"craft":8.4,"visual_quality":7.5,"revision":null,"reliability":8.8},"axes_raw":{"craft":8.406593406593407,"visual_quality":7.5,"revision":null,"reliability":8.8},"reliability":8.8,"taste":null,"efficiency":{"wall_min":36.3487,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (2a380c51d34949f6...)"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=415.60ms"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-report":{"pass":true,"detail":"valid report.json"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.8KB/256KB, total=0.8KB/1024KB)"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:39:33.690Z","ended_at":"2026-11-20T20:15:54.613Z","diff_file":"submissions/restoration__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"restoration_sheet_1.png","md_path":"submissions/restoration__claude-haiku-5.5-high/preview/restoration_sheet_1.png","site_path":"previews/restoration__claude-haiku-5.5-high/restoration_sheet_1.png"},{"label":"sheet 2","file":"restoration_sheet_2.png","md_path":"submissions/restoration__claude-haiku-5.5-high/preview/restoration_sheet_2.png","site_path":"previews/restoration__claude-haiku-5.5-high/restoration_sheet_2.png"}]}]}},"runs":[{"run_id":"lobby__claude-haiku-5.5-max","model":"Claude Haiku 5.5 (max)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":10,"composite_raw":9.972222222222221,"axes":{"craft":9.9,"visual_quality":10,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":10,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":22.5206,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (39596bef31377836...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=258.10ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:18:02.506Z","ended_at":"2026-11-20T19:40:33.745Z","diff_file":"submissions/lobby__claude-haiku-5.5-max.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-haiku-5.5-max/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-haiku-5.5-max/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-sonnet-5.5-max","model":"Claude Sonnet 5.5 (max)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":10,"composite_raw":9.972222222222221,"axes":{"craft":9.9,"visual_quality":10,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":10,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":46.1143,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (4ffb86635fa5fde4...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=256.70ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:29:30.535Z","ended_at":"2026-11-20T20:15:37.395Z","diff_file":"submissions/lobby__claude-sonnet-5.5-max.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-sonnet-5.5-max/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-sonnet-5.5-max/lobby_sheet_1.png"}]},{"run_id":"lobby__gpt-6-luna-high","model":"GPT-6-Luna (high)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9.8,"composite_raw":9.759182957687763,"axes":{"craft":9.9,"visual_quality":9.6,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":9.573921470931081,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":23.8848,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (04b834e9cf8023a6...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=262.70ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T18:56:50.660Z","ended_at":"2026-11-20T19:20:43.747Z","diff_file":"submissions/lobby__gpt-6-luna-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__gpt-6-luna-high/preview/lobby_sheet_1.png","site_path":"previews/lobby__gpt-6-luna-high/lobby_sheet_1.png"}]},{"run_id":"atelier__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"atelier","renovation":null,"room_key":"atelier","track":"build","seed":null,"seeds":"hidden","composite":9.7,"composite_raw":9.662909090909091,"axes":{"craft":10,"visual_quality":8.9,"revision":null,"reliability":10},"axes_raw":{"craft":10,"visual_quality":8.876363636363635,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":9.5735,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":6,"evaluated":6,"total":6,"failed":[]},"gates_detail":{"G-blender-run":{"pass":true,"detail":"completed in 1.9s"},"G-reproducible":{"pass":true,"detail":"geometry hash match (2698ed1f6a7a)"},"G-provenance":{"pass":true,"detail":"clean provenance"},"G-gltf-valid":{"pass":true,"detail":"0 glTF 2.0 validation errors"},"G-offline":{"pass":true,"detail":"0 external network requests (Blender background mode)"},"G-report":{"pass":true,"detail":"valid report.json"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:39:48.849Z","ended_at":"2026-11-20T19:49:23.262Z","diff_file":"submissions/atelier__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"atelier_sheet_1.png","md_path":"submissions/atelier__claude-haiku-5.5-high/preview/atelier_sheet_1.png","site_path":"previews/atelier__claude-haiku-5.5-high/atelier_sheet_1.png"}]},{"run_id":"lobby__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9.5,"composite_raw":9.517676767676768,"axes":{"craft":9.9,"visual_quality":9.1,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":9.090909090909092,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":12.8554,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (3bae67d8f199b597...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=260.10ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:18:22.052Z","ended_at":"2026-11-20T19:31:13.374Z","diff_file":"submissions/lobby__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-haiku-5.5-high/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-haiku-5.5-high/lobby_sheet_1.png"}]},{"run_id":"lobby__gpt-6-luna-medium","model":"GPT-6-Luna (medium)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9.4,"composite_raw":9.38510101010101,"axes":{"craft":9.9,"visual_quality":8.8,"revision":null,"reliability":10},"axes_raw":{"craft":9.92063492063492,"visual_quality":8.825757575757576,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":14.6917,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (351a14658883660a...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=251.00ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T18:40:00.840Z","ended_at":"2026-11-20T18:54:42.341Z","diff_file":"submissions/lobby__gpt-6-luna-medium.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__gpt-6-luna-medium/preview/lobby_sheet_1.png","site_path":"previews/lobby__gpt-6-luna-medium/lobby_sheet_1.png"}]},{"run_id":"lobby__gpt-6-luna-max","model":"GPT-6-Luna (max)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":9,"composite_raw":9.03968253968254,"axes":{"craft":8.8,"visual_quality":8.9,"revision":null,"reliability":10},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.928571428571427,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":40.9911,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (ed1ee36360d42871...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=53.1KB/64KB, total=53.1KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=250.30ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T18:57:12.289Z","ended_at":"2026-11-20T19:38:11.752Z","diff_file":"submissions/lobby__gpt-6-luna-max.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__gpt-6-luna-max/preview/lobby_sheet_1.png","site_path":"previews/lobby__gpt-6-luna-max/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-sonnet-5.5-high","model":"Claude Sonnet 5.5 (high)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":8.9,"composite_raw":8.85968253968254,"axes":{"craft":8.8,"visual_quality":8.9,"revision":null,"reliability":8.8},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.928571428571427,"revision":null,"reliability":8.8},"reliability":8.8,"taste":null,"efficiency":{"wall_min":14.5809,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (fc5443a888a9e989...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=252.10ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:18:47.720Z","ended_at":"2026-11-20T19:33:22.577Z","diff_file":"submissions/lobby__claude-sonnet-5.5-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-sonnet-5.5-high/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-sonnet-5.5-high/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-sonnet-5.5-medium","model":"Claude Sonnet 5.5 (medium)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":8.6,"composite_raw":8.633838383838384,"axes":{"craft":8.8,"visual_quality":8.1,"revision":null,"reliability":10},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.116883116883116,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":6.4217,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (7caa5e87cf51ce4c...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=262.70ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:30:41.508Z","ended_at":"2026-11-20T19:37:06.810Z","diff_file":"submissions/lobby__claude-sonnet-5.5-medium.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-sonnet-5.5-medium/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-sonnet-5.5-medium/lobby_sheet_1.png"}]},{"run_id":"lobby__claude-haiku-5.5-medium","model":"Claude Haiku 5.5 (medium)","room":"lobby","renovation":null,"room_key":"lobby","track":"build","seed":null,"seeds":"hidden","composite":8.6,"composite_raw":8.633838383838384,"axes":{"craft":8.8,"visual_quality":8.1,"revision":null,"reliability":10},"axes_raw":{"craft":8.786848072562359,"visual_quality":8.116883116883116,"revision":null,"reliability":10},"reliability":10,"taste":null,"efficiency":{"wall_min":10.2309,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (cfce061190e2ce10...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=263.60ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:17:33.835Z","ended_at":"2026-11-20T19:27:47.689Z","diff_file":"submissions/lobby__claude-haiku-5.5-medium.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby__claude-haiku-5.5-medium/preview/lobby_sheet_1.png","site_path":"previews/lobby__claude-haiku-5.5-medium/lobby_sheet_1.png"}]},{"run_id":"restoration__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"restoration","renovation":null,"room_key":"restoration","track":"build","seed":5,"seeds":"hidden","composite":8.3,"composite_raw":8.349285714285715,"axes":{"craft":8.4,"visual_quality":7.5,"revision":null,"reliability":8.8},"axes_raw":{"craft":8.406593406593407,"visual_quality":7.5,"revision":null,"reliability":8.8},"reliability":8.8,"taste":null,"efficiency":{"wall_min":36.3487,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":9,"evaluated":9,"total":9,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (2a380c51d34949f6...)"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=415.60ms"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-report":{"pass":true,"detail":"valid report.json"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.8KB/256KB, total=0.8KB/1024KB)"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:39:33.690Z","ended_at":"2026-11-20T20:15:54.613Z","diff_file":"submissions/restoration__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"restoration_sheet_1.png","md_path":"submissions/restoration__claude-haiku-5.5-high/preview/restoration_sheet_1.png","site_path":"previews/restoration__claude-haiku-5.5-high/restoration_sheet_1.png"},{"label":"sheet 2","file":"restoration_sheet_2.png","md_path":"submissions/restoration__claude-haiku-5.5-high/preview/restoration_sheet_2.png","site_path":"previews/restoration__claude-haiku-5.5-high/restoration_sheet_2.png"}]},{"run_id":"lobby-r1__claude-haiku-5.5-high","model":"Claude Haiku 5.5 (high)","room":"lobby","renovation":"r1","room_key":"lobby/r1","track":"renovation","seed":null,"seeds":"hidden","composite":7.3,"composite_raw":7.251490299823633,"axes":{"craft":9.5,"visual_quality":0,"revision":8,"reliability":9.4},"axes_raw":{"craft":9.5,"visual_quality":0,"revision":8.029982363315696,"reliability":9.4},"reliability":9.4,"taste":null,"efficiency":{"wall_min":12.8743,"tokens_in":null,"tokens_out":null,"usd":null},"gates":{"passed":10,"evaluated":10,"total":10,"failed":[]},"gates_detail":{"G-load":{"pass":true,"detail":"Loaded and __bench.ready resolved"},"G-console":{"pass":true,"detail":"0 console errors / uncaught exceptions"},"G-contract":{"pass":true,"detail":"BenchRoom v1 contract satisfied"},"G-determinism":{"pass":true,"detail":"Identical decoded pixel SHA-256 (1fab48a22883443b...)"},"G-offline":{"pass":true,"detail":"0 requests outside local origin"},"G-raster":{"pass":true,"detail":"Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"},"G-report":{"pass":true,"detail":"valid report.json"},"G-fonts-local":{"pass":true,"detail":"All fonts local (0 font response(s)), document.fonts.ready resolved"},"G-decisions":{"pass":true,"detail":"valid decisions.json"},"G-live":{"pass":true,"detail":"Seek vs live FLIP=0.00000 (threshold \u003c= 0.02); MAD proxy=0.00000 at t=258.00ms"}},"leakage_flagged":false,"leakage_matches":[],"invalid":false,"invalid_reason":null,"created_at":"2026-11-20T19:40:04.295Z","ended_at":"2026-11-20T19:52:56.753Z","diff_file":"submissions/lobby-r1__claude-haiku-5.5-high.diff","previews":[{"label":"sheet 1","file":"lobby_sheet_1.png","md_path":"submissions/lobby-r1__claude-haiku-5.5-high/preview/lobby_sheet_1.png","site_path":"previews/lobby-r1__claude-haiku-5.5-high/lobby_sheet_1.png"}]}]};
+  </script>
+  <script>
+    (function () {
+      const root = document.documentElement;
+      const savedTheme = localStorage.getItem("mol-lb-theme");
+      const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      root.setAttribute("data-theme", savedTheme || (prefersDark ? "dark" : "light"));
+
+      document.getElementById("theme-toggle").addEventListener("click", () => {
+        const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        localStorage.setItem("mol-lb-theme", next);
+      });
+
+      const esc = (s) =>
+        String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+
+      const fmt = (v, digits = 1) =>
+        v === null || v === undefined || Number.isNaN(Number(v)) ? "—" : Number(v).toFixed(digits);
+
+      let state = {
+        data: window.__LEADERBOARD_DATA__,
+        room: "ALL",
+        query: "",
+        sortBy: "composite_raw",
+        sortDir: "desc",
+        expanded: new Set()
+      };
+
+      function renderAll() {
+        const data = state.data;
+        if (!data) return;
+
+        document.getElementById("meta-line").textContent =
+          data.summary.models_count + " models · " + data.summary.rooms_count + " rooms · " + data.summary.total_runs + " runs";
+        document.getElementById("generated-at").textContent = "Generated: " + data.generated_at;
+
+        const topComposite = data.overall.length > 0 && data.overall[0].composite !== null ? fmt(data.overall[0].composite) : "—";
+        document.getElementById("kpis").innerHTML = [
+          ["Models", data.summary.models_count],
+          ["Graded Runs", data.summary.total_runs],
+          ["Rooms", data.summary.rooms_count],
+          ["Top Composite", topComposite]
+        ]
+          .map(
+            ([label, val]) =>
+              '<div class="kpi"><div class="kpi-label">' + esc(label) + '</div><div class="kpi-value">' + esc(val) + "</div></div>"
+          )
+          .join("");
+
+        renderOverall(data);
+        renderTabs(data);
+        renderRuns(data);
+      }
+
+      function renderOverall(data) {
+        const wrap = document.getElementById("overall-wrap");
+        if (!data.overall || data.overall.length === 0) {
+          wrap.innerHTML = '<div class="empty">No graded runs yet. Run <code>node runner/collect.mjs</code> and <code>node harness/src/leaderboard.mjs</code>.</div>';
+          return;
+        }
+        const rows = data.overall
+          .map((m, idx) => {
+            const roomBadges = Object.entries(m.room_scores || {})
+              .map(([rk, rs]) => '<span class="badge neutral">' + esc(rk) + ": " + esc(fmt(rs.composite)) + "</span>")
+              .join(" ");
+            return (
+              '<tr class="main-row">' +
+              '<td class="rank">#' + (idx + 1) + "</td>" +
+              "<td><strong>" + esc(m.model) + "</strong>" + (m.leakage_count > 0 ? ' <span class="badge bad">leakage:' + m.leakage_count + "</span>" : "") + "</td>" +
+              '<td class="num"><span class="score-pill">' + esc(fmt(m.composite)) + "</span></td>" +
+              '<td class="num">' + esc(fmt(m.axes.craft)) + "</td>" +
+              '<td class="num">' + esc(fmt(m.axes.visual_quality)) + "</td>" +
+              '<td class="num">' + esc(fmt(m.axes.revision)) + "</td>" +
+              '<td class="num">' + esc(fmt(m.reliability)) + "</td>" +
+              '<td class="num">' + esc(fmt(m.avg_wall_min)) + "</td>" +
+              '<td class="num">' + esc(m.rooms_count) + "</td>" +
+              '<td class="num">' + esc(m.runs_count) + "</td>" +
+              "<td>" + (roomBadges || "—") + "</td>" +
+              "</tr>"
+            );
+          })
+          .join("");
+
+        wrap.innerHTML =
+          "<table><thead><tr>" +
+          "<th>Rank</th><th>Model</th><th class=num>Composite</th><th class=num>Craft</th><th class=num>Visual Quality</th><th class=num>Revision</th><th class=num>Reliability</th><th class=num>Avg Wall (min)</th><th class=num>Rooms</th><th class=num>Runs</th><th>Room Breakdown</th>" +
+          "</tr></thead><tbody>" +
+          rows +
+          "</tbody></table>";
+      }
+
+      function renderTabs(data) {
+        const tabsEl = document.getElementById("room-tabs");
+        const keys = ["ALL", ...Object.keys(data.rooms || {})];
+        tabsEl.innerHTML = keys
+          .map((k) => {
+            const label = k === "ALL" ? "All Rooms" : k;
+            const cls = state.room === k ? "tab active" : "tab";
+            return '<button type="button" class="' + cls + '" data-room="' + esc(k) + '">' + esc(label) + "</button>";
+          })
+          .join("");
+        tabsEl.querySelectorAll("button").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            state.room = btn.getAttribute("data-room");
+            renderTabs(state.data);
+            renderRuns(state.data);
+          });
+        });
+      }
+
+      function getSortValue(run, key) {
+        if (key === "composite_raw") return run.composite_raw;
+        if (key === "craft") return run.axes_raw?.craft ?? null;
+        if (key === "visual_quality") return run.axes_raw?.visual_quality ?? null;
+        if (key === "revision") return run.axes_raw?.revision ?? null;
+        if (key === "reliability") return run.axes_raw?.reliability ?? null;
+        if (key === "wall_min") return run.efficiency?.wall_min ?? null;
+        return run[key] ?? null;
+      }
+
+      function renderRuns(data) {
+        const wrap = document.getElementById("runs-wrap");
+        const baseList = state.room === "ALL" ? data.runs || [] : data.rooms[state.room]?.runs || [];
+        const q = state.query.trim().toLowerCase();
+        const filtered = q
+          ? baseList.filter(
+              (r) =>
+                r.model.toLowerCase().includes(q) ||
+                r.run_id.toLowerCase().includes(q) ||
+                r.room_key.toLowerCase().includes(q)
+            )
+          : [...baseList];
+
+        filtered.sort((a, b) => {
+          const av = getSortValue(a, state.sortBy);
+          const bv = getSortValue(b, state.sortBy);
+          if (av === null && bv === null) return 0;
+          if (av === null) return 1;
+          if (bv === null) return -1;
+          if (typeof av === "string" || typeof bv === "string") {
+            return state.sortDir === "asc" ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+          }
+          return state.sortDir === "asc" ? av - bv : bv - av;
+        });
+
+        if (filtered.length === 0) {
+          wrap.innerHTML = '<div class="empty">No matching runs found.</div>';
+          return;
+        }
+
+        const headers = [
+          ["Rank", null, false],
+          ["Run ID", "run_id", false],
+          ["Room", "room_key", false],
+          ["Model", "model", false],
+          ["Composite", "composite_raw", true],
+          ["Craft", "craft", true],
+          ["VQ", "visual_quality", true],
+          ["Revision", "revision", true],
+          ["Reliability", "reliability", true],
+          ["Wall (m)", "wall_min", true],
+          ["Gates", null, false],
+          ["Preview", null, false],
+          ["Flags", null, false]
+        ];
+
+        const thead =
+          "<thead><tr>" +
+          headers
+            .map(([label, key, isNum]) => {
+              const cls = [isNum ? "num" : "", key ? "sortable" : ""].filter(Boolean).join(" ");
+              const arrow = key && state.sortBy === key ? (state.sortDir === "asc" ? " ▲" : " ▼") : "";
+              return "<th" + (cls ? ' class="' + cls + '"' : "") + (key ? ' data-sort="' + key + '"' : "") + ">" + esc(label + arrow) + "</th>";
+            })
+            .join("") +
+          "</tr></thead>";
+
+        const tbody = filtered
+          .map((run, idx) => {
+            const gateBadge =
+              run.gates.failed.length > 0
+                ? '<span class="badge bad">' + run.gates.passed + "/" + run.gates.evaluated + " fail</span>"
+                : run.gates.evaluated > 0
+                ? '<span class="badge ok">' + run.gates.passed + "/" + run.gates.evaluated + " pass</span>"
+                : '<span class="badge neutral">skip</span>';
+
+            const previewHtml =
+              run.previews && run.previews.length > 0
+                ? '<div class="preview-links">' +
+                  run.previews
+                    .map(
+                      (p) =>
+                        '<a class="preview-link" href="' + esc(p.site_path) + '" target="_blank" rel="noopener">' + esc(p.label) + "</a>"
+                    )
+                    .join("") +
+                  "</div>"
+                : '<span style="color:var(--muted)">—</span>';
+
+            const flags = [];
+            if (run.invalid) flags.push('<span class="badge warn">invalid</span>');
+            if (run.leakage_flagged) flags.push('<span class="badge bad">leakage</span>');
+            if (flags.length === 0) flags.push('<span class="badge ok">clean</span>');
+
+            const isExpanded = state.expanded.has(run.run_id);
+            let html =
+              '<tr class="main-row" data-run="' + esc(run.run_id) + '" style="cursor:pointer">' +
+              '<td class="rank">#' + (idx + 1) + "</td>" +
+              '<td class="mono">' + esc(run.run_id) + "</td>" +
+              '<td><span class="badge neutral">' + esc(run.room_key) + "</span></td>" +
+              "<td>" + esc(run.model) + "</td>" +
+              '<td class="num"><span class="score-pill">' + esc(fmt(run.composite)) + "</span></td>" +
+              '<td class="num">' + esc(fmt(run.axes.craft)) + "</td>" +
+              '<td class="num">' + esc(fmt(run.axes.visual_quality)) + "</td>" +
+              '<td class="num">' + esc(fmt(run.axes.revision)) + "</td>" +
+              '<td class="num">' + esc(fmt(run.reliability)) + "</td>" +
+              '<td class="num">' + esc(fmt(run.efficiency.wall_min)) + "</td>" +
+              "<td>" + gateBadge + "</td>" +
+              "<td>" + previewHtml + "</td>" +
+              "<td>" + flags.join(" ") + "</td>" +
+              "</tr>";
+
+            if (isExpanded) {
+              const gatesList = Object.entries(run.gates_detail || {})
+                .map(([gid, g]) => {
+                  const cls = g?.pass === true ? "ok" : g?.pass === false ? "bad" : "neutral";
+                  const txt = g?.pass === true ? "PASS" : g?.pass === false ? "FAIL" : "SKIP";
+                  return '<div><span class="badge ' + cls + '">' + esc(gid + ": " + txt) + "</span> " + esc(g?.detail || "") + "</div>";
+                })
+                .join("");
+
+              const thumbs =
+                run.previews && run.previews.length > 0
+                  ? '<div class="thumbs">' +
+                    run.previews
+                      .map(
+                        (p) =>
+                          '<a href="' +
+                          esc(p.site_path) +
+                          '" target="_blank" rel="noopener"><img src="' +
+                          esc(p.site_path) +
+                          '" alt="' +
+                          esc(run.run_id + " " + p.label) +
+                          '" loading="lazy" /></a>'
+                      )
+                      .join("") +
+                    "</div>"
+                  : "<div>No preview contact sheets attached.</div>";
+
+              html +=
+                '<tr class="detail-row"><td colspan="13"><div class="detail-grid">' +
+                '<div class="detail-box"><h4>Metadata & Efficiency</h4>' +
+                "<div>Run ID: <span class=mono>" + esc(run.run_id) + "</span></div>" +
+                "<div>Seeds: " + esc(run.seeds) + (run.seed !== null ? " (seed=" + esc(run.seed) + ")" : "") + "</div>" +
+                "<div>Wall min: " + esc(fmt(run.efficiency.wall_min, 2)) + "</div>" +
+                "<div>Taste: " + esc(run.taste === null ? "null (human only)" : fmt(run.taste)) + "</div>" +
+                (run.diff_file ? "<div>Diff: <span class=mono>" + esc(run.diff_file) + "</span></div>" : "") +
+                "</div>" +
+                '<div class="detail-box"><h4>Gates</h4>' + (gatesList || "—") + "</div>" +
+                '<div class="detail-box"><h4>Preview Contact Sheets</h4>' + thumbs + "</div>" +
+                "</div></td></tr>";
+            }
+            return html;
+          })
+          .join("");
+
+        wrap.innerHTML = "<table>" + thead + "<tbody>" + tbody + "</tbody></table>";
+
+        wrap.querySelectorAll("th.sortable").forEach((th) => {
+          th.addEventListener("click", () => {
+            const key = th.getAttribute("data-sort");
+            if (state.sortBy === key) {
+              state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
+            } else {
+              state.sortBy = key;
+              state.sortDir = key === "wall_min" || key === "model" || key === "run_id" ? "asc" : "desc";
+            }
+            renderRuns(state.data);
+          });
+        });
+
+        wrap.querySelectorAll("tr.main-row").forEach((tr) => {
+          tr.addEventListener("click", (ev) => {
+            if (ev.target && ev.target.closest("a")) return;
+            const id = tr.getAttribute("data-run");
+            if (state.expanded.has(id)) state.expanded.delete(id);
+            else state.expanded.add(id);
+            renderRuns(state.data);
+          });
+        });
+      }
+
+      document.getElementById("search-input").addEventListener("input", (ev) => {
+        state.query = ev.target.value;
+        renderRuns(state.data);
+      });
+
+      renderAll();
+
+      fetch("./data.json")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((fresh) => {
+          if (fresh && fresh.runs) {
+            state.data = fresh;
+            renderAll();
+          }
+        })
+        .catch(() => {
+          // Offline / file:// fallback uses embedded window.__LEADERBOARD_DATA__
+        });
+    })();
+  </script>
+</body>
+</html>
