@@ -329,7 +329,21 @@ export function collectRun({
   const room = runMeta.room;
   const effectiveRenovation = renovation ?? runMeta.renovation ?? null;
 
-  const endedAt = new Date().toISOString();
+  // End time = last modification of a submission file (the agent's last write), not the moment we collect.
+  const lastWrite = (() => {
+    let latest = 0;
+    const skip = new Set(["node_modules", ".venv", "bench", "metrics", ".git", "work", "preview", "__pycache__"]);
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (skip.has(e.name) || e.name === "selfcheck.json") continue;
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p); else latest = Math.max(latest, fs.statSync(p).mtimeMs);
+      }
+    };
+    try { walk(runDir); } catch { /* ignore */ }
+    return latest;
+  })();
+  const endedAt = new Date(lastWrite > 0 ? Math.min(lastWrite, Date.now()) : Date.now()).toISOString();
   const createdMs = Date.parse(runMeta.created_at);
   const endedMs = Date.parse(endedAt);
   const wallMin =
