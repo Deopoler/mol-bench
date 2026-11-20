@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "summary": "Attack submission: three-view-extrusion.",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "shape.iou_public",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.99,
+      "method": "attack"
+    },
+    {
+      "metric_id": "shape.iou_hidden",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.99,
+      "method": "attack"
+    },
+    {
+      "metric_id": "rig.hinge",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "attack"
+    },
+    {
+      "metric_id": "dims.key_measurements",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "attack"
+    },
+    {
+      "metric_id": "scene.hierarchy",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "attack"
+    }
+  ],
+  "blocked": false
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "summary": "Built hexagonal museum lantern with required hierarchy, uniform glossy brass material, subdivided geometry (~41k triangles), and 90-degree door_open hinge animation.",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "scene.hierarchy",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "rig.hinge",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "npm run selfcheck"
+    }
+  ],
+  "blocked": false
+}

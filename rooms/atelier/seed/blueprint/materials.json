@@ -1,0 +1,120 @@
+{
+  "roles": {
+    "brass": {
+      "prefix": "brass_",
+      "parts": [
+        "Frame",
+        "Roof",
+        "Base",
+        "Handle",
+        "Door"
+      ],
+      "base_color_oklch": [
+        0.7,
+        0.11,
+        82.0
+      ],
+      "base_color_srgb": [
+        0.758,
+        0.62,
+        0.345
+      ],
+      "metallic_min": 0.9,
+      "metallic_target": 0.95,
+      "roughness_range": [
+        0.18,
+        0.55
+      ],
+      "roughness_target": 0.34
+    },
+    "glass": {
+      "prefix": "glass_",
+      "parts": [
+        "Glass",
+        "Door_Glass"
+      ],
+      "base_color_oklch": [
+        0.92,
+        0.015,
+        200.0
+      ],
+      "base_color_srgb": [
+        0.885,
+        0.918,
+        0.922
+      ],
+      "metallic": 0.0,
+      "roughness_range": [
+        0.02,
+        0.15
+      ],
+      "roughness_target": 0.05,
+      "transmission_min": 0.9,
+      "transmission_target": 0.95,
+      "ior_range": [
+        1.4,
+        1.6
+      ],
+      "ior_target": 1.5
+    },
+    "wax": {
+      "prefix": "wax_",
+      "parts": [
+        "Candle"
+      ],
+      "base_color_oklch": [
+        0.86,
+        0.035,
+        88.0
+      ],
+      "base_color_srgb": [
+        0.882,
+        0.835,
+        0.728
+      ],
+      "metallic": 0.0,
+      "roughness_range": [
+        0.3,
+        0.75
+      ],
+      "roughness_target": 0.5
+    },
+    "flame": {
+      "prefix": "flame_",
+      "parts": [
+        "Flame"
+      ],
+      "base_color_oklch": [
+        0.84,
+        0.16,
+        70.0
+      ],
+      "base_color_srgb": [
+        0.99,
+        0.725,
+        0.24
+      ],
+      "metallic": 0.0,
+      "roughness_range": [
+        0.1,
+        0.9
+      ],
+      "roughness_target": 0.4,
+      "emission_color_oklch": [
+        0.84,
+        0.16,
+        70.0
+      ],
+      "emission_color_srgb": [
+        0.99,
+        0.725,
+        0.24
+      ],
+      "emission_strength_range": [
+        3.0,
+        15.0
+      ],
+      "emission_strength_target": 8.0
+    }
+  }
+}

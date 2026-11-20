@@ -139,6 +139,10 @@ def parse_at(at_str: str | None) -> AtFilter:
         elif low == "metal pixels of turntable renders":
             parsed.metal_only = True
             parsed.step = "turntable"
+        elif low.startswith("mask="):
+            mask_name = tok.split("=", 1)[1].strip().lower()
+            if mask_name == "metal":
+                parsed.metal_only = True
         else:
             raise ValueError(f"Unknown token in 'at' specification: {tok!r}")
 

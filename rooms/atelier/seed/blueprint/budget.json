@@ -1,0 +1,6 @@
+{
+  "max_triangles": 30000,
+  "max_textures": 2,
+  "max_texture_size_px": 1024,
+  "max_draw_calls": 12
+}

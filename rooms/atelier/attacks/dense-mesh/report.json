@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "summary": "Attack submission: dense-mesh.",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "budget.triangles",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.5,
+      "method": "attack"
+    },
+    {
+      "metric_id": "web.three_load",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "attack"
+    },
+    {
+      "metric_id": "rig.hinge",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "attack"
+    }
+  ],
+  "blocked": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "summary": "Built procedural hexagonal museum lantern matching blueprint sheets with beveled aged brass frame/roof/base/handle, procedural patina textures, non-overlapping UV atlas, solid 2mm glass panes, candle + emissive flame, and 90-degree door_open hinge animation.",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "scene.hierarchy",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "scene.units_origin",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "dims.key_measurements",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "rig.hinge",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.0,
+      "method": "npm run selfcheck"
+    },
+    {
+      "metric_id": "topo.manifold",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "npm run selfcheck"
+    }
+  ],
+  "blocked": false
+}

@@ -186,34 +186,51 @@ export async function gradeSubmission({
   let captureRes = null;
 
   if (!noCapture) {
-    const capturePlanPath = path.join(__dirname, "capture", "plan.mjs");
-    if (!fs.existsSync(capturePlanPath)) {
-      throw new Error(
-        `Capture layer missing at ${capturePlanPath}. Wait for capture/plan.mjs or pass --no-capture for offline testing.`
-      );
-    }
-    const { executePlan } = await import(pathToFileURL(capturePlanPath).href);
     const adapter = await loadRoomAdapter(spec.room);
-    fs.mkdirSync(resolvedWorkDir, { recursive: true });
-    captureRes = await executePlan(plan, {
-      submissionDir: resolvedSub,
-      workDir: resolvedWorkDir,
-      spec,
-      adapter,
-      hidden,
-      noPython
-    });
-    captureGates = captureRes.gates || {};
+    const isBlenderRoom = String(spec.contract || spec._baseSpec?.contract || "").includes("blender");
+    if (isBlenderRoom && typeof adapter?.captureBlender === "function") {
+      fs.mkdirSync(resolvedWorkDir, { recursive: true });
+      captureRes = await adapter.captureBlender({
+        submissionDir: resolvedSub,
+        workDir: resolvedWorkDir,
+        spec,
+        hidden,
+        noPython,
+        repoRoot
+      });
+      captureGates = captureRes.gates || {};
+      if (captureRes.rawMetrics) {
+        Object.assign(rawMetrics, captureRes.rawMetrics);
+      }
+    } else {
+      const capturePlanPath = path.join(__dirname, "capture", "plan.mjs");
+      if (!fs.existsSync(capturePlanPath)) {
+        throw new Error(
+          `Capture layer missing at ${capturePlanPath}. Wait for capture/plan.mjs or pass --no-capture for offline testing.`
+        );
+      }
+      const { executePlan } = await import(pathToFileURL(capturePlanPath).href);
+      fs.mkdirSync(resolvedWorkDir, { recursive: true });
+      captureRes = await executePlan(plan, {
+        submissionDir: resolvedSub,
+        workDir: resolvedWorkDir,
+        spec,
+        adapter,
+        hidden,
+        noPython
+      });
+      captureGates = captureRes.gates || {};
 
-    if (captureRes.probes) {
-      for (const [key, val] of Object.entries(captureRes.probes)) {
-        if (val && typeof val === "object" && val.metricId) {
-          if (!Array.isArray(rawMetrics[val.metricId])) rawMetrics[val.metricId] = [];
-          rawMetrics[val.metricId].push({ key, ...val });
-        } else if (val && typeof val === "object" && val.metrics) {
-          for (const [mId, mVal] of Object.entries(val.metrics)) {
-            if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
-            rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
+      if (captureRes.probes) {
+        for (const [key, val] of Object.entries(captureRes.probes)) {
+          if (val && typeof val === "object" && val.metricId) {
+            if (!Array.isArray(rawMetrics[val.metricId])) rawMetrics[val.metricId] = [];
+            rawMetrics[val.metricId].push({ key, ...val });
+          } else if (val && typeof val === "object" && val.metrics) {
+            for (const [mId, mVal] of Object.entries(val.metrics)) {
+              if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
+              rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
+            }
           }
         } else if (val && typeof val === "object") {
           // Probe groups such as layout/text/type return metric ids at the top
@@ -226,31 +243,31 @@ export async function gradeSubmission({
           }
         }
       }
-    }
 
-    if (Array.isArray(captureRes.tests)) {
-      const total = captureRes.tests.length;
-      const passed = captureRes.tests.filter((t) => t.pass).length;
-      if (spec.metrics.some((m) => m.id === "tests.hidden")) {
-        rawMetrics["tests.hidden"] = { passed, total };
+      if (Array.isArray(captureRes.tests)) {
+        const total = captureRes.tests.length;
+        const passed = captureRes.tests.filter((t) => t.pass).length;
+        if (spec.metrics.some((m) => m.id === "tests.hidden")) {
+          rawMetrics["tests.hidden"] = { passed, total };
+        }
+        if (spec.metrics.some((m) => m.id === "tests.preservation")) {
+          rawMetrics["tests.preservation"] = { passed, total };
+        }
       }
-      if (spec.metrics.some((m) => m.id === "tests.preservation")) {
-        rawMetrics["tests.preservation"] = { passed, total };
+
+      if (captureRes.perf && typeof captureRes.perf.p95_norm_ms === "number") {
+        rawMetrics["perf.frame_p95_norm_ms"] = captureRes.perf.p95_norm_ms;
       }
-    }
+      if (captureRes.lighthouse) {
+        if (typeof captureRes.lighthouse.lcp_ms === "number") rawMetrics["lh.lcp_ms"] = captureRes.lighthouse.lcp_ms;
+        if (typeof captureRes.lighthouse.cls === "number") rawMetrics["lh.cls"] = captureRes.lighthouse.cls;
+      }
 
-    if (captureRes.perf && typeof captureRes.perf.p95_norm_ms === "number") {
-      rawMetrics["perf.frame_p95_norm_ms"] = captureRes.perf.p95_norm_ms;
-    }
-    if (captureRes.lighthouse) {
-      if (typeof captureRes.lighthouse.lcp_ms === "number") rawMetrics["lh.lcp_ms"] = captureRes.lighthouse.lcp_ms;
-      if (typeof captureRes.lighthouse.cls === "number") rawMetrics["lh.cls"] = captureRes.lighthouse.cls;
-    }
-
-    if (!noPython && captureRes.manifestPath) {
-      const pyOut = path.join(resolvedWorkDir, "metrics.json");
-      const pyMetrics = runPythonMetrics(captureRes.manifestPath, spec._specPath, pyOut, repoRoot, captureRes.startManifestPath ?? null);
-      Object.assign(rawMetrics, pyMetrics);
+      if (!noPython && captureRes.manifestPath) {
+        const pyOut = path.join(resolvedWorkDir, "metrics.json");
+        const pyMetrics = runPythonMetrics(captureRes.manifestPath, spec._specPath, pyOut, repoRoot, captureRes.startManifestPath ?? null);
+        Object.assign(rawMetrics, pyMetrics);
+      }
     }
 
     if (adapter && typeof adapter.extraMetrics === "function") {
@@ -665,6 +682,24 @@ async function main() {
       throw new Error("Usage: bench calibrate <room> [--renovation r1]");
     }
     await runCalibrate(room, flags);
+    return;
+  }
+
+  if (cmd === "blender-run") {
+    const dir = path.resolve(flags.dir || process.cwd());
+    const blenderBin =
+      process.env.BLENDER_BIN && fs.existsSync(process.env.BLENDER_BIN)
+        ? process.env.BLENDER_BIN
+        : fs.existsSync("C:/Program Files/Blender Foundation/Blender 5.3/blender.exe")
+          ? "C:/Program Files/Blender Foundation/Blender 5.3/blender.exe"
+          : "blender";
+    const bp = flags.blueprint || "blueprint/";
+    const out = flags.out || "out/";
+    execFileSync(
+      blenderBin,
+      ["-b", "--factory-startup", "--threads", "4", "--python", "build.py", "--", "--blueprint", bp, "--out", out],
+      { cwd: dir, stdio: "inherit" }
+    );
     return;
   }
 
