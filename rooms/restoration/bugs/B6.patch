@@ -1,0 +1,10 @@
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -238,4 +238,4 @@
+     keyLight.shadow.camera.near = 0.5;
+     keyLight.shadow.camera.far = 25;
+-    keyLight.shadow.bias = -0.0025;
+-    keyLight.shadow.normalBias = 0.03;
++    keyLight.shadow.bias = 0.0008;
++    keyLight.shadow.normalBias = 0.0;
+     scene.add(keyLight);

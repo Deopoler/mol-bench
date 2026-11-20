@@ -1,0 +1,8 @@
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -403,4 +403,4 @@
+     chartTexture.needsUpdate = true;
+     trackTexture(chartTexture);
+-    chartTexture.colorSpace = THREE.SRGBColorSpace;
++    chartTexture.colorSpace = THREE.LinearSRGBColorSpace;
+     chartTexture.minFilter = THREE.NearestFilter;

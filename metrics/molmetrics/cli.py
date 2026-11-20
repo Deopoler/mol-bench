@@ -443,8 +443,14 @@ def compute_metrics(
     else:
         target_ids = sorted(IMPLEMENTED_METRICS)
 
-    base_dirs = (m_path.parent, spec_dir, Path.cwd())
-    start_dirs = (start_dir, m_path.parent, spec_dir, Path.cwd())
+    hidden_dir: Path | None = None
+    if spec_dir is not None and spec.get("room"):
+        cand_hidden = spec_dir.parent.parent / "hidden" / str(spec["room"])
+        if cand_hidden.exists():
+            hidden_dir = cand_hidden
+
+    base_dirs = (m_path.parent, spec_dir, hidden_dir, Path.cwd())
+    start_dirs = (start_dir, m_path.parent, spec_dir, hidden_dir, Path.cwd())
 
     output: dict[str, Any] = {}
     skipped: list[str] = []

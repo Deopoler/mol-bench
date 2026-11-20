@@ -1,0 +1,130 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #12151e;
+  color: #ece8de;
+  font-family: "Georgia", "Times New Roman", serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.orrery-shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.orrery-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.orrery-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.orrery-hud {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  width: 320px;
+  padding: 16px 20px;
+  background: rgba(18, 21, 30, 0.84);
+  border: 1px solid rgba(212, 175, 95, 0.38);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.hud-header {
+  margin-bottom: 8px;
+}
+
+.hud-kicker {
+  display: block;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #d4af5f;
+  margin-bottom: 4px;
+}
+
+.hud-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #f6f2e8;
+  line-height: 1.25;
+}
+
+.hud-body {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #c6c2b8;
+  margin-bottom: 12px;
+}
+
+.hud-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(212, 175, 95, 0.22);
+}
+
+.focus-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.focus-label {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9c988e;
+}
+
+.focus-value {
+  font-size: 15px;
+  color: #48dcd0;
+}
+
+.next-planet-btn {
+  min-width: 124px;
+  min-height: 44px;
+  padding: 10px 16px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #141720;
+  background: linear-gradient(180deg, #e5c374 0%, #c79d46 100%);
+  border: 1px solid #f2d999;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.next-planet-btn:hover {
+  background: linear-gradient(180deg, #edd088 0%, #d4aa52 100%);
+}
+
+.next-planet-btn:focus-visible {
+  outline: 2px solid #48dcd0;
+  outline-offset: 2px;
+}

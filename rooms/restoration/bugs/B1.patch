@@ -1,0 +1,9 @@
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -94,4 +94,6 @@
+ function makeColor(hex) {
+   const color = new THREE.Color(hex);
++  color.convertLinearToSRGB();
++  color.convertLinearToSRGB();
+   return color;
+ }

@@ -1,0 +1,15 @@
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -630,10 +630,2 @@
+     onNextPlanetClick = null;
+ 
+-    for (const geom of allocatedGeometries) geom.dispose();
+-    for (const mat of allocatedMaterials) mat.dispose();
+-    for (const tex of allocatedTextures) tex.dispose();
+-    if (keyLight && keyLight.shadow && keyLight.shadow.map) keyLight.shadow.map.dispose();
+-    allocatedGeometries.length = 0;
+-    allocatedMaterials.length = 0;
+-    allocatedTextures.length = 0;
+-    retainCache.length = 0;
+ 
+     if (renderer && renderer.domElement && renderer.domElement.parentNode) {

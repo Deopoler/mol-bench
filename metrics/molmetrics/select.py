@@ -134,6 +134,15 @@ def parse_at(at_str: str | None) -> AtFilter:
             parsed.variant = "camera_drift"
         elif low == "static camera":
             parsed.variant = "normal"
+        elif low.startswith("variants="):
+            v_list = [v.strip() for v in low.split("=", 1)[1].split("|") if v.strip()]
+            if not v_list or any(v not in VALID_VARIANTS for v in v_list):
+                raise ValueError(f"Unknown variant in 'at' specification: {tok!r}")
+            parsed.variant = v_list[0]
+        elif low.startswith("mask="):
+            mask_name = tok.split("=", 1)[1].strip()
+            if mask_name.lower() == "metal":
+                parsed.metal_only = True
         elif low == "metal pixels":
             parsed.metal_only = True
         elif low == "metal pixels of turntable renders":

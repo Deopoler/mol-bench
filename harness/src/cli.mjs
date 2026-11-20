@@ -184,9 +184,9 @@ export async function gradeSubmission({
 
   let captureGates = {};
   let captureRes = null;
+  const adapter = await loadRoomAdapter(spec.room);
 
   if (!noCapture) {
-    const adapter = await loadRoomAdapter(spec.room);
     const isBlenderRoom = String(spec.contract || spec._baseSpec?.contract || "").includes("blender");
     if (isBlenderRoom && typeof adapter?.captureBlender === "function") {
       fs.mkdirSync(resolvedWorkDir, { recursive: true });
@@ -273,6 +273,27 @@ export async function gradeSubmission({
     if (adapter && typeof adapter.extraMetrics === "function") {
       await adapter.extraMetrics({ spec, plan, captureRes, manifestPath: captureRes.manifestPath, workDir: resolvedWorkDir, submissionDir: resolvedSub, hidden, seeds, timestamps }, rawMetrics);
     }
+  }
+
+  if (adapter && typeof adapter.extraMetrics === "function") {
+    await adapter.extraMetrics(
+      {
+        room: spec.room,
+        submissionDir: resolvedSub,
+        workDir: resolvedWorkDir,
+        repoRoot,
+        spec,
+        plan,
+        seeds,
+        timestamps,
+        hidden,
+        noCapture,
+        noPython,
+        staticRes,
+        captureRes
+      },
+      rawMetrics
+    );
   }
 
   const gates = combineGates(spec.gates, staticRes.gates, captureGates, { captureSkipped: noCapture });

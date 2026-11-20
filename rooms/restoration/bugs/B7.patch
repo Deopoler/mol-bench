@@ -1,0 +1,11 @@
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -625,6 +625,2 @@
+     }
+ 
+-    if (nextBtn && onNextPlanetClick) nextBtn.removeEventListener("click", onNextPlanetClick);
+-    if (typeof window !== "undefined" && onWindowResize) window.removeEventListener("resize", onWindowResize);
+-    activeListenerCount = 0;
+-    onNextPlanetClick = null;
+ 
+     for (const geom of allocatedGeometries) geom.dispose();
