@@ -143,6 +143,8 @@ Variants (closed list, extend only by editing this file): `normal`, `reduced_mot
 - viewports: `WxH` | `all viewports`  (and `A and B`)
 - time: `t=N` | `t in [a, b, ...]` | `all timestamps` | `t0=N`
 - schemes: `both schemes` (default: light only)
+- variants: `variants=a|b|...` (sample each listed variant; default `normal`)
+- masks: `mask=<name>` (restrict pixels to a named mask: a harness material/ID pass such as `metal`, or a mask file declared in the metric)
 - steps: `after resize sequence` | `after resize A -> B -> C` | `turntable` | `12 hidden views` | `front, side, top`
 - free notes in a metric go in `notes`, never in `at`.
 

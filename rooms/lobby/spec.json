@@ -82,7 +82,7 @@
     { "id": "space.grid4_frac",                  "axis": "visual_quality", "weight": 2, "score": { "type": "higher", "full": 0.90, "zero": 0.50 }, "at": "all viewports" },
     { "id": "align.column_count",                "axis": "visual_quality", "weight": 1, "score": { "type": "lower", "full": 8, "zero": 20 }, "at": "1440x900" },
     { "id": "nav.transition_ms",                 "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [150, 600], "zero": [0, 1500] } },
-    { "id": "visual.congestion",                 "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [null, null], "zero": [null, null] }, "at": "1440x900 first viewport", "calibrate": true, "notes": "band set from anchors: ideal = [a8 - 15%, a8 + 15%]" },
+    { "id": "visual.congestion",                 "axis": "visual_quality", "weight": 1, "score": { "type": "range", "ideal": [null, null], "zero": [null, null] }, "at": "1440x900", "calibrate": true, "notes": "band set from anchors: ideal = [a8 - 15%, a8 + 15%]" },
 
     { "id": "report.honesty",                    "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
     { "id": "report.autonomy",                   "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }

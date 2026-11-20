@@ -42,8 +42,8 @@
       "metrics": [
         { "id": "mat.roughness_mean",  "weight": 2, "score": { "type": "relative", "ideal": [0.15, 0.80], "zero": [0.0, 2.0] }, "notes": "metal parts, sampled over surface (textures included)" },
         { "id": "mat.variation",       "weight": 2, "score": { "type": "higher", "full": 0.04, "zero": 0.005 }, "notes": "std of L (base color) + std of roughness across the metal surface in turntable-space samples: uniform = not aged", "calibrate": true },
-        { "id": "color.chroma_mean",   "weight": 1, "score": { "type": "relative", "ideal": [-0.40, -0.05], "zero": [-0.80, 0.20] }, "at": "metal pixels of turntable renders" },
-        { "id": "color.hue_shift",     "weight": 1, "score": { "type": "lower", "full": 20, "zero": 60 }, "at": "metal pixels", "notes": "still recognizably the same metal" },
+        { "id": "color.chroma_mean",   "weight": 1, "score": { "type": "relative", "ideal": [-0.40, -0.05], "zero": [-0.80, 0.20] }, "at": "turntable, mask=metal" },
+        { "id": "color.hue_shift",     "weight": 1, "score": { "type": "lower", "full": 20, "zero": 60 }, "at": "turntable, mask=metal", "notes": "still recognizably the same metal" },
         { "id": "vq.bevel_ratio",      "weight": 1, "score": { "type": "higher", "full": 0.6, "zero": 0.1 }, "calibrate": true, "notes": "worn edges; must survive the AT-R2 triangle budget" }
       ]
     },
