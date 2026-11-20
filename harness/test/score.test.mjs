@@ -208,3 +208,54 @@ test("gate failure zeroing rules: non-G-report zeroes craft/vq/revision; G-repor
   assert.equal(skippedCapture.axes.visual_quality, 10);
   assert.equal(skippedCapture.axes.reliability, 10);
 });
+
+test("completeness ratio dampens craft and visual quality, leaving reliability and revision unchanged", () => {
+  const spec = {
+    composite: { craft: 0.25, visual_quality: 0.25, reliability: 0.25, revision: 0.25 },
+    metrics: [
+      { id: "c", axis: "craft", weight: 1, score: { type: "pass" } },
+      { id: "v", axis: "visual_quality", weight: 1, score: { type: "pass" } },
+      { id: "r", axis: "reliability", weight: 1, score: { type: "pass" } },
+      { id: "rev", axis: "revision", weight: 1, score: { type: "pass" } },
+      { id: "tests.hidden", axis: "test", weight: 1, score: { type: "ratio" } }
+    ]
+  };
+  const res = scoreSubmission(spec, {
+    c: true,
+    v: true,
+    r: true,
+    rev: true,
+    "tests.hidden": { passed: 1, total: 2 }
+  });
+  assert.equal(res.completeness, 0.5);
+  assert.equal(res.completeness_multiplier, 0.625);
+  assert.equal(res.axes.craft, 6.25);
+  assert.equal(res.axes.visual_quality, 6.25);
+  assert.equal(res.axes.reliability, 10);
+  assert.equal(res.axes.revision, 10);
+});
+
+test("missing or sufficient completeness leaves axes unchanged and configured metrics are supported", () => {
+  const base = { composite: { craft: 1 }, metrics: [{ id: "c", axis: "craft", weight: 1, score: { type: "pass" } }] };
+  const missing = scoreSubmission(base, { c: true });
+  assert.equal(missing.completeness, null);
+  assert.equal(missing.completeness_multiplier, 1);
+  assert.equal(missing.axes.craft, 10);
+
+  const configured = scoreSubmission({
+    ...base,
+    completeness_metric: "core",
+    metrics: [...base.metrics, { id: "core", axis: "craft", weight: 1, score: { type: "ratio" } }]
+  }, { c: true, core: 0.8 });
+  assert.equal(configured.completeness, 0.8);
+  assert.equal(configured.completeness_multiplier, 1);
+  assert.equal(configured.axes.craft, 9);
+
+  const notComputed = scoreSubmission({
+    ...base,
+    completeness_metric: "core",
+    metrics: [...base.metrics, { id: "core", axis: "craft", weight: 1, score: { type: "ratio" } }]
+  }, { c: true, core: null });
+  assert.equal(notComputed.completeness, null);
+  assert.equal(notComputed.completeness_multiplier, 1);
+});

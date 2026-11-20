@@ -1,1 +1,22 @@
-document.documentElement.classList.toggle("dark",matchMedia("(prefers-color-scheme: dark)").matches);const rooms=window.__benchHost?.params?.rooms??[];const grid=document.querySelector('#room-grid');const empty=document.querySelector('[data-bench="empty-state"]');document.querySelector('#count').textContent=String(rooms.length).padStart(2,'0')+' ROOMS';for(const [i,r] of rooms.entries()){const open=r.status!=='coming_soon';const card=document.createElement(open?'a':'article');card.className='room-card'+(open?'':' is-soon');card.dataset.bench='room-card';card.style.setProperty('--card-accent',r.accent_oklch?`oklch(${r.accent_oklch[0]} ${r.accent_oklch[1]} ${r.accent_oklch[2]})`:'#bd795d');if(open)card.href=r.route;card.innerHTML=`<div class="card-top"><span>ROOM ${String(i+1).padStart(2,'0')}</span><span>${open?'↗':'—'}</span></div><div class="card-art" aria-hidden="true"><span></span></div><h3></h3><p></p>${open?'<span class="arrow" aria-hidden="true">↗</span>':'<span class="badge">Coming soon</span>'}`;card.querySelector('h3').textContent=r.title_ko;card.querySelector('p').textContent=r.summary_ko;grid.append(card)}empty.hidden=rooms.length!==0;document.querySelector('.theme').addEventListener('click',()=>{document.documentElement.classList.toggle('dark');document.querySelector('.theme').setAttribute('aria-pressed',String(document.documentElement.classList.contains('dark')))});const roomId=()=>location.hash.startsWith('#/room/')?location.hash.slice(7):'lobby';window.__bench={version:1,ready:document.fonts.ready,setSeed(){},seek(){},resume(){},async renderFrame(){await new Promise(requestAnimationFrame)},state(){return{route:roomId(),lang:'ko',theme:document.documentElement.classList.contains('dark')?'dark':'light'}},stats(){return{drawCalls:0,triangles:0}}};
+document.documentElement.classList.toggle("dark",matchMedia("(prefers-color-scheme: dark)").matches);
+const grid=document.querySelector('#room-grid');
+const empty=document.querySelector('[data-bench="empty-state"]');
+function renderRooms(){
+  const rooms=window.__benchHost?.params?.rooms??[];
+  grid.replaceChildren();
+  document.querySelector('#count').textContent=String(rooms.length).padStart(2,'0')+' ROOMS';
+  for(const [i,r] of rooms.entries()){
+    const open=r.status!=='coming_soon';
+    const card=document.createElement(open?'a':'article');
+    card.className='room-card'+(open?'':' is-soon');card.dataset.bench='room-card';
+    card.style.setProperty('--card-accent',r.accent_oklch?`oklch(${r.accent_oklch[0]} ${r.accent_oklch[1]} ${r.accent_oklch[2]})`:'#bd795d');
+    if(open)card.href=r.route;
+    card.innerHTML=`<div class="card-top"><span>ROOM ${String(i+1).padStart(2,'0')}</span><span>${open?'↗':'—'}</span></div><div class="card-art" aria-hidden="true"><span></span></div><h3></h3><p></p>${open?'<span class="arrow" aria-hidden="true">↗</span>':'<span class="badge">Coming soon</span>'}`;
+    card.querySelector('h3').textContent=r.title_ko;card.querySelector('p').textContent=r.summary_ko;grid.append(card);
+  }
+  empty.hidden=rooms.length!==0;
+}
+renderRooms();
+document.querySelector('.theme').addEventListener('click',()=>{document.documentElement.classList.toggle('dark');document.querySelector('.theme').setAttribute('aria-pressed',String(document.documentElement.classList.contains('dark')))});
+const roomId=()=>location.hash.startsWith('#/room/')?location.hash.slice(7):'lobby';
+window.__bench={version:1,ready:document.fonts.ready,setSeed(){renderRooms()},seek(){},resume(){},async renderFrame(){await new Promise(requestAnimationFrame)},state(){return{route:roomId(),lang:'ko',theme:document.documentElement.classList.contains('dark')?'dark':'light'}},stats(){return{drawCalls:0,triangles:0}}};

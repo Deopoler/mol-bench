@@ -29,6 +29,7 @@ Full-score bands are listed below. For `pass`, the value must pass; for `ratio`,
 | `data.rooms_rendered` | ratio: all generated rooms render |
 | `data.long_title` | pass |
 | `data.empty_state` | pass |
+| `tests.hidden` | ratio: all public functional checks pass |
 | `nav.routes` | ratio: every open room route works |
 | `layout.overflow_count` | 0 |
 | `text.clipped_count` | 0 |
