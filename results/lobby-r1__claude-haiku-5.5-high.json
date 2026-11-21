@@ -814,7 +814,17 @@
   "completeness_multiplier": 1,
   "taste": null,
   "efficiency": {
-    "wall_min": 12.8743
+    "wall_min": 12.8743,
+    "tokens": {
+      "source": "claude",
+      "sessions": 1,
+      "input": 86,
+      "output": 74671,
+      "cache_read": 5820735,
+      "cache_write": 161021,
+      "reasoning": 0,
+      "total": 6056513
+    }
   },
   "leakage": {
     "flagged": false,

@@ -959,7 +959,17 @@
   "completeness_multiplier": 1,
   "taste": null,
   "efficiency": {
-    "wall_min": 29.8232
+    "wall_min": 29.8232,
+    "tokens": {
+      "source": "agy",
+      "sessions": 2,
+      "input": 746695,
+      "output": 151300,
+      "cache_read": 0,
+      "cache_write": 0,
+      "reasoning": 0,
+      "total": 897995
+    }
   },
   "leakage": {
     "flagged": false,

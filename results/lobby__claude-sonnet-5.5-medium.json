@@ -959,7 +959,17 @@
   "completeness_multiplier": 0.8928571428571428,
   "taste": null,
   "efficiency": {
-    "wall_min": 6.4217
+    "wall_min": 6.4217,
+    "tokens": {
+      "source": "claude",
+      "sessions": 1,
+      "input": 62,
+      "output": 24329,
+      "cache_read": 3291768,
+      "cache_write": 103277,
+      "reasoning": 0,
+      "total": 3419436
+    }
   },
   "leakage": {
     "flagged": false,

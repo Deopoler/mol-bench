@@ -172,7 +172,17 @@
   "completeness_multiplier": 1,
   "taste": null,
   "efficiency": {
-    "wall_min": 36.3487
+    "wall_min": 36.3487,
+    "tokens": {
+      "source": "claude",
+      "sessions": 1,
+      "input": 120,
+      "output": 70986,
+      "cache_read": 8707548,
+      "cache_write": 164902,
+      "reasoning": 0,
+      "total": 8943556
+    }
   },
   "leakage": {
     "flagged": false,
