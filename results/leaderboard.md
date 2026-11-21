@@ -1,6 +1,6 @@
 # MoL-Bench Leaderboard
 
-Generated: 2026-11-21T07:38:22.524Z | Models: 18 | Rooms: 5 | Runs: 24 | [Gallery](../site/gallery/)
+Generated: 2026-11-21T07:43:51.824Z | Models: 18 | Rooms: 5 | Runs: 24 | [Gallery](../site/gallery/)
 
 ## Overall (by Model)
 
