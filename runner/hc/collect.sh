@@ -11,4 +11,5 @@ label=$(echo "$line" | cut -f2); term=$(echo "$line" | cut -f4)
 hc kill "$term" >/dev/null 2>&1 || true
 hc rm "$term" >/dev/null 2>&1 || true
 cd "$REPO"
-node runner/collect.mjs "$rid" --model "$label" ${flag:+--timed-out} 2>&1 | tail -3
+n=0; [ -f .orchestra/interventions.tsv ] && n=$(awk -F'	' -v r="$rid" '$1==r && $2 !~ /^approve/' .orchestra/interventions.tsv | wc -l)
+node runner/collect.mjs "$rid" --model "$label" ${flag:+--timed-out} --interventions "$n" 2>&1 | tail -3

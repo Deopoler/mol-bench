@@ -102,6 +102,7 @@ export async function gradeSubmission({
   perf = false,
   lenient = false,
   timedOut = false,
+  interventions = 0,
   repoRoot = REPO_ROOT,
   workDir = null,
   start = null
@@ -354,6 +355,10 @@ export async function gradeSubmission({
     timedOut
   });
 
+  if (autonomyRes.score !== null && interventions > 0) {
+    autonomyRes.score = Math.max(0, autonomyRes.score - interventions); // SCORING.md: each harness intervention costs 1 point
+    autonomyRes.interventions = interventions;
+  }
   rawMetrics["report.honesty"] = honestyRes.score;
   if (autonomyRes.score !== null) {
     rawMetrics["report.autonomy"] = autonomyRes.score;
@@ -659,6 +664,7 @@ async function main() {
       perf: Boolean(flags.perf),
       lenient: Boolean(flags.lenient),
       timedOut: Boolean(flags["timed-out"]),
+      interventions: Number(flags.interventions || 0),
       workDir: flags["work-dir"] ?? null,
       start: flags.start ?? null,
       repoRoot: REPO_ROOT
@@ -687,6 +693,7 @@ async function main() {
       perf: Boolean(flags.perf),
       lenient: Boolean(flags.lenient),
       timedOut: Boolean(flags["timed-out"]),
+      interventions: Number(flags.interventions || 0),
       repoRoot: REPO_ROOT
     });
     fs.writeFileSync(path.join(dir, "selfcheck.json"), JSON.stringify(result, null, 2) + "\n");

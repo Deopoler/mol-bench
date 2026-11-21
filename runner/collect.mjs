@@ -309,6 +309,7 @@ export function collectRun({
   perf = false,
   lenient = false,
   timedOut = false,
+  interventions = 0,
   repoRoot = DEFAULT_REPO_ROOT,
   resultsDir = null
 }) {
@@ -393,6 +394,7 @@ export function collectRun({
   if (perf) gradeArgs.push("--perf");
   if (lenient) gradeArgs.push("--lenient");
   if (timedOut) gradeArgs.push("--timed-out");
+  if (interventions > 0) gradeArgs.push("--interventions", String(interventions));
   gradeArgs.push("--work-dir", workDir);
 
   // 5a. Export the start snapshot (first commit of the run repo) so diff metrics compare against it.
@@ -503,6 +505,7 @@ function main() {
     perf: Boolean(flags.perf),
     lenient: Boolean(flags.lenient),
     timedOut: Boolean(flags["timed-out"]),
+    interventions: Number(flags.interventions || 0),
     repoRoot: flags["repo-root"] || DEFAULT_REPO_ROOT,
     resultsDir: flags["results-dir"] || null
   });
