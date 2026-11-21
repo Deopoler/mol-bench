@@ -1,0 +1,10 @@
+{
+  "run_id": "restoration__claude-sonnet-5.5-high",
+  "room": "restoration",
+  "track": "build",
+  "seed": 5,
+  "created_at": "2026-11-21T02:06:02.244Z",
+  "ended_at": "2026-11-21T02:18:17.624Z",
+  "wall_min": 12.2563,
+  "model": "Claude Sonnet 5.5 (high)"
+}

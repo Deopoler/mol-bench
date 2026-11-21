@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-21T00:21:31.488Z",
+  "generated_at": "2026-11-21T02:29:17.592Z",
   "summary": {
-    "total_runs": 18,
-    "valid_runs": 18,
-    "models_count": 15,
+    "total_runs": 20,
+    "valid_runs": 20,
+    "models_count": 16,
     "rooms_count": 4
   },
   "overall": [
@@ -19,6 +19,29 @@
       },
       "reliability": 10,
       "avg_wall_min": 22.52,
+      "rooms_count": 1,
+      "runs_count": 1,
+      "invalid_count": 0,
+      "leakage_count": 0,
+      "room_scores": {
+        "lobby": {
+          "composite": 10,
+          "runs": 1
+        }
+      }
+    },
+    {
+      "model": "Claude Opus 5.5 (high)",
+      "composite": 10,
+      "composite_raw": 9.972222222222221,
+      "axes": {
+        "craft": 9.9,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "avg_wall_min": 12.04,
       "rooms_count": 1,
       "runs_count": 1,
       "invalid_count": 0,
@@ -238,6 +261,33 @@
       }
     },
     {
+      "model": "Claude Sonnet 5.5 (high)",
+      "composite": 9.1,
+      "composite_raw": 9.087579365079364,
+      "axes": {
+        "craft": 9.2,
+        "visual_quality": 8.2,
+        "revision": null,
+        "reliability": 9.4
+      },
+      "reliability": 9.4,
+      "avg_wall_min": 13.42,
+      "rooms_count": 2,
+      "runs_count": 2,
+      "invalid_count": 0,
+      "leakage_count": 0,
+      "room_scores": {
+        "lobby": {
+          "composite": 8.9,
+          "runs": 1
+        },
+        "restoration": {
+          "composite": 9.3,
+          "runs": 1
+        }
+      }
+    },
+    {
       "model": "GPT-6-Luna (max)",
       "composite": 9,
       "composite_raw": 9.03968253968254,
@@ -256,29 +306,6 @@
       "room_scores": {
         "lobby": {
           "composite": 9,
-          "runs": 1
-        }
-      }
-    },
-    {
-      "model": "Claude Sonnet 5.5 (high)",
-      "composite": 8.9,
-      "composite_raw": 8.85968253968254,
-      "axes": {
-        "craft": 8.8,
-        "visual_quality": 8.9,
-        "revision": null,
-        "reliability": 8.8
-      },
-      "reliability": 8.8,
-      "avg_wall_min": 14.58,
-      "rooms_count": 1,
-      "runs_count": 1,
-      "invalid_count": 0,
-      "leakage_count": 0,
-      "room_scores": {
-        "lobby": {
-          "composite": 8.9,
           "runs": 1
         }
       }
@@ -470,6 +497,108 @@
       "renovation": null,
       "track": "build",
       "runs": [
+        {
+          "run_id": "lobby__claude-opus-5.5-high",
+          "model": "Claude Opus 5.5 (high)",
+          "room": "lobby",
+          "renovation": null,
+          "room_key": "lobby",
+          "track": "build",
+          "seed": null,
+          "seeds": "hidden",
+          "composite": 10,
+          "composite_raw": 9.972222222222221,
+          "axes": {
+            "craft": 9.9,
+            "visual_quality": 10,
+            "revision": null,
+            "reliability": 10
+          },
+          "axes_raw": {
+            "craft": 9.92063492063492,
+            "visual_quality": 10,
+            "revision": null,
+            "reliability": 10
+          },
+          "reliability": 10,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 12.0445,
+            "tokens_in": 82,
+            "tokens_out": 53829,
+            "tokens_total": 5564583,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 82,
+              "output": 53829,
+              "cache_read": 5332609,
+              "cache_write": 178063,
+              "reasoning": 0,
+              "total": 5564583
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 9,
+            "evaluated": 9,
+            "total": 9,
+            "failed": []
+          },
+          "gates_detail": {
+            "G-load": {
+              "pass": true,
+              "detail": "Loaded and __bench.ready resolved"
+            },
+            "G-console": {
+              "pass": true,
+              "detail": "0 console errors / uncaught exceptions"
+            },
+            "G-contract": {
+              "pass": true,
+              "detail": "BenchRoom v1 contract satisfied"
+            },
+            "G-determinism": {
+              "pass": true,
+              "detail": "Identical decoded pixel SHA-256 (303dbaa0ec573c90...)"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 requests outside local origin"
+            },
+            "G-raster": {
+              "pass": true,
+              "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            },
+            "G-fonts-local": {
+              "pass": true,
+              "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+            },
+            "G-live": {
+              "pass": true,
+              "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=254.90ms"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-21T02:04:47.042Z",
+          "ended_at": "2026-11-21T02:16:49.715Z",
+          "diff_file": "submissions/lobby__claude-opus-5.5-high.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "lobby_sheet_1.png",
+              "md_path": "submissions/lobby__claude-opus-5.5-high/preview/lobby_sheet_1.png",
+              "site_path": "previews/lobby__claude-opus-5.5-high/lobby_sheet_1.png"
+            }
+          ]
+        },
         {
           "run_id": "lobby__gemini-4-neon-high",
           "model": "Gemini 4 Neon (High)",
@@ -2129,6 +2258,114 @@
       "track": "build",
       "runs": [
         {
+          "run_id": "restoration__claude-sonnet-5.5-high",
+          "model": "Claude Sonnet 5.5 (high)",
+          "room": "restoration",
+          "renovation": null,
+          "room_key": "restoration",
+          "track": "build",
+          "seed": 5,
+          "seeds": "hidden",
+          "composite": 9.3,
+          "composite_raw": 9.31547619047619,
+          "axes": {
+            "craft": 9.5,
+            "visual_quality": 7.5,
+            "revision": null,
+            "reliability": 10
+          },
+          "axes_raw": {
+            "craft": 9.523809523809524,
+            "visual_quality": 7.5,
+            "revision": null,
+            "reliability": 10
+          },
+          "reliability": 10,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 12.2563,
+            "tokens_in": 118,
+            "tokens_out": 17076,
+            "tokens_total": 6300816,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 118,
+              "output": 17076,
+              "cache_read": 6175697,
+              "cache_write": 107925,
+              "reasoning": 0,
+              "total": 6300816
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 9,
+            "evaluated": 9,
+            "total": 9,
+            "failed": []
+          },
+          "gates_detail": {
+            "G-load": {
+              "pass": true,
+              "detail": "Loaded and __bench.ready resolved"
+            },
+            "G-console": {
+              "pass": true,
+              "detail": "0 console errors / uncaught exceptions"
+            },
+            "G-contract": {
+              "pass": true,
+              "detail": "BenchRoom v1 contract satisfied"
+            },
+            "G-determinism": {
+              "pass": true,
+              "detail": "Identical decoded pixel SHA-256 (2a380c51d34949f6...)"
+            },
+            "G-live": {
+              "pass": true,
+              "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=413.70ms"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 requests outside local origin"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            },
+            "G-raster": {
+              "pass": true,
+              "detail": "Raster assets within budget (max=0.8KB/256KB, total=0.8KB/1024KB)"
+            },
+            "G-fonts-local": {
+              "pass": true,
+              "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-21T02:06:02.244Z",
+          "ended_at": "2026-11-21T02:18:17.624Z",
+          "diff_file": "submissions/restoration__claude-sonnet-5.5-high.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "restoration_sheet_1.png",
+              "md_path": "submissions/restoration__claude-sonnet-5.5-high/preview/restoration_sheet_1.png",
+              "site_path": "previews/restoration__claude-sonnet-5.5-high/restoration_sheet_1.png"
+            },
+            {
+              "label": "sheet 2",
+              "file": "restoration_sheet_2.png",
+              "md_path": "submissions/restoration__claude-sonnet-5.5-high/preview/restoration_sheet_2.png",
+              "site_path": "previews/restoration__claude-sonnet-5.5-high/restoration_sheet_2.png"
+            }
+          ]
+        },
+        {
           "run_id": "restoration__claude-haiku-5.5-high",
           "model": "Claude Haiku 5.5 (high)",
           "room": "restoration",
@@ -2240,6 +2477,108 @@
     }
   },
   "runs": [
+    {
+      "run_id": "lobby__claude-opus-5.5-high",
+      "model": "Claude Opus 5.5 (high)",
+      "room": "lobby",
+      "renovation": null,
+      "room_key": "lobby",
+      "track": "build",
+      "seed": null,
+      "seeds": "hidden",
+      "composite": 10,
+      "composite_raw": 9.972222222222221,
+      "axes": {
+        "craft": 9.9,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "axes_raw": {
+        "craft": 9.92063492063492,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 12.0445,
+        "tokens_in": 82,
+        "tokens_out": 53829,
+        "tokens_total": 5564583,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 82,
+          "output": 53829,
+          "cache_read": 5332609,
+          "cache_write": 178063,
+          "reasoning": 0,
+          "total": 5564583
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 9,
+        "evaluated": 9,
+        "total": 9,
+        "failed": []
+      },
+      "gates_detail": {
+        "G-load": {
+          "pass": true,
+          "detail": "Loaded and __bench.ready resolved"
+        },
+        "G-console": {
+          "pass": true,
+          "detail": "0 console errors / uncaught exceptions"
+        },
+        "G-contract": {
+          "pass": true,
+          "detail": "BenchRoom v1 contract satisfied"
+        },
+        "G-determinism": {
+          "pass": true,
+          "detail": "Identical decoded pixel SHA-256 (303dbaa0ec573c90...)"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 requests outside local origin"
+        },
+        "G-raster": {
+          "pass": true,
+          "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        },
+        "G-fonts-local": {
+          "pass": true,
+          "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+        },
+        "G-live": {
+          "pass": true,
+          "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=254.90ms"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-21T02:04:47.042Z",
+      "ended_at": "2026-11-21T02:16:49.715Z",
+      "diff_file": "submissions/lobby__claude-opus-5.5-high.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "lobby_sheet_1.png",
+          "md_path": "submissions/lobby__claude-opus-5.5-high/preview/lobby_sheet_1.png",
+          "site_path": "previews/lobby__claude-opus-5.5-high/lobby_sheet_1.png"
+        }
+      ]
+    },
     {
       "run_id": "lobby__gemini-4-neon-high",
       "model": "Gemini 4 Neon (High)",
@@ -3455,6 +3794,114 @@
           "file": "lobby_sheet_1.png",
           "md_path": "submissions/lobby__gpt-6-luna-medium/preview/lobby_sheet_1.png",
           "site_path": "previews/lobby__gpt-6-luna-medium/lobby_sheet_1.png"
+        }
+      ]
+    },
+    {
+      "run_id": "restoration__claude-sonnet-5.5-high",
+      "model": "Claude Sonnet 5.5 (high)",
+      "room": "restoration",
+      "renovation": null,
+      "room_key": "restoration",
+      "track": "build",
+      "seed": 5,
+      "seeds": "hidden",
+      "composite": 9.3,
+      "composite_raw": 9.31547619047619,
+      "axes": {
+        "craft": 9.5,
+        "visual_quality": 7.5,
+        "revision": null,
+        "reliability": 10
+      },
+      "axes_raw": {
+        "craft": 9.523809523809524,
+        "visual_quality": 7.5,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 12.2563,
+        "tokens_in": 118,
+        "tokens_out": 17076,
+        "tokens_total": 6300816,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 118,
+          "output": 17076,
+          "cache_read": 6175697,
+          "cache_write": 107925,
+          "reasoning": 0,
+          "total": 6300816
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 9,
+        "evaluated": 9,
+        "total": 9,
+        "failed": []
+      },
+      "gates_detail": {
+        "G-load": {
+          "pass": true,
+          "detail": "Loaded and __bench.ready resolved"
+        },
+        "G-console": {
+          "pass": true,
+          "detail": "0 console errors / uncaught exceptions"
+        },
+        "G-contract": {
+          "pass": true,
+          "detail": "BenchRoom v1 contract satisfied"
+        },
+        "G-determinism": {
+          "pass": true,
+          "detail": "Identical decoded pixel SHA-256 (2a380c51d34949f6...)"
+        },
+        "G-live": {
+          "pass": true,
+          "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=413.70ms"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 requests outside local origin"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        },
+        "G-raster": {
+          "pass": true,
+          "detail": "Raster assets within budget (max=0.8KB/256KB, total=0.8KB/1024KB)"
+        },
+        "G-fonts-local": {
+          "pass": true,
+          "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-21T02:06:02.244Z",
+      "ended_at": "2026-11-21T02:18:17.624Z",
+      "diff_file": "submissions/restoration__claude-sonnet-5.5-high.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "restoration_sheet_1.png",
+          "md_path": "submissions/restoration__claude-sonnet-5.5-high/preview/restoration_sheet_1.png",
+          "site_path": "previews/restoration__claude-sonnet-5.5-high/restoration_sheet_1.png"
+        },
+        {
+          "label": "sheet 2",
+          "file": "restoration_sheet_2.png",
+          "md_path": "submissions/restoration__claude-sonnet-5.5-high/preview/restoration_sheet_2.png",
+          "site_path": "previews/restoration__claude-sonnet-5.5-high/restoration_sheet_2.png"
         }
       ]
     },

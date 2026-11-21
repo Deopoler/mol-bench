@@ -1,0 +1,229 @@
+diff --git a/report.json b/report.json
+new file mode 100644
+index 0000000..afa2e73
+--- /dev/null
++++ b/report.json
+@@ -0,0 +1,116 @@
++{
++  "schema_version": 1,
++  "summary": "Diagnosed and minimally fixed all four planted orrery regressions in room/src/orrery.js (double sRGB encode, decal z-fighting, leaked listeners on unmount, fixed per-frame clock step) with one red-green regression test each.",
++  "deliverables": [
++    "report.json",
++    "tests/regression/bugs.test.mjs",
++    "room/src/orrery.js"
++  ],
++  "claims": [
++    {
++      "metric_id": "G-load",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-console",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-determinism",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "G-offline",
++      "status": "verified",
++      "meets_target": true,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "time.flicker",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 0.0428,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "perf.frame_p95_norm_ms",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 2.5,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "render.aliasing",
++      "status": "verified",
++      "meets_target": false,
++      "measured_value": 0.0438,
++      "method": "npm run selfcheck"
++    },
++    {
++      "metric_id": "tests.redgreen",
++      "status": "verified",
++      "meets_target": true,
++      "measured_value": 1,
++      "method": "node --test tests/regression: 4/4 fail on original seed, 4/4 pass on fix"
++    },
++    {
++      "metric_id": "G-live",
++      "status": "not_verified"
++    },
++    {
++      "metric_id": "tests.hidden",
++      "status": "not_verified"
++    },
++    {
++      "metric_id": "diff.out_of_scope_files",
++      "status": "not_verified"
++    },
++    {
++      "metric_id": "diff.change_ratio",
++      "status": "not_verified"
++    }
++  ],
++  "blocked": false,
++  "room": {
++    "bugs": [
++      {
++        "report_id": "B1",
++        "root_cause": "COLOR_SPACE_DOUBLE_ENCODE",
++        "files": [
++          "room/src/orrery.js"
++        ],
++        "test": "tests/regression/bugs.test.mjs"
++      },
++      {
++        "report_id": "B2",
++        "root_cause": "DEPTH_PRECISION_ZFIGHT",
++        "files": [
++          "room/src/orrery.js"
++        ],
++        "test": "tests/regression/bugs.test.mjs"
++      },
++      {
++        "report_id": "B7",
++        "root_cause": "LISTENER_NOT_REMOVED",
++        "files": [
++          "room/src/orrery.js"
++        ],
++        "test": "tests/regression/bugs.test.mjs"
++      },
++      {
++        "report_id": "B5",
++        "root_cause": "FRAME_RATE_DEPENDENT_UPDATE",
++        "files": [
++          "room/src/orrery.js"
++        ],
++        "test": "tests/regression/bugs.test.mjs"
++      }
++    ]
++  }
++}
+\ No newline at end of file
+diff --git a/room/src/orrery.js b/room/src/orrery.js
+index 85dedf3..389f51e 100644
+--- a/room/src/orrery.js
++++ b/room/src/orrery.js
+@@ -98,8 +98,6 @@ function deriveSeedParams(seed, hostParams = {}) {
+ 
+ function makeColor(hex) {
+   const color = new THREE.Color(hex);
+-  color.convertLinearToSRGB();
+-  color.convertLinearToSRGB();
+   return color;
+ }
+ 
+@@ -357,8 +355,6 @@ export function createOrreryBench(defaultContainer) {
+     decalMesh = new THREE.Mesh(decalGeom, decalMaterial);
+     decalMesh.rotation.x = -Math.PI / 2;
+     decalMesh.position.set(0.55, 0.0, 0.35);
+-    decalMaterial.polygonOffset = false;
+-    camera.near = 0.0002;
+     scene.add(decalMesh);
+ 
+     const pedestalGeom = trackGeometry(new THREE.CylinderGeometry(0.42, 0.58, 1.05, 32));
+@@ -702,8 +698,7 @@ export function createOrreryBench(defaultContainer) {
+   function tick() {
+     if (!isMounted) return;
+     if (!isPaused) {
+-      const frameStepMs = 16.667;
+-      currentClockMs = currentClockMs + frameStepMs;
++      currentClockMs = host.clock.now();
+       updateSceneAtTime(currentClockMs);
+       renderer.render(scene, camera);
+     }
+@@ -774,7 +769,17 @@ export function createOrreryBench(defaultContainer) {
+       cancelAnimationFrame(rafId);
+       rafId = null;
+     }
+-
++    if (nextBtn && onNextPlanetClick) {
++      nextBtn.removeEventListener("click", onNextPlanetClick);
++      activeListenerCount = Math.max(0, activeListenerCount - 1);
++    }
++    nextBtn = null;
++    onNextPlanetClick = null;
++    if (onWindowResize && typeof window !== "undefined") {
++      window.removeEventListener("resize", onWindowResize);
++      activeListenerCount = Math.max(0, activeListenerCount - 1);
++    }
++    onWindowResize = null;
+ 
+     for (const geom of allocatedGeometries) geom.dispose();
+     for (const mat of allocatedMaterials) mat.dispose();
+diff --git a/tests/regression/bugs.test.mjs b/tests/regression/bugs.test.mjs
+new file mode 100644
+index 0000000..c38250a
+--- /dev/null
++++ b/tests/regression/bugs.test.mjs
+@@ -0,0 +1,49 @@
++import test from "node:test";
++import assert from "node:assert/strict";
++import fs from "node:fs";
++import path from "node:path";
++import { fileURLToPath } from "node:url";
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
++const src = fs
++  .readFileSync(path.join(root, "room", "src", "orrery.js"), "utf8")
++  .replace(/\/\*[\s\S]*?\*\//g, "")
++  .replace(/^\s*\/\/.*$/gm, "");
++
++// Return the source of `function <name>(...) { ... }` (brace-balanced).
++function body(name) {
++  const m = new RegExp(String.raw`(?:async\s+)?function\s+${name}\s*\(`).exec(src);
++  assert.ok(m, `function ${name} not found`);
++  const open = src.indexOf("{", src.indexOf(")", m.index));
++  let depth = 0;
++  for (let i = open; i < src.length; i++) {
++    if (src[i] === "{") depth++;
++    else if (src[i] === "}" && --depth === 0) return src.slice(open, i + 1);
++  }
++  throw new Error(`unbalanced braces in ${name}`);
++}
++
++test("B1: makeColor does not double-encode colors to sRGB (no fog / washed-out look)", () => {
++  // new THREE.Color(hex) already yields linear working-space values; the renderer
++  // applies the sRGB output encoding, so any convertLinearToSRGB here washes the scene out.
++  assert.equal(/convertLinearToSRGB/.test(body("makeColor")), false);
++});
++
++test("B2: floor compass decal keeps polygonOffset and a sane camera near plane (no z-fighting)", () => {
++  assert.equal(/decalMaterial\.polygonOffset\s*=\s*false/.test(src), false, "decal polygonOffset must not be disabled");
++  assert.equal(/camera\.near\s*=\s*0?\.0\d*/.test(src), false, "camera.near must not be collapsed to a tiny value");
++  const m = /new THREE\.PerspectiveCamera\(\s*[\d.]+\s*,\s*[^,]+,\s*([\d.]+)\s*,/.exec(src);
++  assert.ok(m && Number(m[1]) >= 0.05, "camera near plane must be >= 0.05");
++});
++
++test("B7: unmount removes the Next Planet click listener and the resize listener", () => {
++  const b = body("unmount");
++  assert.match(b, /removeEventListener\(\s*["']click["']/);
++  assert.match(b, /removeEventListener\(\s*["']resize["']/);
++});
++
++test("B5: orbit clock follows __benchHost.clock, not a fixed per-frame step", () => {
++  const b = body("tick");
++  assert.match(b, /host\.clock\.now\(\)/);
++  assert.equal(/currentClockMs\s*\+\s*\w+|\+=|16\.6/.test(b), false, "no fixed per-frame increment");
++});

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="빛의 미술관 로비 — 빛과 기억, 시간을 주제로 한 디지털 전시실의 입구.">
+<title>빛의 미술관 · Museum of Light</title>
+<link rel="stylesheet" href="./lobby.css">
+</head>
+<body>
+<header class="site-header" data-bench="header">
+  <div class="wrap header-row">
+    <p class="brand" data-i18n="brand">빛의 미술관</p>
+    <div class="controls">
+      <button type="button" class="control" data-bench="lang-toggle" id="lang-toggle"><span data-i18n="langButton" lang="en">English</span></button>
+      <button type="button" class="control" data-bench="theme-toggle" id="theme-toggle"><span id="theme-label">어두운 화면</span></button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <p class="eyebrow" data-i18n="eyebrow">Museum of Light · 디지털 상설관</p>
+      <h1 id="hero-title" data-bench="hero-title" data-i18n="heroTitle">빛의 방에 오신 것을 환영합니다</h1>
+      <p class="lead" data-bench="body" data-i18n="lead">이곳은 빛과 기억, 그리고 시간을 주제로 한 작은 디지털 전시실들의 입구입니다. 마음이 가는 방의 문을 열고, 서두르지 말고 천천히 머물러 보세요.</p>
+      <a class="hero-cta" href="#rooms" data-i18n="heroCta">전시실 둘러보기</a>
+    </div>
+  </section>
+
+  <section class="rooms" id="rooms" aria-labelledby="rooms-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="rooms-title" data-i18n="roomsHeading">전시실</h2>
+        <p class="meta" id="rooms-count"></p>
+      </div>
+      <ul class="room-grid" id="room-grid"></ul>
+      <div class="empty" data-bench="empty-state" id="empty-state" hidden>
+        <h3 class="empty-title" data-i18n="emptyTitle">지금은 공개된 방이 없습니다</h3>
+        <p class="empty-text" data-i18n="emptyText">새 전시를 준비하고 있습니다. 조금 뒤에 다시 들러 주세요.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="visit" id="visit" aria-labelledby="visit-title">
+    <div class="wrap">
+      <h2 id="visit-title" data-i18n="visitHeading">관람 안내</h2>
+      <p class="prose" data-bench="body" data-i18n="visit1">모든 방은 휴대폰과 태블릿, 데스크톱에서 같은 경험을 드리도록 만들어졌습니다. 키보드만으로도 모든 문을 열 수 있고, 움직임 줄이기 설정을 켜 두시면 화면 전환이 조용해집니다.</p>
+      <p class="prose" data-bench="body" data-i18n="visit2">전시실 안에서는 브라우저의 뒤로 가기로 언제든 로비에 돌아올 수 있습니다. 밝은 화면과 어두운 화면은 위쪽의 버튼으로 바꿀 수 있고, 언어 버튼으로 영어 안내를 볼 수 있습니다.</p>
+    </div>
+  </section>
+
+  <section class="room-view" id="room-view" aria-labelledby="room-view-title" hidden>
+    <div class="wrap room-view-inner">
+      <p class="eyebrow" id="room-view-no"></p>
+      <h2 id="room-view-title" tabindex="-1"></h2>
+      <p class="room-view-alt" id="room-view-alt"></p>
+      <p class="room-view-summary" id="room-view-summary" lang="ko"></p>
+      <p class="room-view-note" data-i18n="roomNote">전시실의 문이 열렸습니다. 이 방의 작품은 고유한 주소에서 이어집니다.</p>
+      <button type="button" class="control back" id="room-back" data-i18n="back">로비로 돌아가기</button>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer" data-bench="footer">
+  <div class="wrap footer-row">
+    <p class="footer-note" data-i18n="footerNote">© 빛의 미술관 · 서울. 모든 방은 오프라인에서도 열립니다.</p>
+    <nav class="footer-nav" aria-label="바닥글" id="footer-nav">
+      <a href="#rooms" data-i18n="linkRooms">전시실</a>
+      <a href="#visit" data-i18n="linkVisit">관람 안내</a>
+      <a href="#top" data-i18n="linkTop">맨 위로</a>
+    </nav>
+  </div>
+</footer>
+<script src="./app.js"></script>
+</body>
+</html>
