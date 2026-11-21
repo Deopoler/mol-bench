@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Museum of Light — 빛의 미술관</title>
+  <meta name="description" content="빛과 침묵, 사유를 위한 디지털 전시 공간. Museum of Light.">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <header data-bench="header">
+        <div class="brand-block">
+          <span class="brand-title">MUSEUM OF LIGHT</span>
+          <span class="brand-subtitle" id="brand-sub">빛의 미술관 · Seoul</span>
+        </div>
+        <div class="controls-group">
+          <button type="button" data-bench="lang-toggle" class="btn-toggle" aria-label="언어 변경 / Toggle Language">
+            <span id="lang-btn-text">English</span>
+          </button>
+          <button type="button" data-bench="theme-toggle" class="btn-toggle" aria-label="테마 전환 / Toggle Theme">
+            <span id="theme-btn-text">다크 모드</span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero-section" aria-labelledby="hero-heading">
+          <span class="hero-tag" id="hero-tag">전시 컬렉션 · Exhibition Collection</span>
+          <h1 data-bench="hero-title" id="hero-heading">빛의 방에 오신 것을 환영합니다</h1>
+          <p data-bench="body" id="hero-desc">빛과 어둠, 시선과 침묵이 교차하는 전시 공간입니다. 열려 있는 각 방을 거닐며 천천히 머물러 보세요. 예술과 사유가 만나는 고요한 순간을 전합니다.</p>
+        </section>
+
+        <section class="collection-section" aria-labelledby="collection-heading">
+          <div class="section-header">
+            <h2 class="section-title" id="collection-heading">전시 공간</h2>
+            <span class="room-count-meta" id="room-count-meta">0개의 전시실</span>
+          </div>
+
+          <div data-bench="empty-state" id="empty-state" hidden>아직 공개된 방이 없습니다. 새로운 전시 준비 중입니다.</div>
+
+          <div id="rooms" class="rooms-grid"></div>
+        </section>
+      </main>
+
+      <footer data-bench="footer">
+        <div class="footer-content">
+          <div>
+            <p class="footer-primary">Museum of Light</p>
+            <p class="footer-secondary" id="footer-desc">빛과 기억, 디지털 사유를 위한 공간</p>
+          </div>
+          <p class="footer-coords">Seoul · 37.5665° N, 126.9780° E</p>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Room view modal for route navigation -->
+  <div id="room-modal" class="room-view-modal" hidden aria-modal="true" role="dialog" aria-labelledby="modal-room-title">
+    <div class="room-view-container">
+      <div class="room-view-nav">
+        <a href="#/lobby" class="btn-back" id="btn-back-link">← <span id="back-link-text">로비로 돌아가기</span></a>
+      </div>
+      <div class="card-accent-bar" id="modal-accent-bar" style="margin-bottom: 24px;"></div>
+      <span class="status-badge" id="modal-badge">OPEN</span>
+      <h2 class="room-view-title" id="modal-room-title">방 제목</h2>
+      <p class="room-view-summary" id="modal-room-summary">방 설명</p>
+    </div>
+  </div>
+
+  <script src="../../../shim/bench-host.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Renovation Comparison — Claude Haiku 5.5 (high)</title>
+  <style>
+    :root {
+      --bg: #121110;
+      --surface: #1c1a17;
+      --surface-alt: #24221e;
+      --text: #efece6;
+      --muted: #a39e94;
+      --border: #322f2a;
+      --accent: #f2b84b;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    header.renov-head {
+      padding: 10px 18px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .head-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .back-btn {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+    .back-btn:hover { text-decoration: underline; }
+    .title-group h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+    .title-group span {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .head-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .score-badge {
+      background: rgba(242, 184, 75, 0.2);
+      color: var(--accent);
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+    .toggle-btn {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .toggle-btn.active {
+      background: var(--accent);
+      color: #121110;
+      border-color: var(--accent);
+    }
+    .main-split {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 56px);
+      overflow: hidden;
+    }
+    .spec-drawer {
+      width: 320px;
+      min-width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transition: width 0.2s ease, margin-left 0.2s ease;
+    }
+    .spec-drawer.collapsed {
+      margin-left: -320px;
+    }
+    .drawer-head {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .drawer-body {
+      padding: 14px 16px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .req-item {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+    .req-head {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      font-size: 0.78rem;
+    }
+    .req-id {
+      font-weight: 700;
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+    .req-weight { color: var(--muted); }
+    .req-text {
+      margin: 0;
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+    .frames-container {
+      flex: 1;
+      display: flex;
+      gap: 2px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .frame-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      overflow: hidden;
+      transition: width 0.2s ease;
+    }
+    .pane-head {
+      padding: 8px 14px;
+      background: var(--surface-alt);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .pane-tag {
+      font-size: 0.74rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+    }
+    .frame-wrapper {
+      flex: 1;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      background: #000;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #ffffff;
+      display: block;
+    }
+    .mode-mobile iframe {
+      width: 320px;
+      height: 640px;
+      margin: auto;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <header class="renov-head">
+    <div class="head-left">
+      <a class="back-btn" href="../../index.html">← Gallery</a>
+      <div class="title-group">
+        <h1>Renovation r1: Start Anchor vs Model Result</h1>
+        <span>Claude Haiku 5.5 (high) · Score: 7.3</span>
+      </div>
+    </div>
+    <div class="head-right">
+      <button class="toggle-btn" id="btn-toggle-spec" type="button">Toggle Requests</button>
+      <button class="toggle-btn" id="btn-desktop" type="button">Desktop</button>
+      <button class="toggle-btn active" id="btn-mobile" type="button">Mobile (320px)</button>
+      <span class="score-badge">Composite: 7.3</span>
+    </div>
+  </header>
+
+  <div class="main-split">
+    <aside class="spec-drawer" id="spec-drawer">
+      <div class="drawer-head">
+        <span>Renovation Requirements</span>
+        <span style="font-size:0.75rem;color:var(--muted)">spec requests</span>
+      </div>
+      <div class="drawer-body">
+        
+      <div class="req-item">
+        <div class="req-head">
+          <span class="req-id">L-R1</span>
+          <span class="req-weight">weight: 3</span>
+        </div>
+        <p class="req-text">It must work on very small phones too — down to 320 px wide. Nothing should spill sideways and every button or link should be easy to tap.</p>
+      </div>
+      <div class="req-item">
+        <div class="req-head">
+          <span class="req-id">L-R2</span>
+          <span class="req-weight">weight: 3</span>
+        </div>
+        <p class="req-text">Add a Korean/English switch. It should remember my choice next time, and first-time visitors should get the language of their browser.</p>
+      </div>
+      <div class="req-item">
+        <div class="req-head">
+          <span class="req-id">L-R3</span>
+          <span class="req-weight">weight: 2</span>
+        </div>
+        <p class="req-text">Change only the hero title to a serif typeface. Please don't change anything else about how the page looks.</p>
+      </div>
+      <div class="req-item">
+        <div class="req-head">
+          <span class="req-id">L-R4</span>
+          <span class="req-weight">weight: 2</span>
+        </div>
+        <p class="req-text">Put a live 3D preview inside every room card — and the first load has to be faster than it is now.</p>
+      </div>
+      </div>
+    </aside>
+
+    <div class="frames-container mode-mobile" id="frames-container">
+      <div class="frame-pane">
+        <div class="pane-head">
+          <span>Start Version (Anchor a5)</span>
+          <span class="pane-tag">Initial State</span>
+        </div>
+        <div class="frame-wrapper">
+          <iframe id="start-iframe" src="../../anchors/lobby/a5/lobby/index.html" title="Start anchor"></iframe>
+        </div>
+      </div>
+      <div class="frame-pane">
+        <div class="pane-head">
+          <span>Model Result (Claude Haiku 5.5 (high))</span>
+          <span class="pane-tag">Renovated</span>
+        </div>
+        <div class="frame-wrapper">
+          <iframe id="result-iframe" src="./lobby/index.html" title="Model result"></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const container = document.getElementById('frames-container');
+    const drawer = document.getElementById('spec-drawer');
+    const btnToggleSpec = document.getElementById('btn-toggle-spec');
+    const btnDesktop = document.getElementById('btn-desktop');
+    const btnMobile = document.getElementById('btn-mobile');
+
+    btnToggleSpec.addEventListener('click', () => {
+      drawer.classList.toggle('collapsed');
+      btnToggleSpec.classList.toggle('active', !drawer.classList.contains('collapsed'));
+    });
+
+    btnDesktop.addEventListener('click', () => {
+      container.classList.remove('mode-mobile');
+      btnDesktop.classList.add('active');
+      btnMobile.classList.remove('active');
+    });
+
+    btnMobile.addEventListener('click', () => {
+      container.classList.add('mode-mobile');
+      btnMobile.classList.add('active');
+      btnDesktop.classList.remove('active');
+    });
+  </script>
+</body>
+</html>

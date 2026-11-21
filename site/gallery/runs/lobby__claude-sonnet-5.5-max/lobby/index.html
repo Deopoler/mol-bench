@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#fbf9f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1815" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Museum of Light — 빛으로 만든 작은 방들이 이어지는 디지털 전시관의 입구입니다.">
+<title>Museum of Light · 빛의 박물관</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23262220'/%3E%3Cpath d='M16 3a13 13 0 0 1 0 26z' fill='%23f1c65b'/%3E%3C/svg%3E">
+<script src="../../../shim/bench-host.js"></script>
+<script>
+/* Apply a stored theme/language choice before first paint (no flash). */
+(function () {
+  try {
+    var s = window.localStorage, t = s.getItem('mol-theme'), l = s.getItem('mol-lang');
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+    if (l === 'en' || l === 'ko') document.documentElement.setAttribute('lang', l);
+  } catch (e) { /* storage unavailable: fall back to system preference */ }
+})();
+</script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body id="top">
+
+<a class="skip" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
+
+<header class="site-header" data-bench="header">
+  <div class="wrap site-header__bar">
+    <a class="brand" href="#/" id="brand" lang="en"><span class="brand__mark" aria-hidden="true"></span>Museum of Light</a>
+    <div class="site-header__actions">
+      <button class="ctrl" type="button" id="lang-toggle" data-bench="lang-toggle" lang="en">English</button>
+      <button class="ctrl ctrl--icon" type="button" id="theme-toggle" data-bench="theme-toggle" aria-label="다크 테마로 전환" title="다크 테마로 전환">
+        <svg class="icon icon--moon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <svg class="icon icon--sun" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero__inner">
+      <div class="hero__copy">
+        <p class="eyebrow" id="hero-eyebrow" data-i18n="eyebrow">서울 · 디지털 전시관</p>
+        <h1 class="hero__title" id="hero-title" data-bench="hero-title" tabindex="-1">빛의 방에 오신 것을 환영합니다</h1>
+        <p class="hero__alt" id="hero-alt" hidden></p>
+        <p class="hero__lead" id="hero-lead" data-bench="body">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다. 천천히 걸으며, 마음이 머무는 곳으로 들어가 보세요.</p>
+        <div class="hero__actions">
+          <a class="btn btn--down" id="cta-explore" href="#rooms" data-i18n="explore">전시 공간 둘러보기</a>
+          <a class="btn btn--back" id="cta-back" href="#/" data-i18n="back" hidden>로비로 돌아가기</a>
+        </div>
+        <div class="spectrum" id="hero-spectrum" aria-hidden="true"></div>
+      </div>
+      <div class="hero__art" id="hero-art" aria-hidden="true" data-mode="lobby">
+        <svg viewBox="0 0 400 500" focusable="false">
+          <defs>
+            <linearGradient id="art-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" class="art-fill-top"/>
+              <stop offset="1" class="art-fill-bottom"/>
+            </linearGradient>
+            <linearGradient id="art-line" gradientUnits="userSpaceOnUse" x1="0" y1="140" x2="0" y2="500">
+              <stop offset="0" class="art-line-top"/>
+              <stop offset="1" class="art-line-bottom"/>
+            </linearGradient>
+          </defs>
+          <path d="M0 500V200a200 200 0 0 1 400 0V500z" fill="url(#art-fill)"/>
+          <path d="M.5 500V200a199.5 199.5 0 0 1 399 0V500" fill="none" stroke="url(#art-line)"/>
+          <path d="M24.5 500V200a175.5 175.5 0 0 1 351 0V500" fill="none" stroke="url(#art-line)"/>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section class="rooms" id="rooms" aria-labelledby="rooms-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="rooms-title" data-i18n="roomsTitle">전시 공간</h2>
+        <p class="section-head__note" id="rooms-note"></p>
+      </div>
+      <ul class="room-grid" id="room-grid" role="list"></ul>
+      <div class="empty" data-bench="empty-state" id="empty-state" hidden>
+        <span class="empty__door" aria-hidden="true"></span>
+        <p class="empty__title" data-i18n="emptyTitle">아직 공개된 방이 없습니다.</p>
+        <p class="empty__body" data-i18n="emptyBody">새로운 전시가 준비되는 대로 이곳에 문을 엽니다.</p>
+      </div>
+      <noscript><p class="empty__body">전시 공간을 보려면 JavaScript가 필요합니다.</p></noscript>
+    </div>
+  </section>
+
+  <section class="info" id="info" aria-labelledby="info-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="info-title" data-i18n="infoTitle">방문 안내</h2>
+      </div>
+      <div class="info__grid">
+        <div class="info__item">
+          <h3 data-i18n="info1Title">열린 시간</h3>
+          <p data-bench="body" data-i18n="info1Body">연중무휴, 하루 24시간 열려 있습니다. 언제든 천천히 머물러 주세요.</p>
+        </div>
+        <div class="info__item">
+          <h3 data-i18n="info2Title">함께 걷는 법</h3>
+          <p data-bench="body" data-i18n="info2Body">마음이 가는 방의 카드를 선택하면 입장합니다. 키보드에서는 Tab 키로 이동하고 Enter 키로 들어갑니다.</p>
+        </div>
+        <div class="info__item">
+          <h3 data-i18n="info3Title">편안한 보기</h3>
+          <p data-bench="body" data-i18n="info3Body">화면 설정에 맞춰 밝은 테마와 어두운 테마를 보여 주며, 움직임 줄이기 설정을 존중합니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer" data-bench="footer">
+  <div class="wrap footer__grid">
+    <div class="footer__brand">
+      <p class="footer__name" lang="en">Museum of Light</p>
+      <p class="footer__note" data-i18n="footerNote">서울의 작은 디지털 전시관</p>
+    </div>
+    <nav class="footer__nav" id="footer-nav" aria-label="바로가기">
+      <ul>
+        <li><a href="#rooms" data-i18n="navRooms">전시 공간</a></li>
+        <li><a href="#info" data-i18n="navInfo">방문 안내</a></li>
+        <li><a href="#top" data-i18n="navTop">맨 위로</a></li>
+      </ul>
+    </nav>
+    <p class="footer__legal">© Museum of Light · Seoul</p>
+  </div>
+</footer>
+
+<div class="veil" id="veil" aria-hidden="true"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

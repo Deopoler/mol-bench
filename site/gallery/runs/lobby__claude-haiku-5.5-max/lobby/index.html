@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Museum of Light — Lobby</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
+
+<header class="site-header" data-bench="header">
+  <a class="brand" href="#/"><span>Museum of Light</span></a>
+  <div class="header-actions">
+    <button type="button" class="chip" data-bench="lang-toggle" id="lang-toggle"><span id="lang-toggle-label">English</span></button>
+    <button type="button" class="chip" data-bench="theme-toggle" id="theme-toggle" aria-pressed="false"><span class="chip-dot" aria-hidden="true"></span><span id="theme-toggle-label" data-i18n="navTheme">다크 모드</span></button>
+  </div>
+</header>
+
+<main id="main">
+  <div id="lobby">
+    <section class="hero" aria-labelledby="hero-title">
+      <p class="eyebrow" data-i18n="eyebrow">로비 · 입구</p>
+      <h1 class="hero-title" id="hero-title" data-bench="hero-title" data-i18n="heroTitle">빛의 방에 오신 것을 환영합니다</h1>
+      <p class="lead" data-bench="body" data-i18n="heroLead">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다.</p>
+      <div class="spectrum" id="spectrum" aria-hidden="true" hidden></div>
+    </section>
+
+    <section class="rooms" aria-labelledby="rooms-heading">
+      <div class="section-head">
+        <h2 id="rooms-heading" data-i18n="roomsHeading">전시 공간</h2>
+        <p class="section-note" data-i18n="roomsNote">열린 방을 눌러 들어가 보세요. 준비 중인 방은 문이 열리면 이곳에 표시됩니다.</p>
+      </div>
+      <div class="empty-state" data-bench="empty-state" hidden>
+        <p class="empty-title" data-i18n="emptyTitle">아직 공개된 방이 없습니다.</p>
+        <p class="empty-body" data-i18n="emptyBody">새로운 방이 준비되면 이곳에서 가장 먼저 소개합니다.</p>
+      </div>
+      <ul class="room-grid" id="room-list"></ul>
+    </section>
+
+    <section class="visit" id="visit" aria-labelledby="visit-heading">
+      <h2 id="visit-heading" data-i18n="visitHeading">관람 안내</h2>
+      <p data-bench="body" data-i18n="visit1">각 방은 순서와 상관없이 자유롭게 둘러볼 수 있습니다. 마음이 끌리는 방에서 시작해 천천히 머물러 보세요.</p>
+      <p data-bench="body" data-i18n="visit2">방을 나올 때는 “로비로 돌아가기”를 누르거나 브라우저의 뒤로 가기를 사용하세요. 준비 중인 방은 열리는 대로 이곳에 소개됩니다.</p>
+    </section>
+  </div>
+
+  <section class="room-view" id="room-view" aria-labelledby="room-view-title" hidden>
+    <div class="room-view-bar">
+      <a class="back-link" id="back-link" href="#/" data-i18n="back">← 로비로 돌아가기</a>
+    </div>
+    <div class="room-view-body">
+      <p class="eyebrow" id="room-view-eyebrow"></p>
+      <h2 class="room-view-title" id="room-view-title" tabindex="-1"></h2>
+      <p class="room-view-alt" id="room-view-alt" hidden></p>
+      <p class="room-view-summary" id="room-view-summary"></p>
+      <div class="threshold" aria-hidden="true"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer" data-bench="footer">
+  <p data-i18n="footerLine">Museum of Light · 서울</p>
+  <p class="footer-links"><a href="#visit" data-i18n="footerVisit">관람 안내</a> <span aria-hidden="true">·</span> <a href="#top" data-i18n="footerTop">맨 위로</a></p>
+</footer>
+
+<script src="../../../shim/bench-host.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // Copy for both languages. Room titles come from the host data (title_ko / title_en).
+  var COPY = {
+    ko: {
+      skip: '본문으로 건너뛰기',
+      eyebrow: '로비 · 입구',
+      heroTitle: '빛의 방에 오신 것을 환영합니다',
+      heroLead: '각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다.',
+      navLang: 'English',
+      navTheme: '다크 모드',
+      roomsHeading: '전시 공간',
+      roomsNote: '열린 방을 눌러 들어가 보세요. 준비 중인 방은 문이 열리면 이곳에 표시됩니다.',
+      emptyTitle: '아직 공개된 방이 없습니다.',
+      emptyBody: '새로운 방이 준비되면 이곳에서 가장 먼저 소개합니다.',
+      soon: '준비 중',
+      enter: '방 들어가기 →',
+      visitHeading: '관람 안내',
+      visit1: '각 방은 순서와 상관없이 자유롭게 둘러볼 수 있습니다. 마음이 끌리는 방에서 시작해 천천히 머물러 보세요.',
+      visit2: '방을 나올 때는 “로비로 돌아가기”를 누르거나 브라우저의 뒤로 가기를 사용하세요. 준비 중인 방은 열리는 대로 이곳에 소개됩니다.',
+      footerLine: 'Museum of Light · 서울',
+      footerVisit: '관람 안내',
+      footerTop: '맨 위로',
+      back: '← 로비로 돌아가기',
+      roomLabel: '방'
+    },
+    en: {
+      skip: 'Skip to content',
+      eyebrow: 'Lobby · Entrance',
+      heroTitle: 'Welcome to the Rooms of Light',
+      heroLead: 'Each room is a small world for a different sense and a different thought.',
+      navLang: '한국어',
+      navTheme: 'Dark mode',
+      roomsHeading: 'Rooms',
+      roomsNote: 'Choose an open room to step inside. Rooms in preparation appear here as they open.',
+      emptyTitle: 'No rooms are open yet.',
+      emptyBody: 'New rooms will be introduced here as soon as they are ready.',
+      soon: 'Coming soon',
+      enter: 'Enter the room →',
+      visitHeading: 'Visit',
+      visit1: 'Rooms can be visited in any order. Begin with the one that catches your attention and take your time.',
+      visit2: 'To leave a room, choose “Back to lobby” or use the browser’s back button. Rooms in preparation are introduced here as they open.',
+      footerLine: 'Museum of Light · Seoul',
+      footerVisit: 'Visit',
+      footerTop: 'Back to top',
+      back: '← Back to lobby',
+      roomLabel: 'Room'
+    }
+  };
+
+  var root = document.documentElement;
+  var langButton = document.getElementById('lang-toggle');
+  var langLabel = document.getElementById('lang-toggle-label');
+  var themeButton = document.getElementById('theme-toggle');
+  var themeLabel = document.getElementById('theme-toggle-label');
+  var listEl = document.getElementById('room-list');
+  var emptyEl = document.querySelector('[data-bench="empty-state"]');
+  var spectrumEl = document.getElementById('spectrum');
+  var lobbyEl = document.getElementById('lobby');
+  var headerEl = document.querySelector('[data-bench="header"]');
+  var footerEl = document.querySelector('[data-bench="footer"]');
+  var roomView = document.getElementById('room-view');
+  var roomEyebrow = document.getElementById('room-view-eyebrow');
+  var roomTitle = document.getElementById('room-view-title');
+  var roomAlt = document.getElementById('room-view-alt');
+  var roomSummary = document.getElementById('room-view-summary');
+  var backLink = document.getElementById('back-link');
+  var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  var STORE_KEY = 'mol-lang';
+
+  var session = {
+    lang: 'ko',
+    themeOverride: null,   // 'light' | 'dark' once the visitor toggles; null follows the system
+    shownRoomId: null      // id of the room shown in the room view, or null for the lobby
+  };
+
+  function rooms() {
+    var host = window.__benchHost;
+    var list = host && host.params && host.params.rooms;
+    return Array.isArray(list) ? list : [];
+  }
+
+  function pad(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  function findOpenRoom(hash) {
+    var match = /^#\/room\/([^?#]+)$/.exec(hash || '');
+    if (!match) return null;
+    var id;
+    try {
+      id = decodeURIComponent(match[1]);
+    } catch (err) {
+      return null;
+    }
+    var list = rooms();
+    for (var i = 0; i < list.length; i += 1) {
+      if (String(list[i].id) === id && list[i].status === 'open') return list[i];
+    }
+    return null;
+  }
+
+  function currentTheme() {
+    if (session.themeOverride) return session.themeOverride;
+    return darkQuery.matches ? 'dark' : 'light';
+  }
+
+  function loadLang() {
+    try {
+      var saved = localStorage.getItem(STORE_KEY);
+      if (saved === 'ko' || saved === 'en') return saved;
+    } catch (err) {
+      // Storage can be unavailable (private mode); keep the default.
+    }
+    return 'ko';
+  }
+
+  function saveLang(lang) {
+    try {
+      localStorage.setItem(STORE_KEY, lang);
+    } catch (err) {
+      // Ignore: the choice then lasts only for this page view.
+    }
+  }
+
+  // Title shown in the card heading. Falls back to Korean when no English title exists.
+  function titleFor(room, lang) {
+    return lang === 'en' && room.title_en ? room.title_en : room.title_ko;
+  }
+
+  function titleLangFor(room, lang) {
+    return lang === 'en' && room.title_en ? 'en' : 'ko';
+  }
+
+  // The other language, shown as a secondary line.
+  function altFor(room, lang) {
+    if (!room.title_en) return null;
+    return lang === 'en'
+      ? { text: room.title_ko, lang: 'ko' }
+      : { text: room.title_en, lang: 'en' };
+  }
+
+  function setAccent(el, accent) {
+    if (!Array.isArray(accent) || accent.length < 3) return;
+    var l = Number(accent[0]);
+    var c = Number(accent[1]);
+    var h = Number(accent[2]);
+    if (!isFinite(l) || !isFinite(c) || !isFinite(h)) return;
+    el.style.setProperty('--accent-l', String(l));
+    el.style.setProperty('--accent-c', String(c));
+    el.style.setProperty('--accent-h', String(h));
+  }
+
+  function makeEl(tag, className, text, lang) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined && text !== null) el.textContent = text;
+    if (lang) el.lang = lang;
+    return el;
+  }
+
+  function buildRoomItem(room, index, lang) {
+    var copy = COPY[lang];
+    var isOpen = room.status === 'open';
+    var item = makeEl('li', 'room-item');
+    var card = makeEl('article', isOpen ? 'room-card' : 'room-card is-soon');
+    card.setAttribute('data-bench', 'room-card');
+    card.setAttribute('data-status', isOpen ? 'open' : 'coming_soon');
+    if (room.id !== undefined) card.setAttribute('data-room-id', String(room.id));
+    setAccent(card, room.accent_oklch);
+
+    // Only open rooms get a link; coming-soon rooms are plain, non-focusable cards.
+    var box = card;
+    if (isOpen) {
+      box = makeEl('a', 'room-link');
+      box.href = typeof room.route === 'string' && room.route
+        ? room.route
+        : '#/room/' + encodeURIComponent(String(room.id));
+      card.appendChild(box);
+    }
+
+    var meta = makeEl('div', 'room-meta');
+    meta.appendChild(makeEl('span', 'room-no', pad(index + 1)));
+    if (!isOpen) meta.appendChild(makeEl('span', 'room-badge', copy.soon));
+    box.appendChild(meta);
+
+    box.appendChild(makeEl('h3', 'room-title', titleFor(room, lang), titleLangFor(room, lang)));
+    var alt = altFor(room, lang);
+    if (alt) box.appendChild(makeEl('span', 'room-alt', alt.text, alt.lang));
+    box.appendChild(makeEl('p', 'room-summary', room.summary_ko || '', 'ko'));
+    if (isOpen) box.appendChild(makeEl('span', 'room-cta', copy.enter));
+
+    item.appendChild(card);
+    return item;
+  }
+
+  function renderRooms() {
+    var list = rooms();
+    listEl.replaceChildren();
+    for (var i = 0; i < list.length; i += 1) {
+      listEl.appendChild(buildRoomItem(list[i], i, session.lang));
+    }
+    emptyEl.hidden = list.length > 0;
+  }
+
+  function renderSpectrum() {
+    spectrumEl.replaceChildren();
+    var open = rooms().filter(function (room) { return room.status === 'open'; }).slice(0, 16);
+    open.forEach(function (room) {
+      var band = makeEl('span', 'spectrum-band');
+      setAccent(band, room.accent_oklch);
+      spectrumEl.appendChild(band);
+    });
+    spectrumEl.hidden = open.length === 0;
+  }
+
+  function applyCopy() {
+    var copy = COPY[session.lang];
+    root.lang = session.lang;
+    var nodes = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < nodes.length; i += 1) {
+      var key = nodes[i].getAttribute('data-i18n');
+      if (Object.prototype.hasOwnProperty.call(copy, key)) nodes[i].textContent = copy[key];
+    }
+    langLabel.textContent = copy.navLang;
+    langLabel.lang = session.lang === 'ko' ? 'en' : 'ko';
+    themeLabel.textContent = copy.navTheme;
+    backLink.textContent = copy.back;
+  }
+
+  function applyTheme() {
+    if (session.themeOverride) {
+      root.setAttribute('data-theme', session.themeOverride);
+    } else {
+      root.removeAttribute('data-theme');
+    }
+    themeButton.setAttribute('aria-pressed', String(currentTheme() === 'dark'));
+  }
+
+  function fillRoomView(room) {
+    var lang = session.lang;
+    var index = rooms().indexOf(room);
+    roomEyebrow.textContent = COPY[lang].roomLabel + ' ' + pad(index + 1);
+    roomTitle.textContent = titleFor(room, lang);
+    roomTitle.lang = titleLangFor(room, lang);
+    var alt = altFor(room, lang);
+    roomAlt.hidden = !alt;
+    if (alt) {
+      roomAlt.textContent = alt.text;
+      roomAlt.lang = alt.lang;
+    }
+    roomSummary.textContent = room.summary_ko || '';
+    roomSummary.lang = 'ko';
+    setAccent(roomView, room.accent_oklch);
+  }
+
+  // Route: '#/room/<id>' opens an open room in a fixed layer above the lobby. The lobby keeps its
+  // layout, so the window scroll position is unchanged when opening and when going back.
+  function applyRoute() {
+    var room = findOpenRoom(location.hash);
+    var previous = session.shownRoomId;
+    if (room) {
+      var id = String(room.id);
+      fillRoomView(room);
+      roomView.hidden = false;
+      lobbyEl.inert = true;
+      headerEl.inert = true;
+      footerEl.inert = true;
+      if (previous !== id) {
+        roomView.scrollTop = 0;
+        roomTitle.focus({ preventScroll: true });
+      }
+      session.shownRoomId = id;
+      return;
+    }
+    roomView.hidden = true;
+    lobbyEl.inert = false;
+    headerEl.inert = false;
+    footerEl.inert = false;
+    if (previous !== null) {
+      session.shownRoomId = null;
+      var links = listEl.querySelectorAll('.room-link');
+      for (var i = 0; i < links.length; i += 1) {
+        var card = links[i].closest('[data-room-id]');
+        if (card && card.getAttribute('data-room-id') === previous) {
+          links[i].focus({ preventScroll: true });
+          break;
+        }
+      }
+    }
+  }
+
+  function refresh() {
+    applyCopy();
+    applyTheme();
+    renderRooms();
+    renderSpectrum();
+    applyRoute();
+  }
+
+  function nextFrame() {
+    return new Promise(function (resolve) {
+      var done = false;
+      function finish() {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      }
+      // The timer keeps this resolving even when the harness has taken over requestAnimationFrame.
+      window.setTimeout(finish, 100);
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(finish);
+      });
+    });
+  }
+
+  langButton.addEventListener('click', function () {
+    session.lang = session.lang === 'ko' ? 'en' : 'ko';
+    saveLang(session.lang);
+    refresh();
+  });
+
+  themeButton.addEventListener('click', function () {
+    session.themeOverride = currentTheme() === 'dark' ? 'light' : 'dark';
+    applyTheme();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && session.shownRoomId !== null) {
+      location.hash = '#/';
+    }
+  });
+
+  window.addEventListener('hashchange', applyRoute);
+  darkQuery.addEventListener('change', applyTheme);
+
+  session.lang = loadLang();
+  refresh();
+
+  window.__bench = {
+    version: 1,
+    ready: (document.fonts ? document.fonts.ready : Promise.resolve()).then(nextFrame),
+    setSeed: function () {
+      refresh();
+    },
+    seek: function () {},
+    resume: function () {},
+    renderFrame: nextFrame,
+    state: function () {
+      var room = findOpenRoom(location.hash);
+      return {
+        route: room ? String(room.id) : 'lobby',
+        lang: session.lang,
+        theme: currentTheme()
+      };
+    },
+    stats: function () {
+      return { drawCalls: 0, triangles: 0 };
+    }
+  };
+})();
+</script>
+</body>
+</html>

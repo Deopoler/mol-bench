@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Museum of Light</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<header class="site-header" data-bench="header">
+  <div class="wrap bar">
+    <p class="brand">Museum of Light</p>
+    <div class="controls">
+      <button type="button" class="btn" data-bench="theme-toggle">다크 모드</button>
+      <button type="button" class="btn" data-bench="lang-toggle">English</button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div id="lobby">
+    <section class="hero">
+      <h1 id="hero-title" data-bench="hero-title" data-i18n="hero.title">빛의 방에 오신 것을 환영합니다</h1>
+      <p class="lead" data-bench="body" data-i18n="hero.lead">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다. 천천히 걸으며 마음에 드는 방을 골라 보세요.</p>
+    </section>
+
+    <section class="rooms-section" aria-labelledby="rooms-heading">
+      <h2 id="rooms-heading" data-i18n="rooms.title">전시 공간</h2>
+      <ul id="rooms-list" class="rooms"></ul>
+      <p class="empty" data-bench="empty-state" hidden data-i18n="rooms.empty">아직 공개된 방이 없습니다. 새로운 방이 열리면 이곳에 알려 드릴게요.</p>
+    </section>
+
+    <section class="info" aria-labelledby="info-heading">
+      <h2 id="info-heading" data-i18n="info.title">관람 안내</h2>
+      <p class="body" data-bench="body" data-i18n="info.body">방은 한 번에 모두 보지 않으셔도 됩니다. 한 곳에 머무르며 천천히 살펴보세요. 준비 중인 방은 공개되면 여기에서 바로 입장할 수 있습니다.</p>
+    </section>
+  </div>
+
+  <section id="room" class="room" hidden>
+    <p><a class="btn" href="#/" data-i18n="room.back">로비로 돌아가기</a></p>
+    <h1 id="room-title" tabindex="-1"></h1>
+    <span id="room-swatch" class="swatch" aria-hidden="true"></span>
+    <p id="room-summary" class="body" lang="ko" data-bench="body"></p>
+    <p class="note" data-i18n="room.note">전시 내용은 방이 열리면 이곳에 소개됩니다.</p>
+  </section>
+</main>
+
+<footer class="site-footer" data-bench="footer">
+  <div class="wrap">Museum of Light · Seoul</div>
+</footer>
+
+<script src="../../../shim/bench-host.js"></script>
+<script src="./app.js" type="module"></script>
+</body>
+</html>

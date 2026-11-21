@@ -1,0 +1,559 @@
+/* Museum of Light — lobby. Restrained editorial layout; system font stacks only (no network fonts).
+   Spacing is kept on a 4 px grid. Type scale: 13 / 16 / 20 / 28 / 44 px (ratio >= 1.23). */
+
+:root {
+  color-scheme: light;
+  --bg: oklch(0.975 0.008 85);
+  --surface: oklch(0.99 0.005 85);
+  --ink: oklch(0.25 0.012 60);
+  --ink-soft: oklch(0.42 0.012 60);
+  --line: oklch(0.87 0.01 80);
+  --chip: oklch(0.93 0.01 80);
+  --focus: oklch(0.46 0.18 258);
+  --font: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: oklch(0.19 0.01 265);
+    --surface: oklch(0.23 0.012 265);
+    --ink: oklch(0.94 0.008 85);
+    --ink-soft: oklch(0.78 0.012 85);
+    --line: oklch(0.36 0.012 265);
+    --chip: oklch(0.29 0.012 265);
+    --focus: oklch(0.82 0.13 258);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: oklch(0.19 0.01 265);
+  --surface: oklch(0.23 0.012 265);
+  --ink: oklch(0.94 0.008 85);
+  --ink-soft: oklch(0.78 0.012 85);
+  --line: oklch(0.36 0.012 265);
+  --chip: oklch(0.29 0.012 265);
+  --focus: oklch(0.82 0.13 258);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink);
+  background: var(--bg);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* ---------- skip link ---------- */
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: -100px;
+  z-index: 30;
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  line-height: 1.5;
+  text-decoration: none;
+}
+
+.skip-link:focus-visible {
+  top: 16px;
+}
+
+/* ---------- header ---------- */
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+@media (min-width: 768px) {
+  .site-header {
+    padding: 24px 48px;
+  }
+}
+
+.brand {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 4px;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  min-height: 44px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--ink-soft);
+}
+
+.chip-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border: 1px solid var(--ink-soft);
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
+.chip[aria-pressed="true"] .chip-dot {
+  background: var(--ink);
+}
+
+/* ---------- main & lobby ---------- */
+
+main {
+  padding: 0 24px;
+}
+
+@media (min-width: 768px) {
+  main {
+    padding: 0 48px;
+  }
+}
+
+/* The entrance is deliberately sparse: on wide screens the hero fills the first screen and the room
+   grid begins below the fold, so the opening view stays calm (restraint, as the brief asks). */
+.hero {
+  padding: 48px 0;
+}
+
+@media (min-width: 768px) {
+  .hero {
+    padding: 120px 0 96px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .hero {
+    padding: 200px 0 160px;
+  }
+}
+
+.eyebrow {
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.hero-title {
+  max-width: 18em;
+  margin-bottom: 24px;
+  font-size: 36px;
+  line-height: 1.3;
+  font-weight: 700;
+  text-wrap: balance;
+}
+
+@media (min-width: 768px) {
+  .hero-title {
+    font-size: 44px;
+  }
+}
+
+.lead {
+  max-width: 34em;
+  margin-bottom: 40px;
+  font-size: 20px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.spectrum {
+  display: flex;
+  width: min(100%, 560px);
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.spectrum-band {
+  flex: 1 1 0;
+  background: oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250));
+}
+
+.rooms {
+  padding: 48px 0;
+}
+
+@media (min-width: 768px) {
+  .rooms {
+    padding: 72px 0 48px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .rooms {
+    padding: 120px 0 48px;
+  }
+}
+
+.section-head {
+  margin-bottom: 32px;
+}
+
+h2 {
+  font-size: 28px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.section-head h2 {
+  margin-bottom: 8px;
+}
+
+.section-note {
+  max-width: 34em;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.empty-state {
+  padding: 48px 24px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+}
+
+.empty-title {
+  margin-bottom: 8px;
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+.empty-body {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+/* ---------- room cards ---------- */
+
+.room-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .room-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .room-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.room-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-top: 3px solid oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250));
+  border-radius: 16px;
+  background: var(--surface);
+  transition: border-color 200ms ease;
+}
+
+.room-card:hover {
+  border-color: var(--ink-soft);
+  border-top-color: oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250));
+}
+
+.room-link {
+  display: block;
+  flex: 1 1 auto;
+  padding: 24px;
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.room-link:focus-visible {
+  outline-offset: 4px;
+}
+
+.room-link:hover .room-title,
+.room-link:hover .room-cta {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.room-card.is-soon {
+  flex: 1 1 auto;
+  padding: 24px;
+  border-style: dashed;
+  background: transparent;
+}
+
+.room-card.is-soon .room-title {
+  color: var(--ink-soft);
+}
+
+.room-meta {
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.room-no {
+  letter-spacing: 0.08em;
+}
+
+.room-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--ink);
+  letter-spacing: 0;
+}
+
+.room-title {
+  margin-bottom: 8px;
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.room-alt {
+  display: block;
+  margin-bottom: 16px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.room-summary {
+  margin-bottom: 16px;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.room-cta {
+  display: block;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+/* ---------- visit ---------- */
+
+.visit {
+  padding: 48px 0;
+  border-top: 1px solid var(--line);
+}
+
+.visit h2 {
+  margin-bottom: 16px;
+}
+
+.visit p {
+  max-width: 34em;
+  margin-bottom: 16px;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+/* ---------- footer ---------- */
+
+.site-footer {
+  padding: 40px 24px 48px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+@media (min-width: 768px) {
+  .site-footer {
+    padding: 40px 48px 48px;
+  }
+}
+
+.site-footer p {
+  margin-bottom: 8px;
+}
+
+.footer-links a {
+  color: var(--ink);
+  text-underline-offset: 4px;
+}
+
+/* ---------- room view (fixed layer above the lobby) ---------- */
+
+@keyframes room-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.room-view {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--bg);
+  animation: room-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.room-view-bar {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+@media (min-width: 768px) {
+  .room-view-bar {
+    padding: 24px 48px;
+  }
+}
+
+.back-link {
+  display: inline-block;
+  padding: 8px 0;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 700;
+  text-underline-offset: 4px;
+}
+
+.room-view-body {
+  max-width: 40em;
+  padding: 48px 24px 64px;
+}
+
+@media (min-width: 768px) {
+  .room-view-body {
+    padding: 64px 48px 80px;
+  }
+}
+
+.room-view-title {
+  margin-bottom: 16px;
+  font-size: 36px;
+  line-height: 1.3;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 768px) {
+  .room-view-title {
+    font-size: 44px;
+  }
+}
+
+.room-view-alt {
+  margin-bottom: 24px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.room-view-summary {
+  max-width: 34em;
+  margin-bottom: 40px;
+  font-size: 20px;
+  line-height: 1.7;
+}
+
+.threshold {
+  height: 240px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(160deg, oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250)), oklch(var(--accent-l, 0.7) var(--accent-c, 0.1) var(--accent-h, 250) / 0.2));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-view {
+    animation: none;
+  }
+
+  .room-card {
+    transition: none;
+  }
+}

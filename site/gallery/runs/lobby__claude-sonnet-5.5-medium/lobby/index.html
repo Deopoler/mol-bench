@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Museum of Light</title>
+<meta name="description" content="Museum of Light — 빛으로 지은 디지털 전시관의 입구.">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<a class="skip" href="#main" data-i18n="skip">본문으로 건너뛰기</a>
+<div id="lobby">
+  <header class="site-header" data-bench="header">
+    <div class="wrap bar">
+      <span class="brand">MUSEUM OF LIGHT</span>
+      <div class="tools">
+        <button type="button" class="btn" data-bench="lang-toggle" id="lang-toggle">EN</button>
+        <button type="button" class="btn" data-bench="theme-toggle" id="theme-toggle" aria-pressed="false">다크 모드</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap">
+        <p class="eyebrow" data-i18n="eyebrow">디지털 전시관 · Seoul</p>
+        <h1 id="hero-title" data-bench="hero-title" data-i18n="hero">빛의 방에 오신 것을 환영합니다</h1>
+        <p class="lead" data-bench="body" data-i18n="intro">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다. 천천히 걸으며 마음이 이끄는 문을 열어 보세요.</p>
+      </div>
+    </section>
+
+    <section class="rooms" aria-labelledby="rooms-title">
+      <div class="wrap">
+        <h2 id="rooms-title" data-i18n="roomsTitle">전시 공간</h2>
+        <ul id="rooms" class="grid"></ul>
+        <p class="empty" data-bench="empty-state" id="empty-state" hidden data-i18n="empty">아직 공개된 방이 없습니다. 곧 새로운 빛이 켜질 거예요.</p>
+      </div>
+    </section>
+
+    <section class="info" aria-labelledby="info-title">
+      <div class="wrap">
+        <h2 id="info-title" data-i18n="infoTitle">관람 안내</h2>
+        <div class="info-text">
+          <p data-bench="body" data-i18n="info1">입장은 언제나 무료이며 예약이 필요하지 않습니다. 모든 방은 화면 어디에서나 열 수 있도록 가볍게 만들어졌습니다.</p>
+          <p data-bench="body" data-i18n="info2">어두운 화면이 편하다면 오른쪽 위의 버튼으로 밝기를 바꿀 수 있고, 움직임을 줄이는 설정도 그대로 존중합니다.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-bench="footer">
+    <div class="wrap">
+      <p class="foot" data-i18n="footer">Museum of Light · Seoul</p>
+    </div>
+  </footer>
+</div>
+
+<section id="room" class="room" aria-labelledby="room-title">
+  <div class="wrap room-inner">
+    <a class="back btn" href="#/" id="room-back" data-i18n="back">← 로비로 돌아가기</a>
+    <div class="room-swatch" id="room-swatch" aria-hidden="true"></div>
+    <h1 id="room-title" tabindex="-1"></h1>
+    <p class="room-sub" id="room-sub"></p>
+    <p class="room-summary" id="room-summary"></p>
+  </div>
+</section>
+
+<script src="../../../shim/bench-host.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

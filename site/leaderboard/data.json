@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-20T23:23:28.381Z",
+  "generated_at": "2026-11-21T00:17:31.548Z",
   "summary": {
-    "total_runs": 12,
-    "valid_runs": 12,
-    "models_count": 9,
+    "total_runs": 15,
+    "valid_runs": 15,
+    "models_count": 12,
     "rooms_count": 4
   },
   "overall": [
@@ -54,6 +54,52 @@
       }
     },
     {
+      "model": "Gemini 4 Hydrogen (XHigh)",
+      "composite": 10,
+      "composite_raw": 9.972222222222221,
+      "axes": {
+        "craft": 9.9,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "avg_wall_min": 25.1,
+      "rooms_count": 1,
+      "runs_count": 1,
+      "invalid_count": 0,
+      "leakage_count": 0,
+      "room_scores": {
+        "lobby": {
+          "composite": 10,
+          "runs": 1
+        }
+      }
+    },
+    {
+      "model": "Gemini 4 Neon (XHigh)",
+      "composite": 10,
+      "composite_raw": 9.972222222222221,
+      "axes": {
+        "craft": 9.9,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "avg_wall_min": 29.82,
+      "rooms_count": 1,
+      "runs_count": 1,
+      "invalid_count": 0,
+      "leakage_count": 0,
+      "room_scores": {
+        "lobby": {
+          "composite": 10,
+          "runs": 1
+        }
+      }
+    },
+    {
       "model": "GPT-6-Luna (high)",
       "composite": 9.8,
       "composite_raw": 9.759182957687763,
@@ -72,6 +118,29 @@
       "room_scores": {
         "lobby": {
           "composite": 9.8,
+          "runs": 1
+        }
+      }
+    },
+    {
+      "model": "Gemini 3.8 Flash (High)",
+      "composite": 9.5,
+      "composite_raw": 9.545454545454547,
+      "axes": {
+        "craft": 10,
+        "visual_quality": 9.1,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "avg_wall_min": 26.08,
+      "rooms_count": 1,
+      "runs_count": 1,
+      "invalid_count": 0,
+      "leakage_count": 0,
+      "room_scores": {
+        "lobby": {
+          "composite": 9.5,
           "runs": 1
         }
       }
@@ -261,8 +330,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 9.5735,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 56,
+            "tokens_out": 88197,
+            "tokens_total": 4472767,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 56,
+              "output": 88197,
+              "cache_read": 4211111,
+              "cache_write": 173403,
+              "reasoning": 0,
+              "total": 4472767
+            },
             "usd": null
           },
           "gates": {
@@ -348,8 +428,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 22.5206,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 228,
+            "tokens_out": 226394,
+            "tokens_total": 32012436,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 228,
+              "output": 226394,
+              "cache_read": 31408175,
+              "cache_write": 377639,
+              "reasoning": 0,
+              "total": 32012436
+            },
             "usd": null
           },
           "gates": {
@@ -413,6 +504,210 @@
           ]
         },
         {
+          "run_id": "lobby__gemini-4-hydrogen-xhigh",
+          "model": "Gemini 4 Hydrogen (XHigh)",
+          "room": "lobby",
+          "renovation": null,
+          "room_key": "lobby",
+          "track": "build",
+          "seed": null,
+          "seeds": "hidden",
+          "composite": 10,
+          "composite_raw": 9.972222222222221,
+          "axes": {
+            "craft": 9.9,
+            "visual_quality": 10,
+            "revision": null,
+            "reliability": 10
+          },
+          "axes_raw": {
+            "craft": 9.92063492063492,
+            "visual_quality": 10,
+            "revision": null,
+            "reliability": 10
+          },
+          "reliability": 10,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 25.098,
+            "tokens_in": 1196065,
+            "tokens_out": 187198,
+            "tokens_total": 1383263,
+            "tokens": {
+              "source": "agy",
+              "sessions": 2,
+              "input": 1196065,
+              "output": 187198,
+              "cache_read": 0,
+              "cache_write": 0,
+              "reasoning": 0,
+              "total": 1383263
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 9,
+            "evaluated": 9,
+            "total": 9,
+            "failed": []
+          },
+          "gates_detail": {
+            "G-load": {
+              "pass": true,
+              "detail": "Loaded and __bench.ready resolved"
+            },
+            "G-console": {
+              "pass": true,
+              "detail": "0 console errors / uncaught exceptions"
+            },
+            "G-contract": {
+              "pass": true,
+              "detail": "BenchRoom v1 contract satisfied"
+            },
+            "G-determinism": {
+              "pass": true,
+              "detail": "Identical decoded pixel SHA-256 (3ce9549a084077b1...)"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 requests outside local origin"
+            },
+            "G-raster": {
+              "pass": true,
+              "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            },
+            "G-fonts-local": {
+              "pass": true,
+              "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+            },
+            "G-live": {
+              "pass": true,
+              "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=264.30ms"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-20T23:20:53.231Z",
+          "ended_at": "2026-11-20T23:45:59.110Z",
+          "diff_file": "submissions/lobby__gemini-4-hydrogen-xhigh.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "lobby_sheet_1.png",
+              "md_path": "submissions/lobby__gemini-4-hydrogen-xhigh/preview/lobby_sheet_1.png",
+              "site_path": "previews/lobby__gemini-4-hydrogen-xhigh/lobby_sheet_1.png"
+            }
+          ]
+        },
+        {
+          "run_id": "lobby__gemini-4-neon-xhigh",
+          "model": "Gemini 4 Neon (XHigh)",
+          "room": "lobby",
+          "renovation": null,
+          "room_key": "lobby",
+          "track": "build",
+          "seed": null,
+          "seeds": "hidden",
+          "composite": 10,
+          "composite_raw": 9.972222222222221,
+          "axes": {
+            "craft": 9.9,
+            "visual_quality": 10,
+            "revision": null,
+            "reliability": 10
+          },
+          "axes_raw": {
+            "craft": 9.92063492063492,
+            "visual_quality": 10,
+            "revision": null,
+            "reliability": 10
+          },
+          "reliability": 10,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 29.8232,
+            "tokens_in": 746695,
+            "tokens_out": 151300,
+            "tokens_total": 897995,
+            "tokens": {
+              "source": "agy",
+              "sessions": 2,
+              "input": 746695,
+              "output": 151300,
+              "cache_read": 0,
+              "cache_write": 0,
+              "reasoning": 0,
+              "total": 897995
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 9,
+            "evaluated": 9,
+            "total": 9,
+            "failed": []
+          },
+          "gates_detail": {
+            "G-load": {
+              "pass": true,
+              "detail": "Loaded and __bench.ready resolved"
+            },
+            "G-console": {
+              "pass": true,
+              "detail": "0 console errors / uncaught exceptions"
+            },
+            "G-contract": {
+              "pass": true,
+              "detail": "BenchRoom v1 contract satisfied"
+            },
+            "G-determinism": {
+              "pass": true,
+              "detail": "Identical decoded pixel SHA-256 (c8eee998aeb0bfed...)"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 requests outside local origin"
+            },
+            "G-raster": {
+              "pass": true,
+              "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            },
+            "G-fonts-local": {
+              "pass": true,
+              "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+            },
+            "G-live": {
+              "pass": true,
+              "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=264.50ms"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-20T23:20:37.445Z",
+          "ended_at": "2026-11-20T23:50:26.839Z",
+          "diff_file": "submissions/lobby__gemini-4-neon-xhigh.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "lobby_sheet_1.png",
+              "md_path": "submissions/lobby__gemini-4-neon-xhigh/preview/lobby_sheet_1.png",
+              "site_path": "previews/lobby__gemini-4-neon-xhigh/lobby_sheet_1.png"
+            }
+          ]
+        },
+        {
           "run_id": "lobby__claude-sonnet-5.5-max",
           "model": "Claude Sonnet 5.5 (max)",
           "room": "lobby",
@@ -439,8 +734,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 46.1143,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 154,
+            "tokens_out": 248089,
+            "tokens_total": 25632609,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 154,
+              "output": 248089,
+              "cache_read": 24928148,
+              "cache_write": 456218,
+              "reasoning": 0,
+              "total": 25632609
+            },
             "usd": null
           },
           "gates": {
@@ -530,8 +836,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 23.8848,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 10448002,
+            "tokens_out": 54467,
+            "tokens_total": 10502469,
+            "tokens": {
+              "source": "codex",
+              "sessions": 1,
+              "input": 10448002,
+              "output": 54467,
+              "cache_read": 10288512,
+              "cache_write": 0,
+              "reasoning": 28432,
+              "total": 10502469
+            },
             "usd": null
           },
           "gates": {
@@ -595,6 +912,108 @@
           ]
         },
         {
+          "run_id": "lobby__gemini-3.8-flash-high",
+          "model": "Gemini 3.8 Flash (High)",
+          "room": "lobby",
+          "renovation": null,
+          "room_key": "lobby",
+          "track": "build",
+          "seed": null,
+          "seeds": "hidden",
+          "composite": 9.5,
+          "composite_raw": 9.545454545454547,
+          "axes": {
+            "craft": 10,
+            "visual_quality": 9.1,
+            "revision": null,
+            "reliability": 10
+          },
+          "axes_raw": {
+            "craft": 10,
+            "visual_quality": 9.090909090909092,
+            "revision": null,
+            "reliability": 10
+          },
+          "reliability": 10,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 26.0756,
+            "tokens_in": 577129,
+            "tokens_out": 117462,
+            "tokens_total": 694591,
+            "tokens": {
+              "source": "agy",
+              "sessions": 2,
+              "input": 577129,
+              "output": 117462,
+              "cache_read": 0,
+              "cache_write": 0,
+              "reasoning": 0,
+              "total": 694591
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 9,
+            "evaluated": 9,
+            "total": 9,
+            "failed": []
+          },
+          "gates_detail": {
+            "G-load": {
+              "pass": true,
+              "detail": "Loaded and __bench.ready resolved"
+            },
+            "G-console": {
+              "pass": true,
+              "detail": "0 console errors / uncaught exceptions"
+            },
+            "G-contract": {
+              "pass": true,
+              "detail": "BenchRoom v1 contract satisfied"
+            },
+            "G-determinism": {
+              "pass": true,
+              "detail": "Identical decoded pixel SHA-256 (cb4b7f40a505c7ae...)"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 requests outside local origin"
+            },
+            "G-raster": {
+              "pass": true,
+              "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            },
+            "G-fonts-local": {
+              "pass": true,
+              "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+            },
+            "G-live": {
+              "pass": true,
+              "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=254.00ms"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-20T23:21:10.193Z",
+          "ended_at": "2026-11-20T23:47:14.730Z",
+          "diff_file": "submissions/lobby__gemini-3.8-flash-high.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "lobby_sheet_1.png",
+              "md_path": "submissions/lobby__gemini-3.8-flash-high/preview/lobby_sheet_1.png",
+              "site_path": "previews/lobby__gemini-3.8-flash-high/lobby_sheet_1.png"
+            }
+          ]
+        },
+        {
           "run_id": "lobby__claude-haiku-5.5-high",
           "model": "Claude Haiku 5.5 (high)",
           "room": "lobby",
@@ -621,8 +1040,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 12.8554,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 106,
+            "tokens_out": 94927,
+            "tokens_total": 8823469,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 106,
+              "output": 94927,
+              "cache_read": 8537228,
+              "cache_write": 191208,
+              "reasoning": 0,
+              "total": 8823469
+            },
             "usd": null
           },
           "gates": {
@@ -712,8 +1142,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 14.6917,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 4177303,
+            "tokens_out": 28842,
+            "tokens_total": 4206145,
+            "tokens": {
+              "source": "codex",
+              "sessions": 1,
+              "input": 4177303,
+              "output": 28842,
+              "cache_read": 4056064,
+              "cache_write": 0,
+              "reasoning": 13887,
+              "total": 4206145
+            },
             "usd": null
           },
           "gates": {
@@ -803,8 +1244,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 40.9911,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 13870541,
+            "tokens_out": 100413,
+            "tokens_total": 13970954,
+            "tokens": {
+              "source": "codex",
+              "sessions": 1,
+              "input": 13870541,
+              "output": 100413,
+              "cache_read": 13643520,
+              "cache_write": 0,
+              "reasoning": 73782,
+              "total": 13970954
+            },
             "usd": null
           },
           "gates": {
@@ -894,8 +1346,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 14.5809,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 78,
+            "tokens_out": 57375,
+            "tokens_total": 5683151,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 78,
+              "output": 57375,
+              "cache_read": 5430402,
+              "cache_write": 195296,
+              "reasoning": 0,
+              "total": 5683151
+            },
             "usd": null
           },
           "gates": {
@@ -985,8 +1448,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 6.4217,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 62,
+            "tokens_out": 24329,
+            "tokens_total": 3419436,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 62,
+              "output": 24329,
+              "cache_read": 3291768,
+              "cache_write": 103277,
+              "reasoning": 0,
+              "total": 3419436
+            },
             "usd": null
           },
           "gates": {
@@ -1076,8 +1550,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 10.2309,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 94,
+            "tokens_out": 68082,
+            "tokens_total": 6715963,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 94,
+              "output": 68082,
+              "cache_read": 6469159,
+              "cache_write": 178628,
+              "reasoning": 0,
+              "total": 6715963
+            },
             "usd": null
           },
           "gates": {
@@ -1175,8 +1660,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 12.8743,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 86,
+            "tokens_out": 74671,
+            "tokens_total": 6056513,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 86,
+              "output": 74671,
+              "cache_read": 5820735,
+              "cache_write": 161021,
+              "reasoning": 0,
+              "total": 6056513
+            },
             "usd": null
           },
           "gates": {
@@ -1278,8 +1774,19 @@
           "taste": null,
           "efficiency": {
             "wall_min": 36.3487,
-            "tokens_in": null,
-            "tokens_out": null,
+            "tokens_in": 120,
+            "tokens_out": 70986,
+            "tokens_total": 8943556,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 120,
+              "output": 70986,
+              "cache_read": 8707548,
+              "cache_write": 164902,
+              "reasoning": 0,
+              "total": 8943556
+            },
             "usd": null
           },
           "gates": {
@@ -1379,8 +1886,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 22.5206,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 228,
+        "tokens_out": 226394,
+        "tokens_total": 32012436,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 228,
+          "output": 226394,
+          "cache_read": 31408175,
+          "cache_write": 377639,
+          "reasoning": 0,
+          "total": 32012436
+        },
         "usd": null
       },
       "gates": {
@@ -1444,6 +1962,210 @@
       ]
     },
     {
+      "run_id": "lobby__gemini-4-hydrogen-xhigh",
+      "model": "Gemini 4 Hydrogen (XHigh)",
+      "room": "lobby",
+      "renovation": null,
+      "room_key": "lobby",
+      "track": "build",
+      "seed": null,
+      "seeds": "hidden",
+      "composite": 10,
+      "composite_raw": 9.972222222222221,
+      "axes": {
+        "craft": 9.9,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "axes_raw": {
+        "craft": 9.92063492063492,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 25.098,
+        "tokens_in": 1196065,
+        "tokens_out": 187198,
+        "tokens_total": 1383263,
+        "tokens": {
+          "source": "agy",
+          "sessions": 2,
+          "input": 1196065,
+          "output": 187198,
+          "cache_read": 0,
+          "cache_write": 0,
+          "reasoning": 0,
+          "total": 1383263
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 9,
+        "evaluated": 9,
+        "total": 9,
+        "failed": []
+      },
+      "gates_detail": {
+        "G-load": {
+          "pass": true,
+          "detail": "Loaded and __bench.ready resolved"
+        },
+        "G-console": {
+          "pass": true,
+          "detail": "0 console errors / uncaught exceptions"
+        },
+        "G-contract": {
+          "pass": true,
+          "detail": "BenchRoom v1 contract satisfied"
+        },
+        "G-determinism": {
+          "pass": true,
+          "detail": "Identical decoded pixel SHA-256 (3ce9549a084077b1...)"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 requests outside local origin"
+        },
+        "G-raster": {
+          "pass": true,
+          "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        },
+        "G-fonts-local": {
+          "pass": true,
+          "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+        },
+        "G-live": {
+          "pass": true,
+          "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=264.30ms"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-20T23:20:53.231Z",
+      "ended_at": "2026-11-20T23:45:59.110Z",
+      "diff_file": "submissions/lobby__gemini-4-hydrogen-xhigh.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "lobby_sheet_1.png",
+          "md_path": "submissions/lobby__gemini-4-hydrogen-xhigh/preview/lobby_sheet_1.png",
+          "site_path": "previews/lobby__gemini-4-hydrogen-xhigh/lobby_sheet_1.png"
+        }
+      ]
+    },
+    {
+      "run_id": "lobby__gemini-4-neon-xhigh",
+      "model": "Gemini 4 Neon (XHigh)",
+      "room": "lobby",
+      "renovation": null,
+      "room_key": "lobby",
+      "track": "build",
+      "seed": null,
+      "seeds": "hidden",
+      "composite": 10,
+      "composite_raw": 9.972222222222221,
+      "axes": {
+        "craft": 9.9,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "axes_raw": {
+        "craft": 9.92063492063492,
+        "visual_quality": 10,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 29.8232,
+        "tokens_in": 746695,
+        "tokens_out": 151300,
+        "tokens_total": 897995,
+        "tokens": {
+          "source": "agy",
+          "sessions": 2,
+          "input": 746695,
+          "output": 151300,
+          "cache_read": 0,
+          "cache_write": 0,
+          "reasoning": 0,
+          "total": 897995
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 9,
+        "evaluated": 9,
+        "total": 9,
+        "failed": []
+      },
+      "gates_detail": {
+        "G-load": {
+          "pass": true,
+          "detail": "Loaded and __bench.ready resolved"
+        },
+        "G-console": {
+          "pass": true,
+          "detail": "0 console errors / uncaught exceptions"
+        },
+        "G-contract": {
+          "pass": true,
+          "detail": "BenchRoom v1 contract satisfied"
+        },
+        "G-determinism": {
+          "pass": true,
+          "detail": "Identical decoded pixel SHA-256 (c8eee998aeb0bfed...)"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 requests outside local origin"
+        },
+        "G-raster": {
+          "pass": true,
+          "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        },
+        "G-fonts-local": {
+          "pass": true,
+          "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+        },
+        "G-live": {
+          "pass": true,
+          "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=264.50ms"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-20T23:20:37.445Z",
+      "ended_at": "2026-11-20T23:50:26.839Z",
+      "diff_file": "submissions/lobby__gemini-4-neon-xhigh.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "lobby_sheet_1.png",
+          "md_path": "submissions/lobby__gemini-4-neon-xhigh/preview/lobby_sheet_1.png",
+          "site_path": "previews/lobby__gemini-4-neon-xhigh/lobby_sheet_1.png"
+        }
+      ]
+    },
+    {
       "run_id": "lobby__claude-sonnet-5.5-max",
       "model": "Claude Sonnet 5.5 (max)",
       "room": "lobby",
@@ -1470,8 +2192,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 46.1143,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 154,
+        "tokens_out": 248089,
+        "tokens_total": 25632609,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 154,
+          "output": 248089,
+          "cache_read": 24928148,
+          "cache_write": 456218,
+          "reasoning": 0,
+          "total": 25632609
+        },
         "usd": null
       },
       "gates": {
@@ -1561,8 +2294,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 23.8848,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 10448002,
+        "tokens_out": 54467,
+        "tokens_total": 10502469,
+        "tokens": {
+          "source": "codex",
+          "sessions": 1,
+          "input": 10448002,
+          "output": 54467,
+          "cache_read": 10288512,
+          "cache_write": 0,
+          "reasoning": 28432,
+          "total": 10502469
+        },
         "usd": null
       },
       "gates": {
@@ -1652,8 +2396,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 9.5735,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 56,
+        "tokens_out": 88197,
+        "tokens_total": 4472767,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 56,
+          "output": 88197,
+          "cache_read": 4211111,
+          "cache_write": 173403,
+          "reasoning": 0,
+          "total": 4472767
+        },
         "usd": null
       },
       "gates": {
@@ -1705,6 +2460,108 @@
       ]
     },
     {
+      "run_id": "lobby__gemini-3.8-flash-high",
+      "model": "Gemini 3.8 Flash (High)",
+      "room": "lobby",
+      "renovation": null,
+      "room_key": "lobby",
+      "track": "build",
+      "seed": null,
+      "seeds": "hidden",
+      "composite": 9.5,
+      "composite_raw": 9.545454545454547,
+      "axes": {
+        "craft": 10,
+        "visual_quality": 9.1,
+        "revision": null,
+        "reliability": 10
+      },
+      "axes_raw": {
+        "craft": 10,
+        "visual_quality": 9.090909090909092,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 26.0756,
+        "tokens_in": 577129,
+        "tokens_out": 117462,
+        "tokens_total": 694591,
+        "tokens": {
+          "source": "agy",
+          "sessions": 2,
+          "input": 577129,
+          "output": 117462,
+          "cache_read": 0,
+          "cache_write": 0,
+          "reasoning": 0,
+          "total": 694591
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 9,
+        "evaluated": 9,
+        "total": 9,
+        "failed": []
+      },
+      "gates_detail": {
+        "G-load": {
+          "pass": true,
+          "detail": "Loaded and __bench.ready resolved"
+        },
+        "G-console": {
+          "pass": true,
+          "detail": "0 console errors / uncaught exceptions"
+        },
+        "G-contract": {
+          "pass": true,
+          "detail": "BenchRoom v1 contract satisfied"
+        },
+        "G-determinism": {
+          "pass": true,
+          "detail": "Identical decoded pixel SHA-256 (cb4b7f40a505c7ae...)"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 requests outside local origin"
+        },
+        "G-raster": {
+          "pass": true,
+          "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        },
+        "G-fonts-local": {
+          "pass": true,
+          "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+        },
+        "G-live": {
+          "pass": true,
+          "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=254.00ms"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-20T23:21:10.193Z",
+      "ended_at": "2026-11-20T23:47:14.730Z",
+      "diff_file": "submissions/lobby__gemini-3.8-flash-high.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "lobby_sheet_1.png",
+          "md_path": "submissions/lobby__gemini-3.8-flash-high/preview/lobby_sheet_1.png",
+          "site_path": "previews/lobby__gemini-3.8-flash-high/lobby_sheet_1.png"
+        }
+      ]
+    },
+    {
       "run_id": "lobby__claude-haiku-5.5-high",
       "model": "Claude Haiku 5.5 (high)",
       "room": "lobby",
@@ -1731,8 +2588,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 12.8554,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 106,
+        "tokens_out": 94927,
+        "tokens_total": 8823469,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 106,
+          "output": 94927,
+          "cache_read": 8537228,
+          "cache_write": 191208,
+          "reasoning": 0,
+          "total": 8823469
+        },
         "usd": null
       },
       "gates": {
@@ -1822,8 +2690,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 14.6917,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 4177303,
+        "tokens_out": 28842,
+        "tokens_total": 4206145,
+        "tokens": {
+          "source": "codex",
+          "sessions": 1,
+          "input": 4177303,
+          "output": 28842,
+          "cache_read": 4056064,
+          "cache_write": 0,
+          "reasoning": 13887,
+          "total": 4206145
+        },
         "usd": null
       },
       "gates": {
@@ -1913,8 +2792,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 40.9911,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 13870541,
+        "tokens_out": 100413,
+        "tokens_total": 13970954,
+        "tokens": {
+          "source": "codex",
+          "sessions": 1,
+          "input": 13870541,
+          "output": 100413,
+          "cache_read": 13643520,
+          "cache_write": 0,
+          "reasoning": 73782,
+          "total": 13970954
+        },
         "usd": null
       },
       "gates": {
@@ -2004,8 +2894,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 14.5809,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 78,
+        "tokens_out": 57375,
+        "tokens_total": 5683151,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 78,
+          "output": 57375,
+          "cache_read": 5430402,
+          "cache_write": 195296,
+          "reasoning": 0,
+          "total": 5683151
+        },
         "usd": null
       },
       "gates": {
@@ -2095,8 +2996,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 6.4217,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 62,
+        "tokens_out": 24329,
+        "tokens_total": 3419436,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 62,
+          "output": 24329,
+          "cache_read": 3291768,
+          "cache_write": 103277,
+          "reasoning": 0,
+          "total": 3419436
+        },
         "usd": null
       },
       "gates": {
@@ -2186,8 +3098,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 10.2309,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 94,
+        "tokens_out": 68082,
+        "tokens_total": 6715963,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 94,
+          "output": 68082,
+          "cache_read": 6469159,
+          "cache_write": 178628,
+          "reasoning": 0,
+          "total": 6715963
+        },
         "usd": null
       },
       "gates": {
@@ -2277,8 +3200,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 36.3487,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 120,
+        "tokens_out": 70986,
+        "tokens_total": 8943556,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 120,
+          "output": 70986,
+          "cache_read": 8707548,
+          "cache_write": 164902,
+          "reasoning": 0,
+          "total": 8943556
+        },
         "usd": null
       },
       "gates": {
@@ -2374,8 +3308,19 @@
       "taste": null,
       "efficiency": {
         "wall_min": 12.8743,
-        "tokens_in": null,
-        "tokens_out": null,
+        "tokens_in": 86,
+        "tokens_out": 74671,
+        "tokens_total": 6056513,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 86,
+          "output": 74671,
+          "cache_read": 5820735,
+          "cache_write": 161021,
+          "reasoning": 0,
+          "total": 6056513
+        },
         "usd": null
       },
       "gates": {

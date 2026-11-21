@@ -1,0 +1,596 @@
+/* Museum of Light — lobby
+   Type scale (px): 14 · 16 · 20 · 28 · 48   Spacing: multiples of 4 only.
+   System font stacks only — no font files are requested. */
+
+:root {
+  color-scheme: light;
+
+  --sans: system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Noto Sans CJK KR", "Malgun Gothic", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: Georgia, "Noto Serif KR", "Noto Serif CJK KR", "Nanum Myeongjo", AppleMyungjo, Batang, "Times New Roman", serif;
+
+  --paper: oklch(0.985 0.007 85);
+  --paper-2: oklch(0.955 0.012 85);
+  --ink: oklch(0.24 0.02 60);
+  --ink-soft: oklch(0.34 0.02 60);
+  --ink-2: oklch(0.43 0.02 60);
+  --line: oklch(0.88 0.012 80);
+  --line-strong: oklch(0.7 0.015 75);
+  --focus: oklch(0.45 0.18 262);
+  --btn-bg: oklch(0.24 0.02 60);
+  --btn-fg: oklch(0.985 0.007 85);
+  --veil: oklch(0.24 0.02 60);
+  --glow-1: oklch(0.95 0.07 90 / 0.85);
+  --plate-shine: oklch(1 0 0 / 0.55);
+  --plate-door: oklch(1 0 0 / 0.5);
+
+  --gutter: 20px;
+  --measure-lead: 30em;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Dark tokens: system preference unless the visitor chose a theme. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: oklch(0.175 0.012 60);
+    --paper-2: oklch(0.215 0.014 60);
+    --ink: oklch(0.95 0.01 85);
+    --ink-soft: oklch(0.88 0.01 85);
+    --ink-2: oklch(0.77 0.015 80);
+    --line: oklch(0.32 0.014 60);
+    --line-strong: oklch(0.52 0.015 70);
+    --focus: oklch(0.86 0.13 88);
+    --btn-bg: oklch(0.95 0.01 85);
+    --btn-fg: oklch(0.2 0.012 60);
+    --veil: oklch(0 0 0);
+    --glow-1: oklch(0.34 0.06 85 / 0.7);
+    --plate-shine: oklch(1 0 0 / 0.32);
+    --plate-door: oklch(1 0 0 / 0.36);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: oklch(0.175 0.012 60);
+  --paper-2: oklch(0.215 0.014 60);
+  --ink: oklch(0.95 0.01 85);
+  --ink-soft: oklch(0.88 0.01 85);
+  --ink-2: oklch(0.77 0.015 80);
+  --line: oklch(0.32 0.014 60);
+  --line-strong: oklch(0.52 0.015 70);
+  --focus: oklch(0.86 0.13 88);
+  --btn-bg: oklch(0.95 0.01 85);
+  --btn-fg: oklch(0.2 0.012 60);
+  --veil: oklch(0 0 0);
+  --glow-1: oklch(0.34 0.06 85 / 0.7);
+  --plate-shine: oklch(1 0 0 / 0.32);
+  --plate-door: oklch(1 0 0 / 0.36);
+}
+
+/* ---------- Base ---------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.7 var(--sans);
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: inherit; }
+button { font: inherit; color: inherit; margin: 0; }
+svg { display: block; }
+[hidden] { display: none !important; }
+[lang="en"] { word-break: normal; overflow-wrap: break-word; }
+
+main:focus, h1:focus { outline: none; }
+
+.wrap {
+  width: min(100% - 2 * var(--gutter), 1240px);
+  margin-inline: auto;
+}
+
+/* Visible focus for everything keyboard-reachable. */
+a:focus-visible, button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 4px;
+}
+
+.skip {
+  position: absolute;
+  left: 16px;
+  top: -80px;
+  z-index: 10;
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: 14px;
+  line-height: 1.5;
+  text-decoration: none;
+}
+.skip:focus-visible { top: 16px; }
+
+/* ---------- Header ---------- */
+
+.site-header { border-bottom: 1px solid var(--line); }
+
+.site-header__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding-block: 12px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.brand__mark {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: linear-gradient(90deg, var(--ink) 50%, transparent 50%);
+}
+
+.site-header__actions { display: flex; align-items: center; gap: 8px; }
+
+.ctrl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.ctrl:hover { background: var(--paper-2); }
+.ctrl--icon { padding: 0; }
+
+.icon--sun { display: none; }
+:root[data-theme="dark"] .icon--moon { display: none; }
+:root[data-theme="dark"] .icon--sun { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .icon--moon { display: none; }
+  :root:not([data-theme="light"]) .icon--sun { display: block; }
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  padding-block: 80px 64px;
+}
+
+.hero__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.hero__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 24px;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.hero__title {
+  max-width: 10em;
+  color: var(--ink-soft);
+  font: 400 clamp(32px, 4vw + 16px, 48px) / 1.25 var(--serif);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.hero__alt {
+  margin-top: -8px;
+  font-size: 20px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.hero__lead {
+  max-width: var(--measure-lead);
+  font-size: 20px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.hero__actions { display: flex; flex-wrap: wrap; gap: 16px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 28px;
+  border-radius: 999px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 180ms var(--ease), background-color 180ms ease;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn--down::after { content: "↓"; }
+.btn--back::before { content: "←"; }
+
+/* One bar of light per room, tinted with the room's accent. */
+.spectrum {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  max-width: 560px;
+  height: 8px;
+  margin-top: 16px;
+}
+.spectrum span {
+  flex: 1 1 0;
+  min-width: 4px;
+  border-radius: 4px;
+  background: oklch(var(--l) var(--c) var(--h));
+}
+.spectrum span { opacity: 0.6; }
+.spectrum span.is-soon { background: var(--line-strong); opacity: 0.55; }
+
+/* Doorway of light: a pale arch in the lobby, the room's own colour inside a room.
+   Drawn as inline SVG so it rasterises identically on every run. */
+.hero__art {
+  --l: 0.93;
+  --c: 0.07;
+  --h: 88;
+  display: none;
+  width: 100%;
+  max-width: 200px;
+}
+.hero__art svg { width: 100%; height: auto; }
+.hero__art .art-fill-top { stop-color: var(--glow-1); }
+.hero__art .art-fill-bottom { stop-color: var(--glow-1); stop-opacity: 0; }
+.hero__art .art-line-top { stop-color: var(--line-strong); }
+.hero__art .art-line-bottom { stop-color: var(--line-strong); stop-opacity: 0; }
+.hero__art[data-mode="room"] { display: block; }
+.hero__art[data-mode="room"] .art-fill-top { stop-color: oklch(var(--l) var(--c) var(--h)); }
+.hero__art[data-mode="room"] .art-fill-bottom { stop-color: oklch(calc(var(--l) - 0.14) var(--c) calc(var(--h) + 28)); stop-opacity: 1; }
+.hero__art[data-mode="room"] .art-line-top { stop-color: oklch(1 0 0 / 0.7); }
+.hero__art[data-mode="room"] .art-line-bottom { stop-color: oklch(1 0 0 / 0.7); stop-opacity: 1; }
+
+/* Shared "plate" artwork on cards: a lit room with an open door. */
+.card__plate {
+  position: relative;
+  border-radius: 12px;
+  background:
+    radial-gradient(90% 140% at 12% 0%, var(--plate-shine), transparent 62%),
+    linear-gradient(155deg, oklch(var(--l) var(--c) var(--h)), oklch(calc(var(--l) - 0.14) var(--c) calc(var(--h) + 28)));
+}
+.card__plate::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 26%;
+  height: 68%;
+  transform: translateX(-50%);
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(to top, var(--plate-door), transparent 120%);
+}
+
+/* ---------- Sections ---------- */
+
+.rooms { padding-block: 16px 96px; }
+
+.section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px 32px;
+  margin-bottom: 40px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.section-head h2 {
+  font: 400 28px / 1.3 var(--serif);
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+.section-head__note {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+/* ---------- Room cards ---------- */
+
+.room-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 40px 24px;
+}
+
+.card-item { display: flex; min-width: 0; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  min-width: 0;
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.card__plate {
+  height: 144px;
+  transition: transform 220ms var(--ease), box-shadow 220ms ease;
+}
+
+.card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.card__meta {
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.card__title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+.card__alt {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.card__summary {
+  margin-top: 4px;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.card__cta {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.card--open .card__cta::after {
+  content: "→";
+  display: inline-block;
+  margin-left: 8px;
+  transition: transform 180ms var(--ease);
+}
+
+.card--open:hover .card__plate {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 32px -16px oklch(0.2 0.05 60 / 0.45);
+}
+.card--open:hover .card__title {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+.card--open:hover .card__cta::after { transform: translateX(4px); }
+
+/* Coming soon: dashed, hatched, no hover — clearly not a door yet. */
+.card--soon { cursor: default; }
+.card--soon .card__plate {
+  background:
+    repeating-linear-gradient(135deg, var(--line) 0 2px, transparent 2px 12px),
+    var(--paper-2);
+  border: 1px dashed var(--line-strong);
+}
+.card--soon .card__plate::after { display: none; }
+.card--soon .card__title { font-weight: 500; }
+.card--soon .card__cta { color: var(--ink-2); font-weight: 500; }
+
+/* ---------- Empty state ---------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 48px 0;
+}
+.empty__door {
+  width: 56px;
+  height: 80px;
+  margin-bottom: 16px;
+  border: 2px solid var(--line-strong);
+  border-bottom-width: 0;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(to top, var(--paper-2), transparent);
+}
+.empty__title { font: 400 20px / 1.5 var(--serif); }
+.empty__body { color: var(--ink-2); max-width: 32em; }
+
+/* ---------- Info ---------- */
+
+.info { padding-block: 0 96px; }
+
+.info__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 32px;
+}
+
+.info__item { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.info__item h3 { font-size: 20px; font-weight: 600; line-height: 1.4; }
+.info__item p { color: var(--ink-2); text-wrap: pretty; }
+
+/* ---------- Footer ---------- */
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  background: var(--paper-2);
+}
+
+.footer__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  padding-block: 48px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.footer__name { font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+.footer__note, .footer__legal { color: var(--ink-2); }
+.footer__brand { display: flex; flex-direction: column; gap: 4px; }
+.footer__nav ul { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.footer__nav a {
+  display: inline-block;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+.footer__nav a:hover { text-decoration-thickness: 2px; }
+
+/* ---------- Route transition ----------
+   Entering or leaving a room "turns the lights up": the view rises 12px while a dim veil fades out. */
+
+@keyframes view-in {
+  from { opacity: 0.4; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes veil-out {
+  from { opacity: 0.42; }
+  to { opacity: 0; }
+}
+main.is-entering { animation: view-in 440ms var(--ease) backwards; }
+
+.veil {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background: var(--veil);
+  opacity: 0;
+}
+.veil.is-playing { animation: veil-out 440ms cubic-bezier(0.3, 0.2, 0.2, 1) backwards; }
+
+/* ---------- Breakpoints ---------- */
+
+@media (min-width: 640px) {
+  :root { --gutter: 32px; }
+  .hero { padding-block: 96px 64px; }
+  .room-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px 24px; }
+  .footer__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1100px) {
+  :root { --gutter: 48px; }
+  .hero { padding-block: 96px; }
+  .hero__inner {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    gap: 32px;
+  }
+  .hero__copy { grid-column: 1 / span 2; }
+  .hero__art, .hero__art[data-mode="lobby"], .hero__art[data-mode="room"] {
+    display: block;
+    grid-column: 3;
+    max-width: none;
+  }
+  .section-head { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .section-head h2 { grid-column: 1 / span 2; }
+  .section-head__note { grid-column: 3; }
+  .room-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 56px 32px; }
+  .info__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
+  .footer__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
+}
+
+/* Roomy screens: the first view is just the invitation; rooms begin below the fold. */
+@media (min-width: 1100px) and (min-height: 640px) {
+  .hero {
+    display: flex;
+    align-items: center;
+    min-height: calc(100vh - 73px);
+    min-height: calc(100svh - 73px);
+  }
+}
+
+@media (max-width: 360px) {
+  .ctrl { padding: 0 12px; }
+  .brand { letter-spacing: 0.1em; }
+}
+
+/* ---------- Forced colors (Windows high contrast) ---------- */
+
+@media (forced-colors: active) {
+  .btn { border: 1px solid ButtonText; }
+  .card__plate, .hero__art { forced-color-adjust: none; }
+  .card--soon .card__plate { border-color: CanvasText; }
+}
+
+/* ---------- Reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

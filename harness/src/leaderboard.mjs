@@ -353,7 +353,7 @@ export function formatLeaderboardMarkdown(data) {
   lines.push("# MoL-Bench Leaderboard");
   lines.push("");
   lines.push(
-    `Generated: ${data.generated_at} | Models: ${data.summary.models_count} | Rooms: ${data.summary.rooms_count} | Runs: ${data.summary.total_runs}`
+    `Generated: ${data.generated_at} | Models: ${data.summary.models_count} | Rooms: ${data.summary.rooms_count} | Runs: ${data.summary.total_runs} | [Gallery](../site/gallery/)`
   );
   lines.push("");
   lines.push("## Overall (by Model)");

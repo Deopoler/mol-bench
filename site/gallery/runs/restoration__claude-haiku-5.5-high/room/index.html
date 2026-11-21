@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Museum of Light — Restoration: The Grand Orrery</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <div id="app" class="orrery-shell">
+    <div id="orrery-stage" class="orrery-stage" data-bench="orrery-stage"></div>
+    <aside class="orrery-hud" aria-label="Orrery controls">
+      <div class="hud-header">
+        <span class="hud-kicker">GALLERY IV · CELESTIAL MECHANICS</span>
+        <h1 class="hud-title" data-bench="room-title">The Brass Orrery</h1>
+      </div>
+      <p class="hud-body" data-bench="body">
+        Seven planetary spheres revolve within calibrated brass armillary rings above an engraved
+        horological compass dial. Inspect each world or reference the conservation color plaque on
+        the north gallery wall.
+      </p>
+      <div class="hud-controls">
+        <div class="focus-readout">
+          <span class="focus-label">Focused Body</span>
+          <strong id="focused-planet-name" class="focus-value" data-bench="focused-planet">Mercury (I)</strong>
+        </div>
+        <button id="next-planet-btn" class="next-planet-btn" type="button" data-bench="next-planet">
+          Next Planet →
+        </button>
+      </div>
+    </aside>
+  </div>
+  <script src="../../../shim/bench-host.js"></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

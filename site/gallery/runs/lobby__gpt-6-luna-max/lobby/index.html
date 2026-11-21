@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f4f1e9">
+    <meta name="description" content="빛을 따라 천천히 머무는 디지털 전시 공간, Museum of Light.">
+    <title>빛의 박물관 — Museum of Light</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="../../../shim/bench-host.js"></script>
+<script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main" data-copy="skip">본문으로 건너뛰기</a>
+    <div class="site-shell">
+      <header class="site-header page-frame" data-bench="header">
+        <a class="brand" href="#/" aria-label="빛의 박물관 홈">
+          <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+            <circle cx="20" cy="20" r="15.5" fill="none" stroke="currentColor" stroke-width="1.25"></circle>
+            <path d="M20 4.5v31M4.5 20h31M9.1 9.1l21.8 21.8M30.9 9.1 9.1 30.9" fill="none" stroke="currentColor" stroke-width=".8" opacity=".58"></path>
+            <circle cx="20" cy="20" r="4.2" fill="currentColor"></circle>
+          </svg>
+          <span class="brand-type">
+            <span class="brand-ko" lang="ko">빛의 박물관</span>
+            <span class="brand-en">MUSEUM OF LIGHT</span>
+          </span>
+        </a>
+        <nav class="header-controls" aria-label="사이트 설정">
+          <button class="control-button language-button" type="button" data-bench="lang-toggle" aria-label="언어를 영어로 바꾸기">
+            <span class="language-code" aria-hidden="true">EN</span>
+            <span class="control-label" data-language-label>English</span>
+          </button>
+          <button class="control-button theme-button" type="button" data-bench="theme-toggle" aria-label="어두운 테마로 전환" aria-pressed="false">
+            <span class="theme-symbol" aria-hidden="true">◐</span>
+            <span class="control-label" data-theme-label>어두운 테마</span>
+          </button>
+        </nav>
+      </header>
+
+      <main id="main" class="page-frame">
+        <div class="lobby-view" data-view="lobby">
+          <section class="hero" aria-labelledby="hero-heading">
+            <div class="hero-copy">
+              <p class="eyebrow"><span class="eyebrow-rule" aria-hidden="true"></span><span data-copy="heroKicker">DIGITAL COLLECTION · SEOUL</span></p>
+              <h1 id="hero-heading" class="display-title" data-bench="hero-title" data-copy="heroTitle">빛이 머무는 곳으로<br>천천히 들어오세요.</h1>
+              <p class="hero-intro" data-bench="body" data-copy="heroIntro">천천히 머물며 빛을 발견하는 디지털 전시 공간입니다. 서로 다른 이야기를 품은 방들을 따라 걷고, 마음에 닿는 장면 앞에서 잠시 쉬어가세요.</p>
+            </div>
+            <div class="light-study" aria-hidden="true">
+              <div class="study-orbit study-orbit-outer"></div>
+              <div class="study-orbit study-orbit-inner"></div>
+              <div class="study-disc"></div>
+              <div class="study-ray"></div>
+              <span class="study-index">FIG. 01 <span>—</span> LIGHT STUDY</span>
+            </div>
+          </section>
+
+          <section class="collection" aria-labelledby="collection-heading">
+            <div class="collection-heading-row">
+              <div>
+                <p class="eyebrow"><span class="eyebrow-rule" aria-hidden="true"></span><span data-copy="collectionKicker">ROOMS TO WANDER</span></p>
+                <h2 id="collection-heading" class="section-title" data-copy="collectionTitle">빛을 만나는 여러 개의 방</h2>
+                <p class="section-note" data-copy="collectionNote">각 방에는 저마다 다른 시선과 감각이 기다립니다.</p>
+              </div>
+              <p class="room-count" data-room-count aria-live="polite">전시실을 둘러보세요</p>
+            </div>
+            <ul id="rooms" class="room-grid" aria-labelledby="collection-heading"></ul>
+            <p class="empty-state" data-bench="empty-state" data-copy="empty" hidden>아직 공개된 방이 없습니다. 새로운 전시를 준비하고 있어요.</p>
+          </section>
+        </div>
+
+        <section id="room-view" class="room-view" aria-labelledby="room-title" hidden>
+          <div class="room-view-copy">
+            <a class="back-link" href="#/" data-copy="back">← 모든 방으로 돌아가기</a>
+            <p class="eyebrow room-kicker"><span class="eyebrow-rule" aria-hidden="true"></span><span data-room-kicker>DIGITAL ROOM · OPEN</span></p>
+            <h1 id="room-title" class="display-title room-title" tabindex="-1"></h1>
+            <p id="room-summary" class="hero-intro room-description" data-bench="body" lang="ko"></p>
+            <p class="room-invitation" data-copy="roomInvitation">이곳에 잠시 머물며, 천천히 둘러보세요.</p>
+          </div>
+          <div class="room-stage" aria-hidden="true">
+            <span class="stage-ring stage-ring-one"></span>
+            <span class="stage-ring stage-ring-two"></span>
+            <span class="stage-light"></span>
+            <span class="stage-caption" data-copy="stageCaption">A MOMENT IN LIGHT</span>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer page-frame" data-bench="footer">
+        <div class="footer-signature">
+          <span class="footer-name" lang="ko">빛의 박물관</span>
+          <span class="footer-divider" aria-hidden="true">/</span>
+          <span class="footer-place">SEOUL · DIGITAL EXHIBITIONS</span>
+        </div>
+        <p class="footer-note" data-copy="footerNote">자신의 속도로 머물다 가세요.</p>
+        <a class="footer-link" href="#/" data-copy="top">처음으로 ↑</a>
+      </footer>
+    </div>
+  </body>
+</html>
