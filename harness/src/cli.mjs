@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
@@ -91,6 +93,140 @@ function normalizeProbeValue(val) {
   return val;
 }
 
+const BUNDLE_EXTS = new Set([".html", ".htm", ".js", ".mjs", ".cjs", ".css", ".glsl", ".vert", ".frag"]);
+const BUNDLE_IGNORE_DIRS = new Set(["node_modules", ".git", "preview", "bench", "contract", "tests", "public-tests"]);
+const BUNDLE_IGNORE_FILES = new Set(["report.json", "decisions.json", "selfcheck.json", ".bench-room", "package.json", "package-lock.json"]);
+
+function computeBundleGzKb(submissionDir) {
+  let totalGz = 0;
+  function walk(dir) {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (BUNDLE_IGNORE_DIRS.has(e.name)) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        walk(full);
+      } else if (e.isFile()) {
+        if (BUNDLE_IGNORE_FILES.has(e.name)) continue;
+        if (!BUNDLE_EXTS.has(path.extname(full).toLowerCase())) continue;
+        totalGz += zlib.gzipSync(fs.readFileSync(full), { level: 9 }).length;
+      }
+    }
+  }
+  walk(submissionDir);
+  return totalGz / 1024;
+}
+
+function medianValue(nums) {
+  if (!Array.isArray(nums) || nums.length === 0) return null;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function probeMatchesParsedAt(probeMeta, parsedAt) {
+  if (!probeMeta || !parsedAt) return true;
+  if (Array.isArray(parsedAt.viewports) && parsedAt.viewports.length > 0 && !parsedAt.viewports.includes(probeMeta.viewport)) {
+    return false;
+  }
+  if (parsedAt.raw && /\bboth schemes\b/i.test(parsedAt.raw) && Array.isArray(parsedAt.schemes) && !parsedAt.schemes.includes(probeMeta.scheme)) {
+    return false;
+  }
+  if (parsedAt.raw && /\bvariants=/i.test(parsedAt.raw) && Array.isArray(parsedAt.variants) && !parsedAt.variants.includes(probeMeta.variant)) {
+    return false;
+  }
+  return true;
+}
+
+function collectProbeMetrics(probes, plan, spec, rawMetrics) {
+  if (!probes) return;
+  const probeMetaByKey = new Map((plan?.probes || []).map((p) => [p.key, p]));
+  const metricConfigsById = new Map();
+  const addCfg = (m) => {
+    if (!m?.id) return;
+    if (!metricConfigsById.has(m.id)) metricConfigsById.set(m.id, []);
+    metricConfigsById.get(m.id).push(m);
+  };
+  for (const m of spec?.metrics || []) addCfg(m);
+  for (const req of spec?.requests || []) {
+    for (const sm of req.metrics || []) addCfg(sm);
+  }
+  const matchesMetric = (mId, key) => {
+    const cfgs = metricConfigsById.get(mId);
+    if (!cfgs || cfgs.length === 0) return false;
+    const meta = probeMetaByKey.get(key);
+    if (!meta) return true;
+    return cfgs.some((c) => probeMatchesParsedAt(meta, c.parsedAt));
+  };
+
+  for (const [key, val] of Object.entries(probes)) {
+    if (!val || typeof val !== "object") continue;
+    if (val.metricId) {
+      if (!Array.isArray(rawMetrics[val.metricId])) rawMetrics[val.metricId] = [];
+      rawMetrics[val.metricId].push({ key, ...val });
+    } else if (val.metrics) {
+      for (const [mId, mVal] of Object.entries(val.metrics)) {
+        if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
+        rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
+      }
+    } else {
+      for (const [mId, mVal] of Object.entries(val)) {
+        if (!matchesMetric(mId, key)) continue;
+        if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
+        rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
+      }
+    }
+  }
+}
+
+function computeLayoutShiftSamples(spec, plan, startProbes, subProbes) {
+  if (!startProbes || !subProbes) return [];
+  const shiftCfg = (spec?.metrics || []).find((m) => m.id === "layout.shift_px");
+  if (!shiftCfg) return [];
+  const probeMetaByKey = new Map((plan?.probes || []).map((p) => [p.key, p]));
+  const out = [];
+  for (const [key, subProbe] of Object.entries(subProbes)) {
+    const startProbe = startProbes[key];
+    const startBoxes = startProbe?.details?.bboxes;
+    const subBoxes = subProbe?.details?.bboxes;
+    if (!startBoxes || !subBoxes) continue;
+    const meta = probeMetaByKey.get(key);
+    if (meta && meta.probe !== "layout") continue;
+    if (meta && !probeMatchesParsedAt(meta, shiftCfg.parsedAt)) continue;
+    const displacements = [];
+    for (const sel of Object.keys(startBoxes)) {
+      const list0 = startBoxes[sel] || [];
+      const list1 = subBoxes[sel] || [];
+      const count = Math.min(list0.length, list1.length);
+      for (let i = 0; i < count; i++) {
+        const b0 = list0[i];
+        const b1 = list1[i];
+        if (!b0 || !b1) continue;
+        displacements.push(Math.hypot(Number(b1.x) - Number(b0.x), Number(b1.y) - Number(b0.y)));
+      }
+    }
+    if (displacements.length > 0) {
+      out.push({ key, value: medianValue(displacements) });
+    }
+  }
+  return out;
+}
+
+function extractRawScalarValue(entry) {
+  if (entry === null || entry === undefined) return undefined;
+  if (typeof entry === "number" || typeof entry === "boolean") return entry;
+  if (typeof entry === "object") {
+    if (entry.raw !== undefined) return entry.raw;
+    if (entry.value !== undefined) return entry.value;
+  }
+  return undefined;
+}
+
 export async function gradeSubmission({
   room,
   submissionDir,
@@ -112,7 +248,7 @@ export async function gradeSubmission({
 
   const spec = loadSpec(room, { renovation, lenient, repoRoot });
   const runId = `${spec.room}${spec.renovation ? `_${spec.renovation}` : ""}_${Date.now()}`;
-  const resolvedWorkDir = workDir ? path.resolve(workDir) : path.join(repoRoot, "work", runId, spec.room);
+  let resolvedWorkDir = workDir ? path.resolve(workDir) : path.join(repoRoot, "work", runId, spec.room);
 
   // Load hidden seeds/timestamps if --hidden and hidden/<room>/grade.json exists
   let seeds = spec.capture?.public_seeds ?? [1];
@@ -127,7 +263,7 @@ export async function gradeSubmission({
   }
 
   const plan = buildPlan(spec, { seeds, timestamps, hidden, renovation });
-  if (perf) plan.perf.enabled = true;
+  plan.perf.enabled = Boolean(perf);
 
   // Static gates
   const defaultStart = spec.track === "renovation" ? path.join(repoRoot, "rooms", spec.room, "anchors", "a5") : null;
@@ -146,15 +282,14 @@ export async function gradeSubmission({
   const staticRes = evaluateStaticGates(resolvedSub, spec, { repoRoot, changedFiles });
 
   const rawMetrics = {};
-  const submittedMetricIds = new Set([
-    ...(spec.metrics || []).map((metric) => metric.id),
-    ...(spec.requests || []).flatMap((request) => (request.metrics || []).map((metric) => metric.id)),
-  ]);
   if (staticRes.scopeCheck) {
     rawMetrics["diff.out_of_scope_files"] = staticRes.scopeCheck.outOfScopeCount;
   } else if (spec.metrics.some((m) => m.id === "diff.out_of_scope_files")) {
     rawMetrics["diff.out_of_scope_files"] = 3;
     rawMetrics._diffError = comparisonError || "changed file comparison unavailable";
+  }
+  if (!noCapture && spec.metrics.some((m) => m.id === "budget.bundle_gz_kb")) {
+    rawMetrics["budget.bundle_gz_kb"] = computeBundleGzKb(resolvedSub);
   }
   const hasDiffMetrics = spec.metrics.some((m) => m.id === "diff.change_ratio" || m.id === "diff.rewrite");
   if (hasDiffMetrics) {
@@ -210,7 +345,16 @@ export async function gradeSubmission({
         );
       }
       const { executePlan } = await import(pathToFileURL(capturePlanPath).href);
-      fs.mkdirSync(resolvedWorkDir, { recursive: true });
+      try {
+        fs.mkdirSync(resolvedWorkDir, { recursive: true });
+      } catch (err) {
+        if (!workDir && (err?.code === "EPERM" || err?.code === "EACCES")) {
+          resolvedWorkDir = path.join(os.tmpdir(), "mol-bench-work", runId, spec.room);
+          fs.mkdirSync(resolvedWorkDir, { recursive: true });
+        } else {
+          throw err;
+        }
+      }
       captureRes = await executePlan(plan, {
         submissionDir: resolvedSub,
         workDir: resolvedWorkDir,
@@ -221,28 +365,7 @@ export async function gradeSubmission({
       });
       captureGates = captureRes.gates || {};
 
-      if (captureRes.probes) {
-        for (const [key, val] of Object.entries(captureRes.probes)) {
-          if (val && typeof val === "object" && val.metricId) {
-            if (!Array.isArray(rawMetrics[val.metricId])) rawMetrics[val.metricId] = [];
-            rawMetrics[val.metricId].push({ key, ...val });
-          } else if (val && typeof val === "object" && val.metrics) {
-            for (const [mId, mVal] of Object.entries(val.metrics)) {
-              if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
-              rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
-            }
-          } else if (val && typeof val === "object") {
-          // Probe groups such as layout/text/type return metric ids at the top
-          // level, while room-specific probes may wrap them in `metrics`.
-          // Preserve the direct form so registry probes are actually scored.
-          for (const [mId, mVal] of Object.entries(val)) {
-            if (!submittedMetricIds.has(mId)) continue;
-            if (!Array.isArray(rawMetrics[mId])) rawMetrics[mId] = [];
-            rawMetrics[mId].push({ key, value: normalizeProbeValue(mVal), ...(typeof mVal === "object" ? mVal : {}) });
-          }
-          }
-        }
-      }
+      collectProbeMetrics(captureRes.probes, plan, spec, rawMetrics);
 
       if (Array.isArray(captureRes.tests)) {
         const total = captureRes.tests.length;
@@ -262,16 +385,90 @@ export async function gradeSubmission({
         if (typeof captureRes.lighthouse.lcp_ms === "number") rawMetrics["lh.lcp_ms"] = captureRes.lighthouse.lcp_ms;
         if (typeof captureRes.lighthouse.cls === "number") rawMetrics["lh.cls"] = captureRes.lighthouse.cls;
       }
+      if (Array.isArray(captureRes.drawCalls) && captureRes.drawCalls.length > 0 && spec.metrics.some((m) => m.id === "budget.draw_calls")) {
+        rawMetrics["budget.draw_calls"] = captureRes.drawCalls;
+      }
+
+      let startManifestPath = captureRes.startManifestPath ?? null;
+      let startCapture = null;
+      let startRawMetrics = null;
+      if (spec.track === "renovation" && !startManifestPath && startDir && fs.existsSync(startDir)) {
+        const startWorkDir = path.join(resolvedWorkDir, "_start");
+        fs.mkdirSync(startWorkDir, { recursive: true });
+        const startPlan = {
+          ...plan,
+          sequences: [],
+          tests: [],
+          perf: { enabled: false },
+          lighthouse: { enabled: false }
+        };
+        startCapture = await executePlan(startPlan, {
+          submissionDir: startDir,
+          workDir: startWorkDir,
+          spec,
+          adapter,
+          hidden,
+          noPython
+        });
+        startManifestPath = startCapture.manifestPath ?? null;
+        startRawMetrics = {};
+        collectProbeMetrics(startCapture.probes, startPlan, spec, startRawMetrics);
+        if (!noPython && startManifestPath) {
+          const startPyOut = path.join(startWorkDir, "metrics.json");
+          const startPyMetrics = runPythonMetrics(startManifestPath, spec._specPath, startPyOut, repoRoot);
+          Object.assign(startRawMetrics, startPyMetrics);
+        }
+        if (adapter && typeof adapter.extraMetrics === "function") {
+          await adapter.extraMetrics(
+            {
+              room: spec.room,
+              submissionDir: startDir,
+              workDir: startWorkDir,
+              repoRoot,
+              spec,
+              plan: startPlan,
+              seeds,
+              timestamps,
+              hidden,
+              noCapture,
+              noPython,
+              staticRes: null,
+              captureRes: startCapture,
+              manifestPath: startManifestPath
+            },
+            startRawMetrics
+          );
+        }
+      }
 
       if (!noPython && captureRes.manifestPath) {
         const pyOut = path.join(resolvedWorkDir, "metrics.json");
-        const pyMetrics = runPythonMetrics(captureRes.manifestPath, spec._specPath, pyOut, repoRoot, captureRes.startManifestPath ?? null);
+        const pyMetrics = runPythonMetrics(captureRes.manifestPath, spec._specPath, pyOut, repoRoot, startManifestPath);
         Object.assign(rawMetrics, pyMetrics);
       }
-    }
 
-    if (adapter && typeof adapter.extraMetrics === "function") {
-      await adapter.extraMetrics({ spec, plan, captureRes, manifestPath: captureRes.manifestPath, workDir: resolvedWorkDir, submissionDir: resolvedSub, hidden, seeds, timestamps }, rawMetrics);
+      if (spec.track === "renovation" && startCapture?.probes && captureRes.probes && spec.metrics.some((m) => m.id === "layout.shift_px")) {
+        const shiftSamples = computeLayoutShiftSamples(spec, plan, startCapture.probes, captureRes.probes);
+        if (shiftSamples.length > 0) {
+          rawMetrics["layout.shift_px"] = shiftSamples;
+        }
+      }
+
+      if (spec.track === "renovation" && startRawMetrics && Array.isArray(spec.requests)) {
+        for (const req of spec.requests) {
+          for (const sub of req.metrics || []) {
+            if (sub.score?.type !== "relative") continue;
+            const beforeVal = extractRawScalarValue(startRawMetrics[sub.id]);
+            const afterVal = extractRawScalarValue(rawMetrics[sub.id]);
+            if (beforeVal !== undefined && afterVal !== undefined) {
+              rawMetrics[`request.${req.id}.${sub.id}`] = {
+                before: beforeVal,
+                after: afterVal
+              };
+            }
+          }
+        }
+      }
     }
   }
 
@@ -290,7 +487,8 @@ export async function gradeSubmission({
         noCapture,
         noPython,
         staticRes,
-        captureRes
+        captureRes,
+        manifestPath: captureRes?.manifestPath ?? null
       },
       rawMetrics
     );

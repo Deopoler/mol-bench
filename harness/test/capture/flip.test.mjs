@@ -1,9 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { PNG } from "pngjs";
 import { measureLiveFlip } from "../../src/capture/plan.mjs";
+
+function makeTmpWorkDir(prefix) {
+  try {
+    return fs.mkdtempSync(path.join(process.cwd(), "work", prefix));
+  } catch (err) {
+    if (err?.code === "EPERM" || err?.code === "EACCES") {
+      return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    }
+    throw err;
+  }
+}
 
 function writeSolid(file, color) {
   const png = new PNG({ width: 64, height: 64 });
@@ -14,14 +26,18 @@ function writeSolid(file, color) {
 }
 
 test("G-live uses FLIP: identical PNGs pass and very different PNGs fail", () => {
-  const dir = fs.mkdtempSync(path.join(process.cwd(), "work", "mol-flip-"));
-  const a = path.join(dir, "a.png"), same = path.join(dir, "same.png"), different = path.join(dir, "different.png");
-  writeSolid(a, [20, 30, 40]); writeSolid(same, [20, 30, 40]); writeSolid(different, [245, 230, 220]);
-  const identicalResult = measureLiveFlip(a, same);
-  assert.equal(identicalResult.pass, true, identicalResult.detail);
-  assert.equal(identicalResult.flip, 0);
-  const differentResult = measureLiveFlip(a, different);
-  assert.equal(differentResult.pass, false, differentResult.detail);
-  assert.ok(differentResult.flip > 0.02);
-  assert.equal(measureLiveFlip(a, same, { noPython: true }).pass, null);
+  const dir = makeTmpWorkDir("mol-flip-");
+  try {
+    const a = path.join(dir, "a.png"), same = path.join(dir, "same.png"), different = path.join(dir, "different.png");
+    writeSolid(a, [20, 30, 40]); writeSolid(same, [20, 30, 40]); writeSolid(different, [245, 230, 220]);
+    const identicalResult = measureLiveFlip(a, same);
+    assert.equal(identicalResult.pass, true, identicalResult.detail);
+    assert.equal(identicalResult.flip, 0);
+    const differentResult = measureLiveFlip(a, different);
+    assert.equal(differentResult.pass, false, differentResult.detail);
+    assert.ok(differentResult.flip > 0.02);
+    assert.equal(measureLiveFlip(a, same, { noPython: true }).pass, null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

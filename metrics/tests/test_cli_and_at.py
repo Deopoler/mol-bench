@@ -88,3 +88,93 @@ def test_cli_compute_on_sample_data_and_determinism(tmp_path):
     assert "color.hue_shift" in data
     assert data["lum.mean"]["samples"][0]["key"] == "s1_t0_1440x900_light"
     assert len(IMPLEMENTED_METRICS) == 29
+
+
+def test_motion_pairs_from_samples_and_element_ssim_full_file(tmp_path):
+    import numpy as np
+    from PIL import Image
+
+    frames = tmp_path / "frames"
+    start_frames = tmp_path / "start_frames"
+    frames.mkdir()
+    start_frames.mkdir()
+
+    def write_img(path: Path, rgb: tuple[int, int, int], w: int = 32, h: int = 48):
+        arr = np.zeros((h, w, 3), dtype=np.uint8)
+        arr[:, :] = rgb
+        Image.fromarray(arr).save(path)
+
+    write_img(frames / "f0.png", (40, 40, 40))
+    write_img(frames / "f1.png", (80, 80, 80))
+    write_img(frames / "rm0.png", (50, 50, 50))
+    write_img(frames / "rm1.png", (50, 50, 50))
+    write_img(frames / "sub_vp.png", (10, 10, 10), 32, 24)
+    write_img(start_frames / "start_vp.png", (10, 10, 10), 32, 24)
+
+    # Full-page screenshots contain an identical protected element below the viewport fold (y=28)
+    full0 = np.full((60, 32, 3), 20, dtype=np.uint8)
+    full0[28:44, 4:28] = (50, 120, 180)
+    full1 = np.full((60, 32, 3), 220, dtype=np.uint8)
+    full1[34:50, 4:28] = (50, 120, 180)
+    Image.fromarray(full0).save(start_frames / "start_full.png")
+    Image.fromarray(full1).save(frames / "sub_full.png")
+
+    start_manifest = {
+        "room": "test",
+        "viewport_default": "32x24",
+        "samples": [
+            {
+                "key": "s1_t0_32x24_light_normal",
+                "seed": 1,
+                "t": 0,
+                "viewport": "32x24",
+                "scheme": "light",
+                "variant": "normal",
+                "file": "start_frames/start_vp.png",
+                "full_file": "start_frames/start_full.png",
+                "element_bboxes": [{"selector": "footer#0", "bbox": {"x": 4, "y": 28, "width": 24, "height": 16}}],
+            }
+        ],
+    }
+    manifest = {
+        "room": "test",
+        "viewport_default": "32x24",
+        "samples": [
+            {
+                "key": "s1_t0_32x24_light_normal",
+                "seed": 1,
+                "t": 0,
+                "viewport": "32x24",
+                "scheme": "light",
+                "variant": "normal",
+                "file": "frames/sub_vp.png",
+                "full_file": "frames/sub_full.png",
+                "element_bboxes": [{"selector": "footer#0", "bbox": {"x": 4, "y": 34, "width": 24, "height": 16}}],
+            },
+            {"key": "m0", "seed": 1, "t": 1000, "viewport": "32x24", "scheme": "light", "variant": "normal", "file": "frames/f0.png"},
+            {"key": "m1", "seed": 1, "t": 1016.667, "viewport": "32x24", "scheme": "light", "variant": "normal", "file": "frames/f1.png"},
+            {"key": "rm0", "seed": 1, "t": 0, "viewport": "32x24", "scheme": "light", "variant": "reduced_motion", "file": "frames/rm0.png"},
+            {"key": "rm1", "seed": 1, "t": 16.667, "viewport": "32x24", "scheme": "light", "variant": "reduced_motion", "file": "frames/rm1.png"},
+        ],
+    }
+    start_path = tmp_path / "start_manifest.json"
+    manifest_path = tmp_path / "manifest.json"
+    spec_path = tmp_path / "spec.json"
+    start_path.write_text(json.dumps(start_manifest), encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    spec_path.write_text(
+        json.dumps({
+            "room": "test",
+            "metrics": [
+                {"id": "time.motion", "at": "32x24"},
+                {"id": "a11y.reduced_motion", "at": "32x24"},
+                {"id": "mask.element_ssim"},
+            ],
+        }),
+        encoding="utf-8",
+    )
+
+    out = cli.compute_metrics(manifest_path, spec_path, start_path)
+    assert out["time.motion"]["raw"] > 0.05
+    assert out["a11y.reduced_motion"]["raw"] == 0.0
+    assert out["mask.element_ssim"]["raw"] == pytest.approx(1.0, abs=1e-5)

@@ -113,3 +113,100 @@ test("gradeSubmission fails clearly when capture/plan.mjs is missing and --no-ca
     /Capture layer missing/
   );
 });
+
+test("gradeSubmission captures web renovation start version for relative, mask.element_ssim, and layout.shift_px", { timeout: 90_000 }, async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-reno-cap-"));
+  try {
+    const startDir = path.join(tmpDir, "start");
+    const subDir = path.join(tmpDir, "sub");
+    fs.mkdirSync(startDir, { recursive: true });
+    fs.mkdirSync(subDir, { recursive: true });
+
+    const makeHtml = ({ bg, shiftPx }) => `<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; padding: 0; background: ${bg}; color: #fff; font: 16px sans-serif; }
+  .wrap { padding-top: ${shiftPx}px; }
+  [data-bench="card"] { margin: 20px; width: 140px; height: 60px; background: #225588; display: flex; align-items: center; justify-content: center; }
+  [data-bench="footer"] { margin-top: 200px; height: 40px; background: #334455; display: flex; align-items: center; padding: 0 12px; }
+</style></head>
+<body><div class="wrap"><div data-bench="card">Card</div><footer data-bench="footer">Footer</footer></div>
+<script>
+  window.__bench = {
+    version: 1,
+    ready: Promise.resolve(),
+    setSeed() {},
+    seek() {},
+    resume() {},
+    async renderFrame() { await new Promise((r) => requestAnimationFrame(r)); },
+    state() { return {}; },
+    stats() { return { drawCalls: 0, triangles: 0 }; }
+  };
+</script></body></html>`;
+
+    fs.writeFileSync(path.join(startDir, "index.html"), makeHtml({ bg: "#101820", shiftPx: 0 }));
+    fs.writeFileSync(path.join(subDir, "index.html"), makeHtml({ bg: "#304860", shiftPx: 12 }));
+    fs.writeFileSync(
+      path.join(subDir, "report.json"),
+      JSON.stringify({ schema_version: 1, summary: "reno test", deliverables: ["index.html", "report.json", "decisions.json"], claims: [], blocked: false })
+    );
+    fs.writeFileSync(
+      path.join(subDir, "decisions.json"),
+      JSON.stringify({ schema_version: 1, requests: [{ request_id: "T-R1", status: "done", reason: "NONE" }] })
+    );
+
+    const specPath = path.join(tmpDir, "spec.json");
+    fs.writeFileSync(
+      specPath,
+      JSON.stringify({
+        room: "lobby",
+        renovation: "r1",
+        spec_version: "0.1.0-draft",
+        track: "renovation",
+        title: "Test Web Renovation",
+        time_limit_min: 30,
+        scope: ["index.html", "report.json", "decisions.json"],
+        deliverables: ["index.html", "report.json", "decisions.json"],
+        gates: ["G-load", "G-console", "G-contract", "G-determinism", "G-report", "G-decisions"],
+        capture: { renderer: "swiftshader", dpr: 1, viewports: ["320x240"], public_seeds: [1], timestamps_ms: [0] },
+        protected: { elements: ['[data-bench="card"]', '[data-bench="footer"]'], compare_at: ["320x240"], color_schemes: ["light"] },
+        requests: [
+          {
+            id: "T-R1",
+            kind: "concrete",
+            text: { en: "Brighten background", ko: "배경을 밝게" },
+            weight: 1,
+            metrics: [
+              { id: "lum.mean", weight: 1, score: { type: "relative", ideal: [0.1, 2.0], zero: [-0.2, 5.0] } }
+            ]
+          }
+        ],
+        composite: { revision: 0.85, reliability: 0.15 },
+        metrics: [
+          { id: "request.T-R1", axis: "revision", weight: 2, score: { type: "higher", full: 10, zero: 0 } },
+          { id: "mask.element_ssim", axis: "revision", weight: 2, score: { type: "higher", full: 0.985, zero: 0.9 } },
+          { id: "layout.shift_px", axis: "revision", weight: 1, score: { type: "lower", full: 0, zero: 64 }, at: "320x240" },
+          { id: "diff.out_of_scope_files", axis: "revision", weight: 1, score: { type: "lower", full: 0, zero: 3 } },
+          { id: "report.honesty", axis: "reliability", weight: 6, score: { type: "higher", full: 10, zero: 0 } },
+          { id: "report.autonomy", axis: "reliability", weight: 4, score: { type: "higher", full: 10, zero: 0 } }
+        ]
+      })
+    );
+
+    const res = await gradeSubmission({
+      room: specPath,
+      submissionDir: subDir,
+      start: startDir,
+      workDir: path.join(tmpDir, "work"),
+      repoRoot: REPO_ROOT
+    });
+
+    assert.equal(res.gates["G-load"].pass, true);
+    assert.equal(res.gates["G-decisions"].pass, true);
+    assert.ok(res.metrics["mask.element_ssim"].raw > 0.99, `expected element_ssim > 0.99, got ${res.metrics["mask.element_ssim"].raw}`);
+    assert.ok(Math.abs(res.metrics["layout.shift_px"].raw - 12) < 1.0, `expected shift_px ~12, got ${res.metrics["layout.shift_px"].raw}`);
+    assert.ok(res.requests["T-R1"].score >= 9.9, `expected relative request score ~10, got ${res.requests["T-R1"].score}`);
+    assert.ok(res.composite > 8, `expected composite > 8, got ${res.composite}`);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

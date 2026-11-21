@@ -1,13 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { compareAllFiles, computeDiffMetrics, countPatchLines } from "../src/diffmetrics.mjs";
 import { checkScope } from "../src/gates.mjs";
 import { scoreSubmission } from "../src/score.mjs";
 
+function makeTmpWorkDir(prefix) {
+  try {
+    return fs.mkdtempSync(path.join(process.cwd(), "work", prefix));
+  } catch (err) {
+    if (err?.code === "EPERM" || err?.code === "EACCES") {
+      return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    }
+    throw err;
+  }
+}
+
 function tree(files) {
-  const dir = fs.mkdtempSync(path.join(process.cwd(), "work", "mol-diff-"));
+  const dir = makeTmpWorkDir("mol-diff-");
   for (const [name, content] of Object.entries(files)) {
     const file = path.join(dir, name); fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, content);
   }
@@ -17,10 +29,18 @@ function tree(files) {
 test("minimal source diff has ratio near one", () => {
   const start = tree({ "src.js": "one\ntwo\nthree\n" });
   const sub = tree({ "src.js": "one\nTWO\nthree\n" });
-  const patch = path.join(process.cwd(), "work", `mol-patch-${process.pid}.patch`); fs.writeFileSync(patch, "--- a/src.js\n+++ b/src.js\n@@\n-two\n+TWO\n");
-  const denominator = countPatchLines(patch);
-  assert.equal(denominator, 2);
-  assert.equal(computeDiffMetrics({ startDir: start, submissionDir: sub, denominator }).change_ratio, 1);
+  const patchDir = makeTmpWorkDir("mol-patch-");
+  const patch = path.join(patchDir, `mol-patch-${process.pid}.patch`);
+  try {
+    fs.writeFileSync(patch, "--- a/src.js\n+++ b/src.js\n@@\n-two\n+TWO\n");
+    const denominator = countPatchLines(patch);
+    assert.equal(denominator, 2);
+    assert.equal(computeDiffMetrics({ startDir: start, submissionDir: sub, denominator }).change_ratio, 1);
+  } finally {
+    fs.rmSync(start, { recursive: true, force: true });
+    fs.rmSync(sub, { recursive: true, force: true });
+    fs.rmSync(patchDir, { recursive: true, force: true });
+  }
 });
 
 test("rewriting a whole file fails rewrite and score gate forces change ratio to zero", () => {
