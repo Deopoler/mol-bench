@@ -35,6 +35,21 @@ function formatNum(val) {
   return Number(val).toFixed(1);
 }
 
+export function formatTok(val) {
+  if (val === null || val === undefined || Number.isNaN(val)) return "—";
+  const num = Number(val);
+  if (num === 0) return "0";
+  if (num >= 1e6) {
+    const m = num / 1e6;
+    return (m >= 100 ? m.toFixed(0) : m.toFixed(1)) + "M";
+  }
+  if (num >= 1e3) {
+    const k = num / 1e3;
+    return (k >= 100 ? k.toFixed(0) : k.toFixed(1)) + "k";
+  }
+  return String(num);
+}
+
 export function loadResultFiles(resultsDir) {
   if (!fs.existsSync(resultsDir)) return [];
   const entries = fs.readdirSync(resultsDir, { withFileTypes: true });
@@ -173,8 +188,10 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       taste: round1(r.taste ?? null),
       efficiency: {
         wall_min: r.efficiency?.wall_min ?? null,
-        tokens_in: r.efficiency?.tokens_in ?? null,
-        tokens_out: r.efficiency?.tokens_out ?? null,
+        tokens_in: r.efficiency?.tokens?.input ?? r.efficiency?.tokens_in ?? null,
+        tokens_out: r.efficiency?.tokens?.output ?? r.efficiency?.tokens_out ?? null,
+        tokens_total: r.efficiency?.tokens?.total ?? null,
+        tokens: r.efficiency?.tokens ?? null,
         usd: r.efficiency?.usd ?? null
       },
       gates: gateSummary,
@@ -370,11 +387,13 @@ export function formatLeaderboardMarkdown(data) {
       lines.push(`### ${roomKey} (${roomObj.track})`);
       lines.push("");
       lines.push(
-        "| Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Wall (min) | Gates | Previews | Flags |"
+        "| Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Wall (min) | Output tok | Total tok | Gates | Previews | Flags |"
       );
-      lines.push("|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|---|");
+      lines.push("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|");
       roomObj.runs.forEach((run, idx) => {
         const wall = run.efficiency.wall_min === null ? "—" : Number(run.efficiency.wall_min).toFixed(1);
+        const outTok = formatTok(run.efficiency.tokens_out);
+        const totTok = formatTok(run.efficiency.tokens_total);
         const gates = `${run.gates.passed}/${run.gates.evaluated}`;
         const previews =
           run.previews.length > 0
@@ -389,7 +408,7 @@ export function formatLeaderboardMarkdown(data) {
             run.axes.craft
           )} | ${formatNum(run.axes.visual_quality)} | ${formatNum(run.axes.revision)} | ${formatNum(
             run.reliability
-          )} | ${wall} | ${gates} | ${previews} | ${flags.length > 0 ? flags.join("; ") : "—"} |`
+          )} | ${wall} | ${outTok} | ${totTok} | ${gates} | ${previews} | ${flags.length > 0 ? flags.join("; ") : "—"} |`
         );
       });
       lines.push("");
@@ -781,6 +800,21 @@ export function buildLeaderboardHtml(data) {
       const fmt = (v, digits = 1) =>
         v === null || v === undefined || Number.isNaN(Number(v)) ? "—" : Number(v).toFixed(digits);
 
+      const fmtTok = (v) => {
+        if (v === null || v === undefined || Number.isNaN(Number(v))) return "—";
+        const n = Number(v);
+        if (n === 0) return "0";
+        if (n >= 1e6) {
+          const m = n / 1e6;
+          return (m >= 100 ? m.toFixed(0) : m.toFixed(1)) + "M";
+        }
+        if (n >= 1e3) {
+          const k = n / 1e3;
+          return (k >= 100 ? k.toFixed(0) : k.toFixed(1)) + "k";
+        }
+        return String(n);
+      };
+
       let state = {
         data: window.__LEADERBOARD_DATA__,
         room: "ALL",
@@ -879,6 +913,8 @@ export function buildLeaderboardHtml(data) {
         if (key === "revision") return run.axes_raw?.revision ?? null;
         if (key === "reliability") return run.axes_raw?.reliability ?? null;
         if (key === "wall_min") return run.efficiency?.wall_min ?? null;
+        if (key === "tokens_out") return run.efficiency?.tokens_out ?? null;
+        if (key === "tokens_total") return run.efficiency?.tokens_total ?? null;
         return run[key] ?? null;
       }
 
@@ -923,6 +959,8 @@ export function buildLeaderboardHtml(data) {
           ["Revision", "revision", true],
           ["Reliability", "reliability", true],
           ["Wall (m)", "wall_min", true],
+          ["Output tok", "tokens_out", true],
+          ["Total tok", "tokens_total", true],
           ["Gates", null, false],
           ["Preview", null, false],
           ["Flags", null, false]
@@ -978,6 +1016,8 @@ export function buildLeaderboardHtml(data) {
               '<td class="num">' + esc(fmt(run.axes.revision)) + "</td>" +
               '<td class="num">' + esc(fmt(run.reliability)) + "</td>" +
               '<td class="num">' + esc(fmt(run.efficiency.wall_min)) + "</td>" +
+              '<td class="num">' + esc(fmtTok(run.efficiency.tokens_out)) + "</td>" +
+              '<td class="num">' + esc(fmtTok(run.efficiency.tokens_total)) + "</td>" +
               "<td>" + gateBadge + "</td>" +
               "<td>" + previewHtml + "</td>" +
               "<td>" + flags.join(" ") + "</td>" +
@@ -1011,11 +1051,13 @@ export function buildLeaderboardHtml(data) {
                   : "<div>No preview contact sheets attached.</div>";
 
               html +=
-                '<tr class="detail-row"><td colspan="13"><div class="detail-grid">' +
+                '<tr class="detail-row"><td colspan="15"><div class="detail-grid">' +
                 '<div class="detail-box"><h4>Metadata & Efficiency</h4>' +
                 "<div>Run ID: <span class=mono>" + esc(run.run_id) + "</span></div>" +
                 "<div>Seeds: " + esc(run.seeds) + (run.seed !== null ? " (seed=" + esc(run.seed) + ")" : "") + "</div>" +
                 "<div>Wall min: " + esc(fmt(run.efficiency.wall_min, 2)) + "</div>" +
+                "<div>Output tok: " + esc(fmtTok(run.efficiency.tokens_out)) + "</div>" +
+                "<div>Total tok: " + esc(fmtTok(run.efficiency.tokens_total)) + "</div>" +
                 "<div>Taste: " + esc(run.taste === null ? "null (human only)" : fmt(run.taste)) + "</div>" +
                 (run.diff_file ? "<div>Diff: <span class=mono>" + esc(run.diff_file) + "</span></div>" : "") +
                 "</div>" +

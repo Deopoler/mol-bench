@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generatePreviewContactSheets } from "../harness/src/cli.mjs";
+import { collectTokens } from "./tokens.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..");
@@ -426,6 +427,21 @@ export function collectRun({
     resultsDir: resolvedResultsDir
   });
 
+  // 6b. Collect agent token usage from local session logs
+  let tokens = null;
+  try {
+    tokens = collectTokens({
+      runDir,
+      agent: runMeta.agent ?? null,
+      startedAt: runMeta.created_at,
+      endedAt,
+      runsRoot: root,
+      repoRoot: resolvedRepoRoot
+    });
+  } catch (err) {
+    warnings.push(`Token collection error: ${err.message}`);
+  }
+
   // 7. Merge efficiency, model label, leakage, and metadata into results/<id>.json
   const warnings = [...(graded.warnings || [])];
   if (leakage.flagged) {
@@ -441,7 +457,8 @@ export function collectRun({
     ...graded,
     efficiency: {
       ...(graded.efficiency || {}),
-      wall_min: wallMin
+      wall_min: wallMin,
+      tokens
     },
     leakage,
     diff_file: path.relative(resolvedResultsDir, diffPath).replace(/\\/g, "/"),
