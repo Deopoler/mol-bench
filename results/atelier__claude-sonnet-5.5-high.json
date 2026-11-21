@@ -1,0 +1,346 @@
+{
+  "run_id": "atelier__claude-sonnet-5.5-high",
+  "model": "Claude Sonnet 5.5 (high)",
+  "seed": null,
+  "created_at": "2026-11-21T02:11:50.470Z",
+  "ended_at": "2026-11-21T02:34:27.376Z",
+  "room": "atelier",
+  "track": "build",
+  "spec_version": "0.1.0-draft",
+  "bench_version": "0.1.0",
+  "submission": "C:\\Users\\seonj\\Documents\\workspace\\mol-bench\\results\\submissions\\atelier__claude-sonnet-5.5-high",
+  "seeds": "hidden",
+  "gates": {
+    "G-blender-run": {
+      "pass": true,
+      "detail": "completed in 0.7s"
+    },
+    "G-reproducible": {
+      "pass": true,
+      "detail": "geometry hash match (5ac6d716f31c)"
+    },
+    "G-provenance": {
+      "pass": true,
+      "detail": "clean provenance"
+    },
+    "G-gltf-valid": {
+      "pass": true,
+      "detail": "0 glTF 2.0 validation errors"
+    },
+    "G-offline": {
+      "pass": true,
+      "detail": "0 external network requests (Blender background mode)"
+    },
+    "G-report": {
+      "pass": true,
+      "detail": "valid report.json"
+    }
+  },
+  "metrics": {
+    "shape.iou_public": {
+      "raw": 0.99074,
+      "samples": [
+        {
+          "key": "front",
+          "value": 0.99636
+        },
+        {
+          "key": "side",
+          "value": 0.99408
+        },
+        {
+          "key": "top",
+          "value": 0.99074
+        }
+      ],
+      "score": 10,
+      "axis": "craft",
+      "weight": 3
+    },
+    "shape.iou_hidden": {
+      "raw": 0.99478,
+      "samples": [
+        {
+          "key": "hidden_00",
+          "value": 0.99602
+        },
+        {
+          "key": "hidden_01",
+          "value": 0.99478
+        },
+        {
+          "key": "hidden_02",
+          "value": 0.99444
+        },
+        {
+          "key": "hidden_03",
+          "value": 0.99478
+        },
+        {
+          "key": "hidden_04",
+          "value": 0.99602
+        },
+        {
+          "key": "hidden_05",
+          "value": 0.99478
+        },
+        {
+          "key": "hidden_06",
+          "value": 0.99444
+        },
+        {
+          "key": "hidden_07",
+          "value": 0.99478
+        },
+        {
+          "key": "hidden_08",
+          "value": 0.99543
+        },
+        {
+          "key": "hidden_09",
+          "value": 0.99459
+        },
+        {
+          "key": "hidden_10",
+          "value": 0.99543
+        },
+        {
+          "key": "hidden_11",
+          "value": 0.99459
+        }
+      ],
+      "score": 10,
+      "axis": "craft",
+      "weight": 5
+    },
+    "dims.bbox_error": {
+      "raw": 0,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "dims.key_measurements": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "scene.hierarchy": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "scene.units_origin": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "rig.hinge": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 3
+    },
+    "topo.manifold": {
+      "raw": 0,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "topo.normals_outward": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "topo.degenerate": {
+      "raw": 0,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "budget.triangles": {
+      "raw": 0.23107,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "mat.assignment": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "mat.pbr_plausible": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "mat.color_delta": {
+      "raw": 0.00291,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "uv.overlap": {
+      "raw": 0,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "web.three_load": {
+      "raw": true,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "vq.bevel_ratio": {
+      "raw": 0.99875,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 3,
+      "calibrate": true
+    },
+    "vq.shading_artifacts": {
+      "raw": 0.03541,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 3,
+      "calibrate": true
+    },
+    "vq.texel_density_cv": {
+      "raw": null,
+      "samples": [],
+      "score": null,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "vq.exposure": {
+      "raw": 0.4343,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "vq.highlight_metal": {
+      "raw": 0.06736,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "vq.detail_scale": {
+      "raw": 1.02775,
+      "samples": [],
+      "score": 0,
+      "axis": "visual_quality",
+      "weight": 2,
+      "calibrate": true
+    },
+    "render.aliasing": {
+      "raw": 0.05133,
+      "samples": [
+        {
+          "key": "turntable_00",
+          "value": 0.05373
+        },
+        {
+          "key": "turntable_01",
+          "value": 0.04729
+        },
+        {
+          "key": "turntable_02",
+          "value": 0.0511
+        },
+        {
+          "key": "turntable_03",
+          "value": 0.05667
+        },
+        {
+          "key": "turntable_04",
+          "value": 0.05471
+        },
+        {
+          "key": "turntable_05",
+          "value": 0.04605
+        },
+        {
+          "key": "turntable_06",
+          "value": 0.04837
+        },
+        {
+          "key": "turntable_07",
+          "value": 0.05157
+        }
+      ],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1,
+      "calibrate": true
+    },
+    "report.honesty": {
+      "raw": 10,
+      "samples": [],
+      "score": 10,
+      "axis": "reliability",
+      "weight": 6
+    },
+    "report.autonomy": {
+      "raw": 10,
+      "samples": [],
+      "score": 10,
+      "axis": "reliability",
+      "weight": 4
+    }
+  },
+  "axes": {
+    "craft": 10,
+    "visual_quality": 8.181818181818182,
+    "reliability": 10
+  },
+  "composite": 9.454545454545455,
+  "completeness": null,
+  "completeness_multiplier": 1,
+  "taste": null,
+  "efficiency": {
+    "wall_min": 22.6151,
+    "tokens": {
+      "source": "claude",
+      "sessions": 1,
+      "input": 140,
+      "output": 133667,
+      "cache_read": 15190013,
+      "cache_write": 285490,
+      "reasoning": 0,
+      "total": 15609310
+    }
+  },
+  "leakage": {
+    "flagged": false,
+    "matches": []
+  },
+  "diff_file": "submissions/atelier__claude-sonnet-5.5-high.diff",
+  "submission_copy": "submissions/atelier__claude-sonnet-5.5-high",
+  "preview_sheets": [
+    "submissions/atelier__claude-sonnet-5.5-high/preview/atelier_sheet_1.png"
+  ]
+}

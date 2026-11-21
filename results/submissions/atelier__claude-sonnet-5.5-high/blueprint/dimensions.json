@@ -1,0 +1,69 @@
+{
+  "seed": 1,
+  "sides": 6,
+  "body_height_mm": 240.0,
+  "body_width_mm": 160.0,
+  "r_in_mm": 80.0,
+  "r_out_mm": 92.376,
+  "side_len_mm": 92.376,
+  "roof": "stepped",
+  "base": "footed",
+  "foot_height_mm": 12.0,
+  "base_plinth_height_mm": 28.0,
+  "base_top_z_mm": 40.0,
+  "base_r_in_mm": 88.0,
+  "base_r_out_mm": 101.6136,
+  "body_top_z_mm": 280.0,
+  "roof_tier1_height_mm": 28.0,
+  "roof_tier2_height_mm": 26.0,
+  "roof_cap_height_mm": 16.0,
+  "roof_top_z_mm": 350.0,
+  "roof_r_in_mm": 90.0,
+  "roof_r_out_mm": 103.923,
+  "handle_ring_inner_d_mm": 56.0,
+  "handle_ring_wire_d_mm": 8.0,
+  "handle_ring_outer_d_mm": 72.0,
+  "handle_ring_center_mm": [
+    0.0,
+    0.0,
+    382.0
+  ],
+  "handle_ring_plane": "XZ",
+  "handle_collar_height_mm": 8.0,
+  "frame_bar_mm": 8.0,
+  "frame_bar_profile": "square",
+  "glass_pane_thickness_mm": 2.0,
+  "pane_count": 5,
+  "total_glass_panes_including_door": 6,
+  "door_face_index": 0,
+  "door_face_normal": [
+    0.0,
+    -1.0,
+    0.0
+  ],
+  "door_hinge_side": "left",
+  "door_hinge_line_xy_mm": [
+    -38.0,
+    -80.0
+  ],
+  "door_pivot_mm": [
+    -38.0,
+    -80.0,
+    160.0
+  ],
+  "door_open_angle_deg": 90.0,
+  "door_open_direction": "outward (-Z Euler rotation when viewed from +Z)",
+  "candle_diameter_mm": 36.0,
+  "candle_height_mm": 95.0,
+  "candle_base_z_mm": 40.0,
+  "flame_height_mm": 16.0,
+  "flame_radius_mm": 4.5,
+  "flame_base_z_mm": 136.0,
+  "metal": "brass",
+  "overall_bbox_mm": {
+    "x": 207.846,
+    "y": 180.0,
+    "z": 418.0
+  },
+  "origin_rule": "Lantern root origin at the bottom center of the base, lowest point at z = 0 (Blender Z-up), all object scales applied (1,1,1)."
+}

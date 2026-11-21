@@ -1,6 +1,6 @@
 # MoL-Bench Leaderboard
 
-Generated: 2026-11-21T02:29:17.592Z | Models: 16 | Rooms: 4 | Runs: 20 | [Gallery](../site/gallery/)
+Generated: 2026-11-21T02:40:48.273Z | Models: 16 | Rooms: 4 | Runs: 21 | [Gallery](../site/gallery/)
 
 ## Overall (by Model)
 
@@ -17,7 +17,7 @@ Generated: 2026-11-21T02:29:17.592Z | Models: 16 | Rooms: 4 | Runs: 20 | [Galler
 | 9 | Gemini 3.8 Flash (High) | 9.5 | 10.0 | 9.1 | — | 10.0 | 26.1 | 1 | 1 |
 | 10 | Gemini 3.8 Flash (Medium) | 9.5 | 9.9 | 9.1 | — | 10.0 | 17.8 | 1 | 1 |
 | 11 | GPT-6-Luna (medium) | 9.4 | 9.9 | 8.8 | — | 10.0 | 14.7 | 1 | 1 |
-| 12 | Claude Sonnet 5.5 (high) | 9.1 | 9.2 | 8.2 | — | 9.4 | 13.4 | 2 | 2 |
+| 12 | Claude Sonnet 5.5 (high) | 9.2 | 9.4 | 8.2 | — | 9.6 | 16.5 | 3 | 3 |
 | 13 | GPT-6-Luna (max) | 9.0 | 8.8 | 8.9 | — | 10.0 | 41.0 | 1 | 1 |
 | 14 | Claude Haiku 5.5 (high) | 8.7 | 9.5 | 6.4 | 8.0 | 9.6 | 17.9 | 4 | 4 |
 | 15 | Claude Haiku 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 10.2 | 1 | 1 |
@@ -30,6 +30,7 @@ Generated: 2026-11-21T02:29:17.592Z | Models: 16 | Rooms: 4 | Runs: 20 | [Galler
 | Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Wall (min) | Output tok | Total tok | Gates | Previews | Flags |
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|
 | 1 | atelier__claude-haiku-5.5-high | Claude Haiku 5.5 (high) | 9.7 | 10.0 | 8.9 | — | 10.0 | 9.6 | 88.2k | 4.5M | 6/6 | [View](../gallery/runs/atelier__claude-haiku-5.5-high/), [sheet 1](submissions/atelier__claude-haiku-5.5-high/preview/atelier_sheet_1.png) | — |
+| 2 | atelier__claude-sonnet-5.5-high | Claude Sonnet 5.5 (high) | 9.5 | 10.0 | 8.2 | — | 10.0 | 22.6 | 134k | 15.6M | 6/6 | [View](../gallery/runs/atelier__claude-sonnet-5.5-high/), [sheet 1](submissions/atelier__claude-sonnet-5.5-high/preview/atelier_sheet_1.png) | — |
 
 ### lobby (build)
 

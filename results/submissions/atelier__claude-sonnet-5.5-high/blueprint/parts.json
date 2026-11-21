@@ -1,0 +1,75 @@
+{
+  "root": "Lantern",
+  "parts": [
+    {
+      "name": "Lantern",
+      "parent": null,
+      "type": "EMPTY",
+      "watertight": false,
+      "material_role": null
+    },
+    {
+      "name": "Frame",
+      "parent": "Lantern",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "brass"
+    },
+    {
+      "name": "Roof",
+      "parent": "Lantern",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "brass"
+    },
+    {
+      "name": "Base",
+      "parent": "Lantern",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "brass"
+    },
+    {
+      "name": "Handle",
+      "parent": "Lantern",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "brass"
+    },
+    {
+      "name": "Glass",
+      "parent": "Lantern",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "glass"
+    },
+    {
+      "name": "Candle",
+      "parent": "Lantern",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "wax"
+    },
+    {
+      "name": "Flame",
+      "parent": "Lantern",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "flame"
+    },
+    {
+      "name": "Door",
+      "parent": "Frame",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "brass"
+    },
+    {
+      "name": "Door_Glass",
+      "parent": "Door",
+      "type": "MESH",
+      "watertight": true,
+      "material_role": "glass"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "summary": "Procedural hex lantern built in build.py from the blueprint: stepped roof, footed base, 6 axis-aligned 8 mm posts + rails, 5 physical 2 mm panes, hinged Door (+Door_Glass child) with a 90 deg door_open action about the hinge line, torus handle, candle and emissive flame. Bevelled/chamfered metal with hardened custom normals, 4 materials (9 draw calls), ~6.9k tris, glb+blend exported. Hidden-view IoU and texel density not measurable locally. vq.detail_scale misses its band (1.028).",
+  "deliverables": ["build.py", "out/lantern.glb", "out/lantern.blend", "report.json"],
+  "claims": [
+    {"metric_id": "shape.iou_public", "status": "verified", "meets_target": true, "measured_value": 0.9907, "method": "npm run selfcheck (worst of front/side/top)"},
+    {"metric_id": "shape.iou_hidden", "status": "not_verified", "method": "hidden refs not available locally"},
+    {"metric_id": "dims.bbox_error", "status": "verified", "meets_target": true, "measured_value": 0.0, "method": "npm run selfcheck"},
+    {"metric_id": "dims.key_measurements", "status": "verified", "meets_target": true, "measured_value": 1.0, "method": "npm run selfcheck (4/4)"},
+    {"metric_id": "scene.hierarchy", "status": "verified", "meets_target": true, "measured_value": 1.0, "method": "npm run selfcheck (10/10)"},
+    {"metric_id": "scene.units_origin", "status": "verified", "meets_target": true, "measured_value": 1.0, "method": "npm run selfcheck (3/3)"},
+    {"metric_id": "rig.hinge", "status": "verified", "meets_target": true, "measured_value": 1.0, "method": "npm run selfcheck (4/4)"},
+    {"metric_id": "topo.manifold", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck"},
+    {"metric_id": "topo.normals_outward", "status": "verified", "meets_target": true, "measured_value": 1.0, "method": "npm run selfcheck"},
+    {"metric_id": "topo.degenerate", "status": "verified", "meets_target": true, "measured_value": 0, "method": "npm run selfcheck"},
+    {"metric_id": "budget.triangles", "status": "verified", "meets_target": true, "measured_value": 0.2311, "method": "npm run selfcheck (6932 tris / 30000)"},
+    {"metric_id": "mat.assignment", "status": "verified", "meets_target": true, "measured_value": 1.0, "method": "npm run selfcheck (9/9)"},
+    {"metric_id": "mat.pbr_plausible", "status": "verified", "meets_target": true, "measured_value": 1.0, "method": "npm run selfcheck (5/5)"},
+    {"metric_id": "mat.color_delta", "status": "verified", "meets_target": true, "measured_value": 0.0029, "method": "npm run selfcheck"},
+    {"metric_id": "uv.overlap", "status": "verified", "meets_target": true, "measured_value": 0.0, "method": "npm run selfcheck (no textured parts)"},
+    {"metric_id": "web.three_load", "status": "verified", "meets_target": true, "measured_value": 1, "method": "npm run selfcheck (9 primitives <= 12)"},
+    {"metric_id": "vq.bevel_ratio", "status": "verified", "meets_target": true, "measured_value": 0.9988, "method": "npm run selfcheck"},
+    {"metric_id": "vq.shading_artifacts", "status": "verified", "meets_target": true, "measured_value": 0.0354, "method": "npm run selfcheck (selfcheck score 10)"},
+    {"metric_id": "vq.exposure", "status": "verified", "meets_target": true, "measured_value": 0.4343, "method": "npm run selfcheck"},
+    {"metric_id": "vq.highlight_metal", "status": "verified", "meets_target": true, "measured_value": 0.0674, "method": "npm run selfcheck"},
+    {"metric_id": "vq.detail_scale", "status": "verified", "meets_target": false, "measured_value": 1.0277, "method": "npm run selfcheck (selfcheck score 0, not met)"},
+    {"metric_id": "render.aliasing", "status": "verified", "meets_target": true, "measured_value": 0.0513, "method": "npm run selfcheck"},
+    {"metric_id": "vq.texel_density_cv", "status": "not_verified", "method": "no textures used, metric not applicable"},
+    {"metric_id": "G-reproducible", "status": "verified", "meets_target": true, "method": "npm run selfcheck; two builds give byte-identical glb"}
+  ],
+  "blocked": false
+}

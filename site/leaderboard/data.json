@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-11-21T02:29:17.592Z",
+  "generated_at": "2026-11-21T02:40:48.273Z",
   "summary": {
-    "total_runs": 20,
-    "valid_runs": 20,
+    "total_runs": 21,
+    "valid_runs": 21,
     "models_count": 16,
     "rooms_count": 4
   },
@@ -262,21 +262,25 @@
     },
     {
       "model": "Claude Sonnet 5.5 (high)",
-      "composite": 9.1,
-      "composite_raw": 9.087579365079364,
+      "composite": 9.2,
+      "composite_raw": 9.209901394901395,
       "axes": {
-        "craft": 9.2,
+        "craft": 9.4,
         "visual_quality": 8.2,
         "revision": null,
-        "reliability": 9.4
+        "reliability": 9.6
       },
-      "reliability": 9.4,
-      "avg_wall_min": 13.42,
-      "rooms_count": 2,
-      "runs_count": 2,
+      "reliability": 9.6,
+      "avg_wall_min": 16.48,
+      "rooms_count": 3,
+      "runs_count": 3,
       "invalid_count": 0,
       "leakage_count": 0,
       "room_scores": {
+        "atelier": {
+          "composite": 9.5,
+          "runs": 1
+        },
         "lobby": {
           "composite": 8.9,
           "runs": 1
@@ -486,6 +490,96 @@
               "file": "atelier_sheet_1.png",
               "md_path": "submissions/atelier__claude-haiku-5.5-high/preview/atelier_sheet_1.png",
               "site_path": "previews/atelier__claude-haiku-5.5-high/atelier_sheet_1.png"
+            }
+          ]
+        },
+        {
+          "run_id": "atelier__claude-sonnet-5.5-high",
+          "model": "Claude Sonnet 5.5 (high)",
+          "room": "atelier",
+          "renovation": null,
+          "room_key": "atelier",
+          "track": "build",
+          "seed": null,
+          "seeds": "hidden",
+          "composite": 9.5,
+          "composite_raw": 9.454545454545455,
+          "axes": {
+            "craft": 10,
+            "visual_quality": 8.2,
+            "revision": null,
+            "reliability": 10
+          },
+          "axes_raw": {
+            "craft": 10,
+            "visual_quality": 8.181818181818182,
+            "revision": null,
+            "reliability": 10
+          },
+          "reliability": 10,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 22.6151,
+            "tokens_in": 140,
+            "tokens_out": 133667,
+            "tokens_total": 15609310,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 140,
+              "output": 133667,
+              "cache_read": 15190013,
+              "cache_write": 285490,
+              "reasoning": 0,
+              "total": 15609310
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 6,
+            "evaluated": 6,
+            "total": 6,
+            "failed": []
+          },
+          "gates_detail": {
+            "G-blender-run": {
+              "pass": true,
+              "detail": "completed in 0.7s"
+            },
+            "G-reproducible": {
+              "pass": true,
+              "detail": "geometry hash match (5ac6d716f31c)"
+            },
+            "G-provenance": {
+              "pass": true,
+              "detail": "clean provenance"
+            },
+            "G-gltf-valid": {
+              "pass": true,
+              "detail": "0 glTF 2.0 validation errors"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 external network requests (Blender background mode)"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-21T02:11:50.470Z",
+          "ended_at": "2026-11-21T02:34:27.376Z",
+          "diff_file": "submissions/atelier__claude-sonnet-5.5-high.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "atelier_sheet_1.png",
+              "md_path": "submissions/atelier__claude-sonnet-5.5-high/preview/atelier_sheet_1.png",
+              "site_path": "previews/atelier__claude-sonnet-5.5-high/atelier_sheet_1.png"
             }
           ]
         }
@@ -3692,6 +3786,96 @@
           "file": "lobby_sheet_1.png",
           "md_path": "submissions/lobby__gemini-3.8-flash-medium/preview/lobby_sheet_1.png",
           "site_path": "previews/lobby__gemini-3.8-flash-medium/lobby_sheet_1.png"
+        }
+      ]
+    },
+    {
+      "run_id": "atelier__claude-sonnet-5.5-high",
+      "model": "Claude Sonnet 5.5 (high)",
+      "room": "atelier",
+      "renovation": null,
+      "room_key": "atelier",
+      "track": "build",
+      "seed": null,
+      "seeds": "hidden",
+      "composite": 9.5,
+      "composite_raw": 9.454545454545455,
+      "axes": {
+        "craft": 10,
+        "visual_quality": 8.2,
+        "revision": null,
+        "reliability": 10
+      },
+      "axes_raw": {
+        "craft": 10,
+        "visual_quality": 8.181818181818182,
+        "revision": null,
+        "reliability": 10
+      },
+      "reliability": 10,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 22.6151,
+        "tokens_in": 140,
+        "tokens_out": 133667,
+        "tokens_total": 15609310,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 140,
+          "output": 133667,
+          "cache_read": 15190013,
+          "cache_write": 285490,
+          "reasoning": 0,
+          "total": 15609310
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 6,
+        "evaluated": 6,
+        "total": 6,
+        "failed": []
+      },
+      "gates_detail": {
+        "G-blender-run": {
+          "pass": true,
+          "detail": "completed in 0.7s"
+        },
+        "G-reproducible": {
+          "pass": true,
+          "detail": "geometry hash match (5ac6d716f31c)"
+        },
+        "G-provenance": {
+          "pass": true,
+          "detail": "clean provenance"
+        },
+        "G-gltf-valid": {
+          "pass": true,
+          "detail": "0 glTF 2.0 validation errors"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 external network requests (Blender background mode)"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-21T02:11:50.470Z",
+      "ended_at": "2026-11-21T02:34:27.376Z",
+      "diff_file": "submissions/atelier__claude-sonnet-5.5-high.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "atelier_sheet_1.png",
+          "md_path": "submissions/atelier__claude-sonnet-5.5-high/preview/atelier_sheet_1.png",
+          "site_path": "previews/atelier__claude-sonnet-5.5-high/atelier_sheet_1.png"
         }
       ]
     },
