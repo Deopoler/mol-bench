@@ -1,5 +1,22 @@
 {
-  "seed": 1,
-  "hidden": false,
-  "room": "aurora"
+  "palette": [
+    [
+      0.82,
+      0.16,
+      175
+    ],
+    [
+      0.7,
+      0.12,
+      220
+    ],
+    [
+      0.58,
+      0.16,
+      290
+    ]
+  ],
+  "skyBaseL": 0.08508295762352645,
+  "starDensity": "sparse",
+  "motionScale": 1.010978815983981
 }

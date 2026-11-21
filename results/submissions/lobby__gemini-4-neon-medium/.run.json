@@ -1,0 +1,10 @@
+{
+  "run_id": "lobby__gemini-4-neon-medium",
+  "room": "lobby",
+  "track": "build",
+  "seed": null,
+  "created_at": "2026-11-21T04:12:10.894Z",
+  "ended_at": "2026-11-21T04:28:14.364Z",
+  "wall_min": 16.0578,
+  "model": "Gemini 4 Neon (Medium)"
+}

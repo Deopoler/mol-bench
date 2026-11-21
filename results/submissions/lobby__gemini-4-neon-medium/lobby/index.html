@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>빛의 미술관 — Museum of Light</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header" data-bench="header">
+    <div class="container header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span><span class="brand-name" data-i18n="brand">MUSEUM OF LIGHT</span>
+      </div>
+      <div class="header-controls">
+        <button
+          type="button"
+          class="control-btn"
+          data-bench="lang-toggle"
+          aria-label="영어로 전환"
+        >EN</button>
+        <button
+          type="button"
+          class="control-btn"
+          data-bench="theme-toggle"
+          aria-label="다크 테마로 전환"
+        >다크</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="site-main" id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container">
+        <p class="eyebrow" data-i18n="eyebrow">MUSEUM OF LIGHT · SEOUL</p>
+        <h1 class="hero-title" id="hero-title" data-bench="hero-title" data-i18n="heroTitle">빛의 방에 오신 것을 환영합니다</h1>
+        <p class="body-copy" data-bench="body" data-i18n="heroBody">각각의 방은 빛과 시간, 그리고 오래된 기억이 조용히 포개지는 작은 디지털 전시 공간입니다. 서두르지 않고 천천히 머물며 익숙한 감각 너머의 새로운 풍경을 만나 보세요.</p>
+      </div>
+    </section>
+
+    <section class="collection" id="rooms-section" aria-labelledby="rooms-heading">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="section-title" id="rooms-heading" data-i18n="roomsHeading">전시 공간</h2>
+          <p class="section-meta" id="rooms-count" aria-live="polite"></p>
+        </div>
+
+        <div id="rooms" class="rooms-grid"></div>
+
+        <div class="empty-state" data-bench="empty-state" role="status" hidden>
+          <h3 class="empty-title" data-i18n="emptyTitle">현재 공개된 전시가 없습니다</h3>
+          <p class="empty-desc" data-i18n="emptyDesc">새로운 빛의 방을 준비하고 있습니다. 잠시 후 다시 방문해 주세요.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="visitor-info" id="visitor-info" aria-labelledby="info-heading">
+      <div class="container">
+        <div class="info-intro">
+          <h2 class="section-title" id="info-heading" data-i18n="infoHeading">관람 안내</h2>
+          <p class="body-copy" data-bench="body" data-i18n="infoBody">빛의 미술관은 언제나 열려 있는 온라인 전시관입니다. 화면의 밝기와 소리를 편안하게 맞추고, 관심 있는 방을 선택해 각 작품이 품은 고요한 호흡을 따라가 보세요.</p>
+        </div>
+        <div class="info-grid">
+          <div class="info-item">
+            <h3 class="info-label" data-i18n="hoursTitle">개관 시간</h3>
+            <p class="info-text" data-i18n="hoursText">연중무휴 24시간 온라인 관람 가능</p>
+          </div>
+          <div class="info-item">
+            <h3 class="info-label" data-i18n="admissionTitle">관람료</h3>
+            <p class="info-text" data-i18n="admissionText">모든 상설 및 기획 전시 무료 입장</p>
+          </div>
+          <div class="info-item">
+            <h3 class="info-label" data-i18n="accessTitle">접근성</h3>
+            <p class="info-text" data-i18n="accessText">키보드 탐색, 라이트·다크 테마 및 동작 줄이기 지원</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-bench="footer">
+    <div class="container footer-inner">
+      <p class="footer-brand" data-i18n="footerBrand">Museum of Light · Seoul</p>
+      <nav class="footer-nav" aria-label="바닥글 탐색">
+        <a class="footer-link" href="#rooms-section" data-i18n="footerRooms">전시 공간</a>
+        <a class="footer-link" href="#visitor-info" data-i18n="footerInfo">관람 안내</a>
+      </nav>
+    </div>
+  </footer>
+
+  <div
+    id="room-view"
+    class="room-view"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="room-view-title"
+    aria-hidden="true"
+    data-open="false"
+    inert
+  >
+    <div class="container room-view-inner">
+      <div class="room-view-bar">
+        <a href="#/" class="back-link" id="room-back-link" data-i18n="backToLobby">← 로비로 돌아가기</a>
+        <span class="room-view-index" id="room-view-index"></span>
+      </div>
+      <div class="room-view-stage">
+        <div class="room-view-accent" id="room-view-accent" aria-hidden="true"></div>
+        <h2 class="room-view-title" id="room-view-title"></h2>
+        <p class="room-view-subtitle" id="room-view-subtitle"></p>
+        <p class="room-view-summary" id="room-view-summary"></p>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>

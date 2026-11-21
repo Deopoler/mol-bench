@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "summary": "Editorial Museum of Light lobby built with semantic HTML, system serif/sans font stacks (offline, 0 font requests, 31.5 KB total), 4px spacing rhythm, 5-step type scale, light/dark themes, ko/en language toggle with localStorage persistence, distinct non-navigable coming-soon cards, deterministic hash-route overlay transitions with reduced-motion support, and full BenchRoom v1 contract.",
+  "deliverables": [
+    "lobby/index.html",
+    "lobby/styles.css",
+    "lobby/app.js",
+    "tests/lobby.test.mjs",
+    "report.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "G-load",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3)"
+    },
+    {
+      "metric_id": "G-console",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3)"
+    },
+    {
+      "metric_id": "G-contract",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3)"
+    },
+    {
+      "metric_id": "G-determinism",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3)"
+    },
+    {
+      "metric_id": "G-offline",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3)"
+    },
+    {
+      "metric_id": "G-raster",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node bench/cli.mjs grade lobby . (0 KB raster assets)"
+    },
+    {
+      "metric_id": "G-fonts-local",
+      "status": "verified",
+      "meets_target": true,
+      "method": "node bench/cli.mjs grade lobby . (system stacks, 0 font requests)"
+    },
+    {
+      "metric_id": "data.rooms_rendered",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3, all viewports)"
+    },
+    {
+      "metric_id": "data.long_title",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "node bench/cli.mjs grade lobby . and tests/lobby.test.mjs long_title variant"
+    },
+    {
+      "metric_id": "data.empty_state",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "node bench/cli.mjs grade lobby . and tests/lobby.test.mjs empty_rooms variant"
+    },
+    {
+      "metric_id": "tests.hidden",
+      "status": "not_verified",
+      "method": "Hidden test suite is not available in workspace; public smoke + 10 regression tests pass"
+    },
+    {
+      "metric_id": "nav.routes",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3) and tests/lobby.test.mjs"
+    },
+    {
+      "metric_id": "layout.overflow_count",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "node bench/cli.mjs grade lobby . (all viewports, light and dark)"
+    },
+    {
+      "metric_id": "text.clipped_count",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "node bench/cli.mjs grade lobby . (all viewports)"
+    },
+    {
+      "metric_id": "a11y.axe_violations",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "node bench/cli.mjs grade lobby . (all viewports, light and dark)"
+    },
+    {
+      "metric_id": "a11y.keyboard_reach",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3) and tests/lobby.test.mjs"
+    },
+    {
+      "metric_id": "a11y.focus_visible",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "node bench/cli.mjs grade lobby . (public seeds 1-3) and tests/lobby.test.mjs"
+    },
+    {
+      "metric_id": "theme.both_valid",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "tests/lobby.test.mjs using bench/capture/probes/nav.js probeThemeBothValid"
+    },
+    {
+      "metric_id": "a11y.reduced_motion_transition_ms",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 16,
+      "method": "tests/lobby.test.mjs using probeNavTransitionMs with reducedMotion=reduce"
+    },
+    {
+      "metric_id": "lh.lcp_ms",
+      "status": "not_verified",
+      "method": "Lighthouse was not run in sandboxed public grade"
+    },
+    {
+      "metric_id": "lh.cls",
+      "status": "not_verified",
+      "method": "Lighthouse was not run in sandboxed public grade"
+    },
+    {
+      "metric_id": "budget.transfer_kb",
+      "status": "not_verified",
+      "method": "Transfer probe not emitted in public grade; lobby/ files total 31.5 KB uncompressed"
+    },
+    {
+      "metric_id": "text.hangul_midword_breaks",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "node bench/cli.mjs grade lobby . (all viewports)"
+    },
+    {
+      "metric_id": "text.line_length",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 41,
+      "method": "node bench/cli.mjs grade lobby . (768x1024 and 1440x900, Hangul median)"
+    },
+    {
+      "metric_id": "text.line_height",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.75,
+      "method": "node bench/cli.mjs grade lobby . (all viewports, Hangul median)"
+    },
+    {
+      "metric_id": "type.size_steps",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 5,
+      "method": "node bench/cli.mjs grade lobby . (1440x900)"
+    },
+    {
+      "metric_id": "type.scale_ratio_min",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.1428571428571428,
+      "method": "node bench/cli.mjs grade lobby . (1440x900)"
+    },
+    {
+      "metric_id": "space.grid4_frac",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1,
+      "method": "node bench/cli.mjs grade lobby . (all viewports)"
+    },
+    {
+      "metric_id": "align.column_count",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 4,
+      "method": "node bench/cli.mjs grade lobby . (1440x900)"
+    },
+    {
+      "metric_id": "nav.transition_ms",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 240,
+      "method": "tests/lobby.test.mjs using bench/capture/probes/nav.js probeNavTransitionMs"
+    },
+    {
+      "metric_id": "visual.congestion",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.11742664873600006,
+      "method": "node bench/cli.mjs grade lobby . (1440x900 light, public seeds 1-3)"
+    }
+  ],
+  "blocked": false
+}
