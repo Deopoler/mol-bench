@@ -1,0 +1,10 @@
+{
+  "run_id": "lobby__gemini-4-hydrogen-high",
+  "room": "lobby",
+  "track": "build",
+  "seed": null,
+  "created_at": "2026-11-20T23:57:38.432Z",
+  "ended_at": "2026-11-21T00:15:43.300Z",
+  "wall_min": 18.0811,
+  "model": "Gemini 4 Hydrogen (High)"
+}

@@ -1,0 +1,1679 @@
+diff --git a/lobby/app.js b/lobby/app.js
+index 21095f6..f0a4334 100644
+--- a/lobby/app.js
++++ b/lobby/app.js
+@@ -1,3 +1,467 @@
+-const root=document.querySelector('#rooms');
+-function renderRooms(){const rooms=window.__benchHost?.params?.rooms??[];root.replaceChildren();for(const room of rooms){const a=document.createElement(room.status==='coming_soon'?'article':'a');a.dataset.bench='room-card';if(room.status!=='coming_soon')a.href=room.route;a.textContent=room.title_ko;root.append(a)}document.querySelector('[data-bench="empty-state"]').hidden=rooms.length>0}
+-renderRooms();document.querySelector("[data-bench=body]").textContent="가".repeat(100);const roomId=()=>location.hash.startsWith('#/room/')?location.hash.slice(7):'lobby';window.__bench={version:1,ready:document.fonts.ready,setSeed(){renderRooms()},seek(){},resume(){},async renderFrame(){await new Promise(requestAnimationFrame)},state(){return{route:roomId(),lang:'ko',theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}},stats(){return{drawCalls:0,triangles:0}}};
++/**
++ * Museum of Light — Lobby runtime
++ * Consumes window.__benchHost.params.rooms and implements window.__bench (BenchRoom v1).
++ */
++
++const COPY = {
++  ko: {
++    pageTitle: '빛의 미술관 — Museum of Light',
++    brandSub: '빛의 미술관',
++    controlsNav: '화면 설정',
++    langToggleLabel: '영어로 전환',
++    langToggleText: 'EN',
++    themeToDark: '다크',
++    themeToLight: '라이트',
++    themeToDarkLabel: '다크 테마로 전환',
++    themeToLightLabel: '라이트 테마로 전환',
++    heroEyebrow: 'SEOUL · DIGITAL EXHIBITION',
++    heroTitle: '빛이 머무는 방으로',
++    heroBody:
++      '빛의 미술관은 서로 다른 감각과 사유를 담은 디지털 전시실의 모음입니다. 각 방은 고요한 관찰과 천천히 머무는 시간을 위해 열려 있습니다.',
++    collectionTitle: '전시실',
++    roomsAriaLabel: '전시 공간 목록',
++    roomCount: (n) => (n === 0 ? '준비 중' : `총 ${n}개의 공간`),
++    statusOpen: '전시 중',
++    statusSoon: '준비 중',
++    emptyTitle: '현재 공개된 전시실이 없습니다',
++    emptyDesc: '새로운 빛의 전시를 정성껏 준비하고 있습니다. 잠시 후 다시 방문해 주세요.',
++    visitTitle: '관람 안내',
++    visitBody:
++      '모든 전시실은 별도의 설치 없이 브라우저에서 바로 감상할 수 있도록 구성되었습니다. 밝은 화면과 어두운 화면 모두에서 편안한 명암을 유지하며, 키보드만으로도 모든 공간을 자유롭게 오갈 수 있습니다.',
++    hoursLabel: '개관 시간',
++    hoursValue: '매일 상시 개방 · 온라인 전시',
++    admissionLabel: '관람료',
++    admissionValue: '무료 관람',
++    locationLabel: '위치',
++    locationValue: '서울 · 디지털 아카이브',
++    footerColophon: 'Museum of Light · Seoul',
++    footerNav: '푸터 바로가기',
++    footerCollection: '전시실',
++    footerVisit: '관람 안내',
++    backToLobby: '로비로 돌아가기',
++    roomEntered: '전시실 입장',
++    summaryFallbackEn: 'A quiet digital room open for unhurried observation and discovery.',
++  },
++  en: {
++    pageTitle: 'Museum of Light — Lobby',
++    brandSub: 'Seoul',
++    controlsNav: 'Display controls',
++    langToggleLabel: 'Switch to Korean',
++    langToggleText: '한국어',
++    themeToDark: 'Dark',
++    themeToLight: 'Light',
++    themeToDarkLabel: 'Switch to dark theme',
++    themeToLightLabel: 'Switch to light theme',
++    heroEyebrow: 'SEOUL · DIGITAL EXHIBITION',
++    heroTitle: 'Welcome to the Museum of Light',
++    heroBody:
++      'The Museum of Light gathers quiet digital rooms devoted to perception, memory, and stillness. Move at your own pace through each exhibition space.',
++    collectionTitle: 'Exhibition Rooms',
++    roomsAriaLabel: 'Exhibition rooms',
++    roomCount: (n) => (n === 0 ? 'Coming soon' : `${n} ${n === 1 ? 'Room' : 'Rooms'}`),
++    statusOpen: 'Open',
++    statusSoon: 'Coming soon',
++    emptyTitle: 'No exhibition rooms are open yet',
++    emptyDesc: 'Curators are preparing the next collection of light studies. Please return shortly.',
++    visitTitle: 'Visitor Information',
++    visitBody:
++      'Every exhibition room runs directly in the browser without additional downloads. Each space maintains clear contrast in both light and dark themes and supports complete keyboard navigation.',
++    hoursLabel: 'Hours',
++    hoursValue: 'Open daily · Online exhibition',
++    admissionLabel: 'Admission',
++    admissionValue: 'Free entry',
++    locationLabel: 'Location',
++    locationValue: 'Seoul · Digital Archive',
++    footerColophon: 'Museum of Light · Seoul',
++    footerNav: 'Footer navigation',
++    footerCollection: 'Rooms',
++    footerVisit: 'Visit',
++    backToLobby: 'Back to Lobby',
++    roomEntered: 'Now Viewing',
++    summaryFallbackEn: 'A quiet digital room open for unhurried observation and discovery.',
++  },
++};
++
++const LANG_STORAGE_KEY = 'mol-lang';
++
++const els = {
++  lobbyShell: document.getElementById('lobby-shell'),
++  roomsGrid: document.getElementById('rooms'),
++  roomCount: document.getElementById('room-count'),
++  emptyState: document.querySelector('[data-bench="empty-state"]'),
++  heroTitle: document.querySelector('[data-bench="hero-title"]'),
++  langToggle: document.querySelector('[data-bench="lang-toggle"]'),
++  themeToggle: document.querySelector('[data-bench="theme-toggle"]'),
++  headerControls: document.querySelector('.header-controls'),
++  footerNav: document.querySelector('.footer-nav'),
++  roomView: document.getElementById('room-view'),
++  roomViewBack: document.getElementById('room-view-back'),
++  roomViewCode: document.getElementById('room-view-code'),
++  roomViewTitle: document.getElementById('room-view-title'),
++  roomViewSubtitle: document.getElementById('room-view-subtitle'),
++  roomViewSummary: document.getElementById('room-view-summary'),
++};
++
++const colorSchemeMql = window.matchMedia('(prefers-color-scheme: dark)');
++const reducedMotionMql = window.matchMedia('(prefers-reduced-motion: reduce)');
++
++let userThemeOverride = null; // null | 'light' | 'dark'
++let currentLang = readStoredLang();
++let currentRoute = 'lobby';
++let savedLobbyScrollY = 0;
++let activeListeners = 0;
++let frozenTimeMs = 0;
++
++function readStoredLang() {
++  try {
++    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
++    if (saved === 'ko' || saved === 'en') return saved;
++  } catch {
++    // Ignore storage access restrictions
++  }
++  return 'ko';
++}
++
++function getEffectiveTheme() {
++  if (userThemeOverride === 'light' || userThemeOverride === 'dark') {
++    return userThemeOverride;
++  }
++  return colorSchemeMql.matches ? 'dark' : 'light';
++}
++
++function getRooms() {
++  const rooms = window.__benchHost?.params?.rooms;
++  return Array.isArray(rooms) ? rooms : [];
++}
++
++function clamp(n, min, max) {
++  return Math.min(max, Math.max(min, n));
++}
++
++function parseAccent(room) {
++  const arr = Array.isArray(room?.accent_oklch) ? room.accent_oklch : [0.68, 0.12, 210];
++  const l = Number.isFinite(Number(arr[0])) ? clamp(Number(arr[0]), 0.3, 0.85) : 0.68;
++  const c = Number.isFinite(Number(arr[1])) ? clamp(Number(arr[1]), 0, 0.22) : 0.12;
++  const h = Number.isFinite(Number(arr[2])) ? ((Number(arr[2]) % 360) + 360) % 360 : 210;
++  return { l, c, h };
++}
++
++function applyTheme() {
++  const theme = getEffectiveTheme();
++  document.documentElement.dataset.theme = theme;
++  const copy = COPY[currentLang];
++  if (els.themeToggle) {
++    const isDark = theme === 'dark';
++    els.themeToggle.setAttribute('aria-pressed', String(isDark));
++    els.themeToggle.textContent = isDark ? copy.themeToLight : copy.themeToDark;
++    els.themeToggle.setAttribute('aria-label', isDark ? copy.themeToLightLabel : copy.themeToDarkLabel);
++  }
++  updateRoomPlateTones(theme);
++}
++
++function updateRoomPlateTones(theme) {
++  const cards = els.roomsGrid ? els.roomsGrid.querySelectorAll('[data-bench="room-card"]') : [];
++  const rooms = getRooms();
++  cards.forEach((card, idx) => {
++    const room = rooms[idx];
++    if (!room) return;
++    const { l, c, h } = parseAccent(room);
++    const lMain = theme === 'dark' ? clamp(l - 0.16, 0.36, 0.6) : clamp(l + 0.08, 0.64, 0.82);
++    const lSoft = theme === 'dark' ? clamp(lMain - 0.14, 0.22, 0.44) : clamp(lMain + 0.12, 0.78, 0.94);
++    const cMain = clamp(c * 0.7, 0.02, 0.1);
++    card.style.setProperty('--accent-l', lMain.toFixed(3));
++    card.style.setProperty('--accent-l2', lSoft.toFixed(3));
++    card.style.setProperty('--accent-c', cMain.toFixed(3));
++    card.style.setProperty('--accent-c2', (cMain * 0.35).toFixed(3));
++    card.style.setProperty('--accent-h', h.toFixed(1));
++  });
++}
++
++function applyLanguageCopy() {
++  const copy = COPY[currentLang];
++  document.documentElement.lang = currentLang;
++  document.title = copy.pageTitle;
++
++  if (els.heroTitle) els.heroTitle.textContent = copy.heroTitle;
++  if (els.roomsGrid) els.roomsGrid.setAttribute('aria-label', copy.roomsAriaLabel);
++  if (els.headerControls) els.headerControls.setAttribute('aria-label', copy.controlsNav);
++  if (els.footerNav) els.footerNav.setAttribute('aria-label', copy.footerNav);
++
++  if (els.langToggle) {
++    els.langToggle.textContent = copy.langToggleText;
++    els.langToggle.setAttribute('aria-label', copy.langToggleLabel);
++  }
++
++  for (const el of document.querySelectorAll('[data-i18n]')) {
++    const key = el.getAttribute('data-i18n');
++    if (key && typeof copy[key] === 'string') {
++      el.textContent = copy[key];
++    }
++  }
++
++  applyTheme();
++}
++
++function createRoomCard(room, index) {
++  const copy = COPY[currentLang];
++  const isSoon = room.status === 'coming_soon';
++  const primaryTitle = currentLang === 'en' && room.title_en ? room.title_en : (room.title_ko || room.title_en || room.id);
++  const secondaryTitle = currentLang === 'en' ? (room.title_ko || '') : (room.title_en || '');
++  const summaryText = currentLang === 'en'
++    ? (room.summary_en || copy.summaryFallbackEn)
++    : (room.summary_ko || '');
++
++  const article = document.createElement('article');
++  article.className = isSoon ? 'room-card room-card--coming-soon' : 'room-card';
++  article.dataset.bench = 'room-card';
++  article.dataset.status = isSoon ? 'coming_soon' : 'open';
++  article.dataset.roomId = String(room.id || `room-${index + 1}`);
++  if (isSoon) {
++    article.setAttribute('aria-disabled', 'true');
++  }
++
++  const wrapper = document.createElement(isSoon ? 'div' : 'a');
++  wrapper.className = isSoon ? 'room-card__inner' : 'room-card__link';
++  if (!isSoon && room.route) {
++    wrapper.setAttribute('href', room.route);
++  }
++
++  const plate = document.createElement('div');
++  plate.className = 'room-card__plate';
++  plate.setAttribute('aria-hidden', 'true');
++
++  const body = document.createElement('div');
++  body.className = 'room-card__body';
++
++  const meta = document.createElement('p');
++  meta.className = 'room-card__meta';
++
++  const idxSpan = document.createElement('span');
++  idxSpan.className = 'room-card__index';
++  idxSpan.textContent = String(index + 1).padStart(2, '0');
++
++  const statusSpan = document.createElement('span');
++  statusSpan.className = isSoon ? 'room-card__status room-card__status--soon' : 'room-card__status';
++  statusSpan.textContent = isSoon ? copy.statusSoon : copy.statusOpen;
++
++  if (isSoon) {
++    meta.append(idxSpan, statusSpan);
++  } else {
++    const sep = document.createElement('span');
++    sep.className = 'room-card__meta-sep';
++    sep.setAttribute('aria-hidden', 'true');
++    sep.textContent = ' · ';
++    meta.append(idxSpan, sep, statusSpan);
++  }
++
++  const titleEl = document.createElement('h3');
++  titleEl.className = 'room-card__title';
++  titleEl.textContent = primaryTitle;
++
++  body.append(meta, titleEl);
++
++  if (secondaryTitle) {
++    const subEl = document.createElement('p');
++    subEl.className = 'room-card__subtitle';
++    subEl.lang = currentLang === 'en' ? 'ko' : 'en';
++    subEl.textContent = secondaryTitle;
++    body.append(subEl);
++  }
++
++  if (summaryText) {
++    const sumEl = document.createElement('p');
++    sumEl.className = 'room-card__summary';
++    sumEl.textContent = summaryText;
++    body.append(sumEl);
++  }
++
++  wrapper.append(plate, body);
++  article.append(wrapper);
++  return article;
++}
++
++function renderRooms() {
++  const rooms = getRooms();
++  const copy = COPY[currentLang];
++
++  if (els.roomCount) {
++    els.roomCount.textContent = copy.roomCount(rooms.length);
++  }
++
++  if (els.roomsGrid) {
++    const frag = document.createDocumentFragment();
++    rooms.forEach((room, i) => {
++      frag.append(createRoomCard(room, i));
++    });
++    els.roomsGrid.replaceChildren(frag);
++    els.roomsGrid.hidden = rooms.length === 0;
++  }
++
++  if (els.emptyState) {
++    els.emptyState.hidden = rooms.length > 0;
++  }
++
++  updateRoomPlateTones(getEffectiveTheme());
++}
++
++function parseRoomIdFromHash(hash) {
++  if (typeof hash !== 'string' || !hash.startsWith('#/room/')) return null;
++  const raw = hash.slice('#/room/'.length).replace(/\/+$/, '');
++  return raw ? decodeURIComponent(raw) : null;
++}
++
++function findOpenRoom(id) {
++  if (!id) return null;
++  return getRooms().find((r) => r.id === id && r.status !== 'coming_soon') || null;
++}
++
++function populateRoomView(room, index) {
++  const copy = COPY[currentLang];
++  const { l, c, h } = parseAccent(room);
++  const primaryTitle = currentLang === 'en' && room.title_en ? room.title_en : (room.title_ko || room.title_en || room.id);
++  const secondaryTitle = currentLang === 'en' ? (room.title_ko || '') : (room.title_en || '');
++  const summaryText = currentLang === 'en'
++    ? (room.summary_en || copy.summaryFallbackEn)
++    : (room.summary_ko || '');
++
++  els.roomView.style.setProperty('--room-accent-l', l.toFixed(3));
++  els.roomView.style.setProperty('--room-accent-c', c.toFixed(3));
++  els.roomView.style.setProperty('--room-accent-h', h.toFixed(1));
++  els.roomViewCode.textContent = `ROOM ${String(index + 1).padStart(2, '0')}`;
++  els.roomViewTitle.textContent = primaryTitle;
++  els.roomViewSubtitle.textContent = secondaryTitle;
++  els.roomViewSubtitle.hidden = !secondaryTitle;
++  els.roomViewSummary.textContent = summaryText;
++}
++
++function syncRoute({ animate = true } = {}) {
++  const prevRoute = currentRoute;
++  const requestedId = parseRoomIdFromHash(window.location.hash);
++  const room = findOpenRoom(requestedId);
++
++  if (room) {
++    if (prevRoute === 'lobby') {
++      savedLobbyScrollY = window.scrollY;
++    }
++    currentRoute = room.id;
++    const idx = getRooms().findIndex((r) => r.id === room.id);
++    populateRoomView(room, idx >= 0 ? idx : 0);
++
++    const entering = prevRoute !== currentRoute;
++    els.roomView.hidden = false;
++    if (els.lobbyShell) {
++      els.lobbyShell.setAttribute('aria-hidden', 'true');
++      els.lobbyShell.inert = true;
++    }
++
++    els.roomView.classList.remove('is-entering');
++    if (animate && entering && !reducedMotionMql.matches) {
++      // Force reflow so CSS keyframe animation starts cleanly at t=0
++      void els.roomView.offsetWidth;
++      els.roomView.classList.add('is-entering');
++    }
++  } else {
++    currentRoute = 'lobby';
++    els.roomView.classList.remove('is-entering');
++    els.roomView.hidden = true;
++    if (els.lobbyShell) {
++      els.lobbyShell.removeAttribute('aria-hidden');
++      els.lobbyShell.inert = false;
++    }
++    if (prevRoute !== 'lobby') {
++      window.scrollTo({ top: savedLobbyScrollY, behavior: 'instant' });
++    }
++  }
++}
++
++function onLangToggleClick() {
++  currentLang = currentLang === 'ko' ? 'en' : 'ko';
++  try {
++    window.localStorage.setItem(LANG_STORAGE_KEY, currentLang);
++  } catch {
++    // Ignore storage errors
++  }
++  applyLanguageCopy();
++  renderRooms();
++  if (currentRoute !== 'lobby') {
++    const room = findOpenRoom(currentRoute);
++    if (room) {
++      const idx = getRooms().findIndex((r) => r.id === room.id);
++      populateRoomView(room, idx >= 0 ? idx : 0);
++    }
++  }
++}
++
++function onThemeToggleClick() {
++  userThemeOverride = getEffectiveTheme() === 'dark' ? 'light' : 'dark';
++  applyTheme();
++}
++
++function onColorSchemeChange() {
++  userThemeOverride = null;
++  applyTheme();
++}
++
++function onHashChange() {
++  syncRoute({ animate: true });
++}
++
++function addTrackedListener(target, type, handler, opts) {
++  if (!target) return;
++  target.addEventListener(type, handler, opts);
++  activeListeners += 1;
++}
++
++addTrackedListener(els.langToggle, 'click', onLangToggleClick);
++addTrackedListener(els.themeToggle, 'click', onThemeToggleClick);
++addTrackedListener(colorSchemeMql, 'change', onColorSchemeChange);
++addTrackedListener(window, 'hashchange', onHashChange);
++
++// Initial render
++applyLanguageCopy();
++renderRooms();
++syncRoute({ animate: false });
++
++const readyPromise = (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(() => undefined);
++
++window.__bench = {
++  version: 1,
++  ready: readyPromise,
++  setSeed() {
++    userThemeOverride = null;
++    currentLang = readStoredLang();
++    applyLanguageCopy();
++    renderRooms();
++    syncRoute({ animate: false });
++  },
++  seek(tMs) {
++    frozenTimeMs = Number(tMs) || 0;
++  },
++  resume() {
++    // Pure DOM/CSS lobby: live clock resumes cleanly without background rAF loops.
++  },
++  async renderFrame() {
++    applyTheme();
++    if (window.__benchHostControl?.isRafOverrideActive?.()) {
++      await Promise.resolve();
++      return;
++    }
++    await new Promise((resolve) => {
++      requestAnimationFrame(() => requestAnimationFrame(resolve));
++    });
++  },
++  state() {
++    return {
++      route: currentRoute,
++      lang: currentLang,
++      theme: getEffectiveTheme(),
++    };
++  },
++  stats() {
++    return {
++      drawCalls: 0,
++      triangles: 0,
++      listeners: activeListeners,
++    };
++  },
++};
+diff --git a/lobby/index.html b/lobby/index.html
+index 449c50b..62a2f38 100644
+--- a/lobby/index.html
++++ b/lobby/index.html
+@@ -1 +1,123 @@
+-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Museum of Light</title><style>body{font:16px system-ui,sans-serif;margin:2rem;color:#222}main{max-width:70rem;margin:auto}</style><style>body *{font-size:16px!important;line-height:1.1!important}[data-bench="body"]{max-width:120px}body *{margin:5px!important;padding:5px!important;gap:5px!important}</style></head><body><main><header data-bench="header"><span>MUSEUM OF LIGHT</span><button></button></header><h1 data-bench="hero-title">빛의 방에 오신 것을 환영합니다</h1><p data-bench="body">각각의 방은 서로 다른 감각과 생각을 위한 작은 세계입니다.</p><section id="rooms" aria-label="전시 공간"></section><p data-bench="empty-state" hidden>아직 공개된 방이 없습니다.</p><footer data-bench="footer">Museum of Light · Seoul</footer></main><script src="./app.js" type="module"></script></body></html>
++<!doctype html>
++<html lang="ko" data-theme="light">
++<head>
++  <meta charset="utf-8">
++  <meta name="viewport" content="width=device-width, initial-scale=1">
++  <title>빛의 미술관 — Museum of Light</title>
++  <link rel="stylesheet" href="./styles.css">
++</head>
++<body id="top">
++  <div class="lobby-shell" id="lobby-shell">
++    <header class="site-header" data-bench="header">
++      <div class="container header-inner">
++        <p class="brand">
++          <span class="brand-en">MUSEUM OF LIGHT</span>
++          <span class="brand-sep" aria-hidden="true"> · </span>
++          <span class="brand-ko" data-i18n="brandSub">빛의 미술관</span>
++        </p>
++        <nav class="header-controls" aria-label="화면 설정">
++          <button
++            type="button"
++            class="control-btn"
++            data-bench="lang-toggle"
++            aria-label="영어로 전환"
++          >EN</button><button
++            type="button"
++            class="control-btn control-btn--second"
++            data-bench="theme-toggle"
++            aria-pressed="false"
++            aria-label="다크 테마로 전환"
++          >다크</button>
++        </nav>
++      </div>
++    </header>
++
++    <main id="main-content" class="site-main">
++      <section class="hero" aria-labelledby="hero-heading">
++        <div class="container hero-inner">
++          <p class="eyebrow" data-i18n="heroEyebrow">SEOUL · DIGITAL EXHIBITION</p>
++          <h1 id="hero-heading" class="hero-title" data-bench="hero-title">빛이 머무는 방으로</h1>
++          <p class="hero-body" data-bench="body" data-i18n="heroBody">빛의 미술관은 서로 다른 감각과 사유를 담은 디지털 전시실의 모음입니다. 각 방은 고요한 관찰과 천천히 머무는 시간을 위해 열려 있습니다.</p>
++        </div>
++      </section>
++
++      <section class="collection" id="collection" aria-labelledby="collection-heading">
++        <div class="container">
++          <div class="section-head">
++            <h2 id="collection-heading" class="section-title" data-i18n="collectionTitle">전시실</h2>
++            <p class="section-count" id="room-count" aria-live="polite"></p>
++          </div>
++
++          <div id="rooms" class="room-grid" aria-label="전시 공간 목록"></div>
++
++          <div class="empty-state" data-bench="empty-state" hidden role="status" aria-live="polite">
++            <div class="empty-state__mark" aria-hidden="true"></div>
++            <h3 class="empty-state__title" data-i18n="emptyTitle">현재 공개된 전시실이 없습니다</h3>
++            <p class="empty-state__desc" data-i18n="emptyDesc">새로운 빛의 전시를 정성껏 준비하고 있습니다. 잠시 후 다시 방문해 주세요.</p>
++          </div>
++        </div>
++      </section>
++
++      <section class="editorial-info" id="visit" aria-labelledby="visit-heading">
++        <div class="container info-grid">
++          <div class="info-statement">
++            <h2 id="visit-heading" class="section-title" data-i18n="visitTitle">관람 안내</h2>
++            <p class="info-body" data-bench="body" data-i18n="visitBody">모든 전시실은 별도의 설치 없이 브라우저에서 바로 감상할 수 있도록 구성되었습니다. 밝은 화면과 어두운 화면 모두에서 편안한 명암을 유지하며, 키보드만으로도 모든 공간을 자유롭게 오갈 수 있습니다.</p>
++          </div>
++          <dl class="info-facts">
++            <div class="info-fact">
++              <dt data-i18n="hoursLabel">개관 시간</dt>
++              <dd data-i18n="hoursValue">매일 상시 개방 · 온라인 전시</dd>
++            </div>
++            <div class="info-fact">
++              <dt data-i18n="admissionLabel">관람료</dt>
++              <dd data-i18n="admissionValue">무료 관람</dd>
++            </div>
++            <div class="info-fact">
++              <dt data-i18n="locationLabel">위치</dt>
++              <dd data-i18n="locationValue">서울 · 디지털 아카이브</dd>
++            </div>
++          </dl>
++        </div>
++      </section>
++    </main>
++
++    <footer class="site-footer" data-bench="footer">
++      <div class="container footer-inner">
++        <p class="footer-colophon" data-i18n="footerColophon">Museum of Light · Seoul</p>
++        <nav class="footer-nav" aria-label="푸터 바로가기">
++          <a href="#collection" class="footer-link" data-i18n="footerCollection">전시실</a><a href="#visit" class="footer-link footer-link--second" data-i18n="footerVisit">관람 안내</a>
++        </nav>
++      </div>
++    </footer>
++  </div>
++
++  <section
++    id="room-view"
++    class="room-view"
++    aria-labelledby="room-view-title"
++    aria-modal="true"
++    role="dialog"
++    hidden
++  >
++    <div class="room-view__backdrop" aria-hidden="true"></div>
++    <div class="container room-view__inner">
++      <div class="room-view__top">
++        <a href="#/" class="room-view__back" id="room-view-back" data-i18n="backToLobby">로비로 돌아가기</a>
++        <span class="room-view__code" id="room-view-code"></span>
++      </div>
++      <div class="room-view__stage">
++        <div class="room-view__lightfield" id="room-view-lightfield" aria-hidden="true"></div>
++        <div class="room-view__content">
++          <p class="room-view__status" data-i18n="roomEntered">전시실 입장</p>
++          <h2 id="room-view-title" class="room-view__title"></h2>
++          <p id="room-view-subtitle" class="room-view__subtitle"></p>
++          <p id="room-view-summary" class="room-view__summary"></p>
++        </div>
++      </div>
++    </div>
++  </section>
++
++  <script src="./app.js" type="module"></script>
++</body>
++</html>
+diff --git a/lobby/styles.css b/lobby/styles.css
+new file mode 100644
+index 0000000..a77e7c2
+--- /dev/null
++++ b/lobby/styles.css
+@@ -0,0 +1,782 @@
++/* Museum of Light — Lobby
++ * Editorial layout on a strict 4px spacing grid and 5-step typographic scale.
++ * System font stacks only (offline-safe, zero external requests).
++ */
++
++:root {
++  /* Spacing scale (strict multiples of 4px) */
++  --s-1: 4px;
++  --s-2: 8px;
++  --s-3: 12px;
++  --s-4: 16px;
++  --s-5: 20px;
++  --s-6: 24px;
++  --s-8: 32px;
++  --s-10: 40px;
++  --s-12: 48px;
++  --s-16: 64px;
++  --s-20: 80px;
++  --s-24: 96px;
++  --s-28: 112px;
++  --s-30: 120px;
++  --s-32: 128px;
++  --s-34: 136px;
++
++  /* 5-step type scale: 14 / 16 / 20 / 28 / 48 (min ratio 1.143 >= 1.125) */
++  --text-sm: 14px;
++  --text-base: 16px;
++  --text-lg: 20px;
++  --text-xl: 28px;
++  --text-hero: 48px;
++
++  --lh-sm: 20px;
++  --lh-base: 28px;   /* 28 / 16 = 1.75: ideal for both Hangul (1.5-1.9) and Latin (1.4-1.8) */
++  --lh-lg: 28px;
++  --lh-xl: 36px;
++  --lh-hero: 56px;
++
++  --font-sans: "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
++
++  /* Light theme (warm architectural limestone) */
++  --bg: #f7f5f0;
++  --surface: #fbfaf6;
++  --surface-muted: #f0ede5;
++  --ink: #2c2b27;
++  --ink-muted: #5d5a52;
++  --border: #eae6dd;
++  --border-strong: #ccc6ba;
++  --focus-ring: #173b61;
++  --soon-bg: #ece7dc;
++  --soon-ink: #434039;
++  --room-backdrop: #1e2128;
++  --room-surface: #252932;
++  --room-ink: #f4f1ea;
++  --room-ink-muted: #c2beb4;
++  --room-border: #3a3f4c;
++
++  --transition-nav: 320ms;
++  --transition-ui: 160ms;
++}
++
++html[data-theme="dark"] {
++  --bg: #121316;
++  --surface: #181a1f;
++  --surface-muted: #14161b;
++  --ink: #f1efe9;
++  --ink-muted: #b5b1a7;
++  --border: #272b33;
++  --border-strong: #464c5a;
++  --focus-ring: #f2cc78;
++  --soon-bg: #22252e;
++  --soon-ink: #cbc6bc;
++  --room-backdrop: #0b0c0f;
++  --room-surface: #15181e;
++  --room-ink: #f4f1ea;
++  --room-ink-muted: #bdb9af;
++  --room-border: #2d323e;
++}
++
++*,
++*::before,
++*::after {
++  box-sizing: border-box;
++}
++
++[hidden] {
++  display: none !important;
++}
++
++html {
++  background-color: var(--bg);
++  color: var(--ink);
++  font-family: var(--font-sans);
++  font-size: var(--text-base);
++  line-height: var(--lh-base);
++  -webkit-text-size-adjust: 100%;
++  color-scheme: light;
++}
++
++html[data-theme="dark"] {
++  color-scheme: dark;
++}
++
++body {
++  margin: 0;
++  background-color: var(--bg);
++  color: var(--ink);
++  font-family: var(--font-sans);
++  font-size: var(--text-base);
++  line-height: var(--lh-base);
++  word-break: keep-all;
++  overflow-wrap: break-word;
++  overflow-x: clip;
++}
++
++h1,
++h2,
++h3,
++p,
++dl,
++dt,
++dd {
++  margin: 0;
++}
++
++a {
++  color: inherit;
++  text-decoration: none;
++}
++
++button {
++  font-family: inherit;
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: inherit;
++  background: none;
++  border: 0;
++  padding: 0;
++  cursor: pointer;
++}
++
++/* High-contrast focus indication (>= 3:1 contrast, >= 2x perimeter pixels) */
++a:focus,
++a:focus-visible,
++button:focus,
++button:focus-visible,
++[tabindex]:focus,
++[tabindex]:focus-visible {
++  outline: 4px solid var(--focus-ring);
++  outline-offset: 2px;
++}
++
++.container {
++  width: 100%;
++  max-width: 960px;
++  margin-left: auto;
++  margin-right: auto;
++  padding-left: var(--s-8);
++  padding-right: var(--s-8);
++}
++
++/* Header */
++.site-header {
++  background-color: var(--bg);
++}
++
++.header-inner {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: var(--s-4);
++  padding-top: var(--s-4);
++  padding-bottom: var(--s-4);
++}
++
++.brand {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  letter-spacing: 0.08em;
++  font-weight: 600;
++}
++
++.brand-sep,
++.brand-ko {
++  color: var(--ink-muted);
++  font-weight: 500;
++  letter-spacing: 0.02em;
++}
++
++.header-controls {
++  display: block;
++  flex-shrink: 0;
++  white-space: nowrap;
++}
++
++.control-btn {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  vertical-align: middle;
++  min-width: 48px;
++  min-height: 44px;
++  padding: var(--s-2) var(--s-4);
++  border: 1px solid var(--border-strong);
++  border-radius: 4px;
++  background-color: var(--surface);
++  color: var(--ink);
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  font-weight: 500;
++  transition: background-color var(--transition-ui) ease, border-color var(--transition-ui) ease;
++}
++
++.control-btn--second {
++  margin-left: var(--s-3);
++}
++
++.control-btn:hover {
++  background-color: var(--surface-muted);
++  border-color: var(--ink);
++}
++
++/* Hero */
++.hero {
++  padding-top: var(--s-34);
++  padding-bottom: var(--s-32);
++}
++
++.hero-inner {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-6);
++}
++
++.eyebrow {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  letter-spacing: 0.1em;
++  text-transform: uppercase;
++  color: var(--ink-muted);
++  font-weight: 600;
++}
++
++.hero-title {
++  font-size: var(--text-hero);
++  line-height: var(--lh-hero);
++  font-weight: 600;
++  letter-spacing: -0.02em;
++  max-width: 720px;
++}
++
++.hero-body {
++  font-size: var(--text-base);
++  line-height: var(--lh-base);
++  color: var(--ink-muted);
++  max-width: 480px;
++}
++
++/* Collection */
++.collection {
++  padding-top: var(--s-20);
++  padding-bottom: var(--s-20);
++  border-bottom: 1px solid var(--border);
++}
++
++.section-head {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: var(--s-2);
++  margin-bottom: var(--s-10);
++}
++
++.section-title {
++  font-size: var(--text-xl);
++  line-height: var(--lh-xl);
++  font-weight: 600;
++  letter-spacing: -0.015em;
++}
++
++.section-count {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink-muted);
++}
++
++.room-grid {
++  display: grid;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: var(--s-8);
++}
++
++.room-card {
++  display: flex;
++  flex-direction: column;
++  min-width: 0;
++  border-radius: 4px;
++  background-color: var(--surface);
++  border: 1px solid var(--border);
++}
++
++.room-card__link,
++.room-card__inner {
++  display: flex;
++  flex-direction: column;
++  flex: 1 1 auto;
++  min-width: 0;
++  border-radius: 4px;
++}
++
++.room-card__link {
++  transition: background-color var(--transition-ui) ease, border-color var(--transition-ui) ease;
++}
++
++.room-card__link:hover {
++  background-color: var(--surface-muted);
++}
++
++.room-card--coming-soon {
++  background-color: var(--surface-muted);
++  border-style: dashed;
++  border-color: var(--border-strong);
++}
++
++.room-card__plate {
++  height: 4px;
++  border-top-left-radius: 4px;
++  border-top-right-radius: 4px;
++  background:
++    linear-gradient(
++      90deg,
++      oklch(var(--accent-l, 0.76) var(--accent-c, 0.08) var(--accent-h, 210)) 0%,
++      oklch(var(--accent-l2, 0.88) var(--accent-c2, 0.03) var(--accent-h, 210)) 72%,
++      var(--surface) 100%
++    );
++}
++
++.room-card--coming-soon .room-card__plate {
++  background:
++    linear-gradient(
++      90deg,
++      oklch(var(--accent-l, 0.74) 0.015 var(--accent-h, 210)) 0%,
++      var(--surface-muted) 100%
++    );
++}
++
++.room-card__body {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-4);
++  padding: var(--s-8) var(--s-6) var(--s-8);
++  min-width: 0;
++  flex: 1 1 auto;
++}
++
++.room-card__meta {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink-muted);
++}
++
++.room-card__index {
++  font-variant-numeric: tabular-nums;
++  letter-spacing: 0.06em;
++  color: var(--ink-muted);
++}
++
++.room-card__meta-sep {
++  color: var(--ink-muted);
++}
++
++.room-card__status {
++  color: var(--ink-muted);
++  font-weight: 500;
++}
++
++.room-card__status--soon {
++  display: inline-block;
++  margin-left: var(--s-2);
++  padding: 0 var(--s-2);
++  border-radius: 4px;
++  border: 1px solid var(--border-strong);
++  background-color: var(--soon-bg);
++  color: var(--soon-ink);
++}
++
++.room-card__title {
++  font-size: var(--text-lg);
++  line-height: var(--lh-lg);
++  font-weight: 600;
++  color: var(--ink);
++  word-break: keep-all;
++  overflow-wrap: break-word;
++}
++
++.room-card--coming-soon .room-card__title {
++  color: var(--ink-muted);
++}
++
++.room-card__subtitle {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink-muted);
++  word-break: keep-all;
++  overflow-wrap: break-word;
++}
++
++.room-card__summary {
++  margin-top: var(--s-1);
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink-muted);
++  word-break: keep-all;
++  overflow-wrap: break-word;
++}
++
++/* Empty State */
++.empty-state {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: var(--s-3);
++  padding: var(--s-10) var(--s-8);
++  border: 1px dashed var(--border-strong);
++  border-radius: 4px;
++  background-color: var(--surface);
++}
++
++.empty-state__mark {
++  width: 48px;
++  height: 4px;
++  background-color: var(--border-strong);
++}
++
++.empty-state__title {
++  font-size: var(--text-lg);
++  line-height: var(--lh-lg);
++  font-weight: 600;
++}
++
++.empty-state__desc {
++  font-size: var(--text-base);
++  line-height: var(--lh-base);
++  color: var(--ink-muted);
++  max-width: 480px;
++}
++
++/* Info Section */
++.editorial-info {
++  padding-top: var(--s-16);
++  padding-bottom: var(--s-16);
++  border-bottom: 1px solid var(--border);
++}
++
++.info-grid {
++  display: grid;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: var(--s-8);
++  align-items: start;
++}
++
++.info-statement {
++  grid-column: span 2;
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-4);
++  min-width: 0;
++}
++
++.info-body {
++  font-size: var(--text-base);
++  line-height: var(--lh-base);
++  color: var(--ink-muted);
++  max-width: 480px;
++}
++
++.info-facts {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-4);
++  padding: var(--s-6);
++  border: 1px solid var(--border);
++  border-radius: 4px;
++  background-color: var(--surface);
++  min-width: 0;
++}
++
++.info-fact {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-1);
++}
++
++.info-fact dt {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink-muted);
++  font-weight: 600;
++}
++
++.info-fact dd {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink);
++}
++
++/* Footer */
++.site-footer {
++  padding-top: var(--s-8);
++  padding-bottom: var(--s-10);
++  background-color: var(--bg);
++}
++
++.footer-inner {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  flex-wrap: wrap;
++  gap: var(--s-4);
++}
++
++.footer-colophon {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink-muted);
++}
++
++.footer-nav {
++  display: block;
++  white-space: nowrap;
++}
++
++.footer-link {
++  display: inline-flex;
++  align-items: center;
++  vertical-align: middle;
++  min-height: 44px;
++  padding: var(--s-2) var(--s-3);
++  border-radius: 4px;
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  color: var(--ink);
++  text-decoration: underline;
++  text-underline-offset: 4px;
++}
++
++.footer-link--second {
++  margin-left: var(--s-4);
++}
++
++/* Room View Overlay & Navigation Transition */
++.room-view {
++  position: fixed;
++  inset: 0;
++  z-index: 40;
++  overflow-y: auto;
++  color: var(--room-ink);
++  background-color: var(--room-backdrop);
++}
++
++.room-view__backdrop {
++  position: fixed;
++  inset: 0;
++  z-index: 0;
++  background:
++    radial-gradient(
++      circle at 75% 24%,
++      oklch(var(--room-accent-l, 0.52) var(--room-accent-c, 0.12) var(--room-accent-h, 210) / 0.35),
++      transparent 60%
++    ),
++    var(--room-backdrop);
++}
++
++.room-view__inner {
++  position: relative;
++  z-index: 1;
++  min-height: 100%;
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-8);
++  padding-top: var(--s-8);
++  padding-bottom: var(--s-12);
++}
++
++.room-view__top {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: var(--s-4);
++  padding-bottom: var(--s-4);
++  border-bottom: 1px solid var(--room-border);
++}
++
++.room-view__back {
++  display: inline-flex;
++  align-items: center;
++  min-height: 44px;
++  padding: var(--s-2) var(--s-4);
++  border: 1px solid var(--room-border);
++  border-radius: 4px;
++  background-color: var(--room-surface);
++  color: var(--room-ink);
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  font-weight: 500;
++}
++
++.room-view__code {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  letter-spacing: 0.08em;
++  color: var(--room-ink-muted);
++}
++
++.room-view__stage {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-6);
++  max-width: 720px;
++}
++
++.room-view__lightfield {
++  height: 160px;
++  border-radius: 4px;
++  border: 1px solid var(--room-border);
++  background:
++    linear-gradient(
++      125deg,
++      oklch(var(--room-accent-l, 0.68) var(--room-accent-c, 0.12) var(--room-accent-h, 210)) 0%,
++      oklch(0.32 0.04 var(--room-accent-h, 210)) 100%
++    );
++}
++
++.room-view__content {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s-3);
++}
++
++.room-view__status {
++  font-size: var(--text-sm);
++  line-height: var(--lh-sm);
++  letter-spacing: 0.08em;
++  color: var(--room-ink-muted);
++}
++
++.room-view__title {
++  font-size: var(--text-xl);
++  line-height: var(--lh-xl);
++  font-weight: 600;
++}
++
++.room-view__subtitle {
++  font-size: var(--text-base);
++  line-height: var(--lh-base);
++  color: var(--room-ink-muted);
++}
++
++.room-view__summary {
++  font-size: var(--text-base);
++  line-height: var(--lh-base);
++  color: var(--room-ink);
++  max-width: 480px;
++}
++
++@keyframes roomEnter {
++  0% {
++    opacity: 0;
++    transform: translateY(16px);
++  }
++  100% {
++    opacity: 1;
++    transform: translateY(0);
++  }
++}
++
++.room-view.is-entering {
++  animation: roomEnter var(--transition-nav) cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
++}
++
++/* Tablet */
++@media (max-width: 1023px) {
++  :root {
++    --text-hero: 36px;
++    --lh-hero: 44px;
++  }
++
++  .container {
++    padding-left: var(--s-6);
++    padding-right: var(--s-6);
++  }
++
++  .hero {
++    padding-top: var(--s-16);
++    padding-bottom: var(--s-12);
++  }
++
++  .collection {
++    padding-top: var(--s-12);
++    padding-bottom: var(--s-16);
++  }
++
++  .room-grid {
++    grid-template-columns: repeat(2, minmax(0, 1fr));
++    gap: var(--s-6);
++  }
++
++  .info-grid {
++    grid-template-columns: minmax(0, 1fr);
++    gap: var(--s-6);
++  }
++
++  .info-statement {
++    grid-column: auto;
++  }
++}
++
++/* Mobile */
++@media (max-width: 639px) {
++  :root {
++    --text-hero: 32px;
++    --lh-hero: 40px;
++  }
++
++  .container {
++    padding-left: var(--s-4);
++    padding-right: var(--s-4);
++  }
++
++  .brand-sep,
++  .brand-ko {
++    display: none;
++  }
++
++  .hero {
++    padding-top: var(--s-10);
++    padding-bottom: var(--s-8);
++  }
++
++  .collection {
++    padding-top: var(--s-8);
++    padding-bottom: var(--s-12);
++  }
++
++  .editorial-info {
++    padding-top: var(--s-10);
++    padding-bottom: var(--s-10);
++  }
++
++  .room-grid {
++    grid-template-columns: minmax(0, 1fr);
++    gap: var(--s-5);
++  }
++
++  .room-card__body {
++    padding: var(--s-5) var(--s-4) var(--s-6);
++  }
++
++  .section-head {
++    margin-bottom: var(--s-6);
++  }
++
++  .empty-state {
++    padding: var(--s-6) var(--s-4);
++  }
++}
++
++/* Reduced motion */
++@media (prefers-reduced-motion: reduce) {
++  :root {
++    --transition-nav: 0ms;
++    --transition-ui: 0ms;
++  }
++
++  .room-view.is-entering {
++    animation: none;
++  }
++
++  .control-btn,
++  .room-card__link {
++    transition: none;
++  }
++}
+diff --git a/tests/lobby.test.mjs b/tests/lobby.test.mjs
+new file mode 100644
+index 0000000..5b61050
+--- /dev/null
++++ b/tests/lobby.test.mjs
+@@ -0,0 +1,281 @@
++/**
++ * Regression test suite for Museum of Light — Lobby.
++ * Run directly with: node tests/lobby.test.mjs
++ */
++
++import assert from 'node:assert/strict';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { startServer } from '../bench/capture/server.mjs';
++import { launchBrowser } from '../bench/capture/browser.mjs';
++import { generate } from '../bench/rooms/lobby.mjs';
++import {
++  probeA11y,
++  probeLayout,
++  probeNavRoutes,
++  probeNavTransitionMs,
++  probeSpaceAndAlign,
++  probeText,
++  probeThemeBothValid,
++  probeType,
++} from '../bench/capture/probes/index.js';
++import { probeLobbyData, probeLobbyLanguage } from '../bench/capture/probes/lobby.js';
++import { pixelSha256 } from '../bench/capture/probes/shared.js';
++import smokeTests from '../public-tests/smoke.mjs';
++
++const __dirname = path.dirname(fileURLToPath(import.meta.url));
++const REPO_ROOT = path.resolve(__dirname, '..');
++
++async function main() {
++  const server = await startServer(REPO_ROOT);
++  const localResolver = server.loopbackReachable ? null : server.resolveFile;
++  const browser = await launchBrowser({ mode: 'swiftshader' });
++
++  const openPage = (opts = {}) =>
++    browser.newPage({
++      origin: server.origin,
++      url: server.url,
++      localResolver,
++      viewport: '1440x900',
++      seed: 1,
++      params: generate(1),
++      loadTimeoutMs: 8000,
++      ...opts,
++    });
++
++  const results = [];
++  async function runCase(name, fn) {
++    try {
++      const detail = await fn();
++      results.push({ name, pass: true, detail: detail || 'ok' });
++      console.log(`PASS  ${name}${detail ? ` — ${detail}` : ''}`);
++    } catch (err) {
++      results.push({ name, pass: false, detail: err.message });
++      console.error(`FAIL  ${name} — ${err.message}`);
++    }
++  }
++
++  try {
++    // 1. Public smoke tests
++    for (const t of smokeTests) {
++      await runCase(`public:${t.id}`, async () => {
++        const h = await openPage();
++        try {
++          const out = await t.run({ page: h.page });
++          assert.equal(out.pass, true, out.detail || 'smoke test failed');
++          return out.detail;
++        } finally {
++          await h.close();
++        }
++      });
++    }
++
++    // 2. Data variants: empty, one_room, many_rooms, long_title
++    await runCase('data:empty_rooms', async () => {
++      const h = await openPage({ params: generate(1, { variant: 'empty_rooms' }), viewport: '360x780' });
++      try {
++        const res = await probeLobbyData(h.page);
++        assert.equal(res.metrics['data.empty_state'], true);
++        assert.equal(res.metrics['data.rooms_rendered'].passed, 1);
++        const layout = await probeLayout(h.page);
++        assert.equal(layout['layout.overflow_count'], 0);
++        return 'empty state visible, 0 overflow';
++      } finally {
++        await h.close();
++      }
++    });
++
++    await runCase('data:long_title_mobile', async () => {
++      const h = await openPage({ params: generate(1, { variant: 'long_title' }), viewport: '360x780' });
++      try {
++        const data = await probeLobbyData(h.page);
++        const layout = await probeLayout(h.page);
++        const text = await probeText(h.page);
++        assert.equal(data.metrics['data.long_title'], true);
++        assert.equal(layout['layout.overflow_count'], 0);
++        assert.equal(text['text.clipped_count'], 0);
++        assert.equal(text['text.hangul_midword_breaks'], 0);
++        return 'long title intact, 0 overflow, 0 clipping';
++      } finally {
++        await h.close();
++      }
++    });
++
++    await runCase('data:many_rooms_24', async () => {
++      const h = await openPage({ params: generate(2, { variant: 'many_rooms' }), viewport: '1440x900' });
++      try {
++        const data = await probeLobbyData(h.page);
++        const layout = await probeLayout(h.page);
++        assert.equal(data.metrics['data.rooms_rendered'].passed, 1);
++        assert.equal(layout['layout.overflow_count'], 0);
++        return '24 rooms rendered cleanly';
++      } finally {
++        await h.close();
++      }
++    });
++
++    // 3. Coming-soon room must be distinct and non-navigable
++    await runCase('data:coming_soon_non_navigable', async () => {
++      const h = await openPage({ params: generate(1, { variant: 'coming_soon' }) });
++      try {
++        const info = await h.page.evaluate(() => {
++          const card = document.querySelector('[data-bench="room-card"][data-status="coming_soon"]');
++          if (!card) return { found: false };
++          const hasLink = Boolean(card.querySelector('a[href]'));
++          const beforeHash = location.hash;
++          const beforeRoute = window.__bench.state().route;
++          card.click();
++          return {
++            found: true,
++            hasLink,
++            beforeHash,
++            afterHash: location.hash,
++            beforeRoute,
++            afterRoute: window.__bench.state().route,
++          };
++        });
++        assert.equal(info.found, true, 'coming_soon card missing');
++        assert.equal(info.hasLink, false, 'coming_soon card should not contain a link');
++        assert.equal(info.afterHash, info.beforeHash, 'coming_soon click changed hash');
++        assert.equal(info.afterRoute, 'lobby', 'coming_soon click changed route');
++        return 'non-navigable and distinct';
++      } finally {
++        await h.close();
++      }
++    });
++
++    // 4. Language toggle probe (ko -> en, persistence, no overflow at 320px & 1440px)
++    for (const vp of ['320x640', '1440x900']) {
++      await runCase(`lang:toggle_${vp}`, async () => {
++        const h = await openPage({ viewport: vp, params: generate(1) });
++        try {
++          const res = await probeLobbyLanguage(h.page);
++          const { passed, total } = res.metrics['lang.toggle'];
++          assert.equal(passed, total, `lang.toggle ${passed}/${total}`);
++          return `${passed}/${total}`;
++        } finally {
++          await h.close();
++        }
++      });
++    }
++
++    // 5. Theme both_valid (light vs dark pixel diff + 0 axe contrast violations)
++    await runCase('theme:both_valid', async () => {
++      const h = await openPage({ viewport: '1440x900', params: generate(1) });
++      try {
++        const res = await probeThemeBothValid(h);
++        assert.equal(res['theme.both_valid'], true, JSON.stringify(res.details));
++        return `differs=${res.details.differs}, contrastViolations=0/0`;
++      } finally {
++        await h.close();
++      }
++    });
++
++    // 6. Navigation transition timing (normal: 150-600ms, reduced motion: <= 100ms)
++    await runCase('nav:transition_normal', async () => {
++      const h = await openPage({ viewport: '1440x900', params: generate(1) });
++      try {
++        const res = await probeNavTransitionMs(h);
++        const ms = res['nav.transition_ms'];
++        assert.ok(ms >= 150 && ms <= 600, `expected 150..600ms, got ${ms}ms (${JSON.stringify(res.details)})`);
++        return `${ms} ms`;
++      } finally {
++        await h.close();
++      }
++    });
++
++    await runCase('a11y:reduced_motion_transition', async () => {
++      const h = await openPage({ viewport: '1440x900', reducedMotion: 'reduce', params: generate(1) });
++      try {
++        const res = await probeNavTransitionMs(h);
++        const ms = res['nav.transition_ms'];
++        assert.ok(ms <= 100, `expected <= 100ms, got ${ms}ms (${JSON.stringify(res.details)})`);
++        return `${ms} ms`;
++      } finally {
++        await h.close();
++      }
++    });
++
++    // 7. Full DOM probes: typography, spacing, alignment, a11y, nav routes
++    await runCase('probes:desktop_summary', async () => {
++      const h = await openPage({ viewport: '1440x900', params: generate(1) });
++      try {
++        const type = await probeType(h.page);
++        const space = await probeSpaceAndAlign(h.page);
++        const text = await probeText(h.page);
++        const a11y = await probeA11y(h.page);
++        const nav = await probeNavRoutes(h.page);
++
++        assert.ok(type['type.size_steps'] >= 3 && type['type.size_steps'] <= 6, `size_steps=${type['type.size_steps']}`);
++        assert.ok(type['type.scale_ratio_min'] >= 1.125, `scale_ratio_min=${type['type.scale_ratio_min']}`);
++        assert.ok(space['space.grid4_frac'] >= 0.9, `grid4_frac=${space['space.grid4_frac']}`);
++        assert.ok(space['align.column_count'] <= 8, `column_count=${space['align.column_count']}`);
++        assert.equal(text['text.clipped_count'], 0);
++        assert.equal(text['text.hangul_midword_breaks'], 0);
++        assert.ok(text['text.line_length'].value >= 22 && text['text.line_length'].value <= 45, `line_len=${text['text.line_length'].value}`);
++        assert.ok(text['text.line_height'].value >= 1.5 && text['text.line_height'].value <= 1.9, `line_h=${text['text.line_height'].value}`);
++        assert.equal(a11y['a11y.axe_violations'], 0);
++        assert.equal(a11y['a11y.keyboard_reach'], 1);
++        assert.equal(a11y['a11y.focus_visible'], 1);
++        assert.equal(nav['nav.routes'], 1);
++
++        return `cols=${space['align.column_count']}, grid4=${space['space.grid4_frac']}, lineLen=${text['text.line_length'].value}, lineH=${text['text.line_height'].value}`;
++      } finally {
++        await h.close();
++      }
++    });
++
++    // 8. Determinism across fresh pages
++    await runCase('determinism:pixel_sha256', async () => {
++      async function snap() {
++        const h = await openPage({ viewport: '1440x900', seed: 2, params: generate(2) });
++        try {
++          await h.setSeed(2, generate(2));
++          await h.seek(500);
++          await h.renderFrame();
++          return pixelSha256(await h.screenshot());
++        } finally {
++          await h.close();
++        }
++      }
++      const s1 = await snap();
++      const s2 = await snap();
++      assert.equal(s1, s2, `hash mismatch ${s1} vs ${s2}`);
++      return s1.slice(0, 16);
++    });
++
++    // 9. Heading hierarchy check (single h1, no skipped levels)
++    await runCase('a11y:heading_hierarchy', async () => {
++      const h = await openPage({ viewport: '1440x900', params: generate(1) });
++      try {
++        const levels = await h.page.evaluate(() =>
++          [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')]
++            .filter((el) => !el.closest('[hidden]') && getComputedStyle(el).display !== 'none')
++            .map((el) => Number(el.tagName.slice(1))),
++        );
++        const h1Count = levels.filter((l) => l === 1).length;
++        assert.equal(h1Count, 1, `expected 1 visible h1, got ${h1Count}`);
++        for (let i = 1; i < levels.length; i++) {
++          assert.ok(levels[i] <= levels[i - 1] + 1, `heading jump ${levels[i - 1]} -> ${levels[i]}`);
++        }
++        return `levels=[${levels.slice(0, 6).join(',')}...]`;
++      } finally {
++        await h.close();
++      }
++    });
++  } finally {
++    await browser.close();
++    await server.close();
++  }
++
++  const failed = results.filter((r) => !r.pass);
++  console.log(`\nSummary: ${results.length - failed.length}/${results.length} passed`);
++  if (failed.length > 0) {
++    process.exitCode = 1;
++  }
++}
++
++main().catch((err) => {
++  console.error(err);
++  process.exit(1);
++});
