@@ -87,6 +87,16 @@ while true; do
     active=$(grep -vc '^#' "$QUEUE" 2>/dev/null || echo 0)
     now=$(date +%s); not_before=${NOT_BEFORE_EPOCH:-0}; stuck=$(( ${STUCK_HOURS:-4} * 3600 ))
     if [ "$running" -eq 0 ] && [ "$now" -ge "$not_before" ] && { [ "$active" -eq 0 ] || [ $((now - last_launch)) -ge "$stuck" ]; }; then
+      if [ "${REGRADE_BEFORE_SLEEP:-0}" = 1 ]; then
+        log "final regrade of all runs (current harness/specs)"
+        runs_root=${MOLBENCH_RUNS:-$HOME/molbench-runs}
+        for f in results/*.json; do
+          rid=$(basename "$f" .json); [ "$rid" = leaderboard ] && continue
+          [ -d "$runs_root/$rid" ] || continue
+          bash runner/hc/collect.sh "$rid" >/dev/null 2>&1 && log "regraded: $(summary "$rid")"
+        done
+        [ -f runner/tokens.mjs ] && node runner/tokens.mjs --backfill >/dev/null 2>&1
+      fi
       publish
       log "all work done (active queue jobs: $active) -> putting the machine to sleep"
       powershell.exe -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', \$false, \$false)" >/dev/null 2>&1
