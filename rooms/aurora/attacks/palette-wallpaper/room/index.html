@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aurora — Palette Wallpaper Attack</title>
+  <style>
+    html, body, canvas { margin: 0; padding: 0; width: 100vw; height: 100vh; display: block; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <canvas id="aurora-canvas"></canvas>
+  <script type="module">
+    const VERT = `#version 300 es
+    void main() {
+      gl_Position = vec4((gl_VertexID == 1) ? 3.0 : -1.0, (gl_VertexID == 2) ? 3.0 : -1.0, 0.0, 1.0);
+    }`;
+    const FRAG = `#version 300 es
+    precision highp float;
+    uniform vec2 uResolution;
+    uniform vec3 uPal0;
+    uniform vec3 uPal1;
+    uniform vec3 uPal2;
+    out vec4 outColor;
+    vec3 oklchToLinear(vec3 lch) {
+      float h = radians(lch.z);
+      float a = lch.y * cos(h);
+      float b = lch.y * sin(h);
+      float l_ = lch.x + 0.3963377774 * a + 0.2158037573 * b;
+      float m_ = lch.x - 0.1055613458 * a - 0.0638541728 * b;
+      float s_ = lch.x - 0.0894841775 * a - 1.2914855480 * b;
+      float l = l_*l_*l_, m = m_*m_*m_, s = s_*s_*s_;
+      return clamp(vec3(
+        +4.0767416621*l - 3.3077115913*m + 0.2309699292*s,
+        -1.2684380046*l + 2.6097574011*m - 0.3413193965*s,
+        -0.0041960863*l - 0.7034186147*m + 1.7076147010*s
+      ), 0.0, 1.0);
+    }
+    vec3 linearToSrgb(vec3 c) {
+      return mix(12.92*c, 1.055*pow(max(c, vec3(0.0)), vec3(1.0/2.4)) - 0.055, step(vec3(0.0031308), c));
+    }
+    void main() {
+      vec2 uv = gl_FragCoord.xy / uResolution;
+      vec3 lch = uv.x < 0.3333 ? uPal0 : (uv.x < 0.6666 ? uPal1 : uPal2);
+      outColor = vec4(linearToSrgb(oklchToLinear(lch)), 1.0);
+    }`;
+    const canvas = document.getElementById("aurora-canvas");
+    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+    const compile = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); return sh; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(prog);
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    gl.useProgram(prog);
+    const uRes = gl.getUniformLocation(prog, "uResolution");
+    const uP0 = gl.getUniformLocation(prog, "uPal0");
+    const uP1 = gl.getUniformLocation(prog, "uPal1");
+    const uP2 = gl.getUniformLocation(prog, "uPal2");
+    function draw() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, Math.round(window.innerWidth * dpr));
+      canvas.height = Math.max(1, Math.round(window.innerHeight * dpr));
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      const pal = window.__benchHost?.params?.palette || [[0.78,0.17,160],[0.62,0.15,300],[0.70,0.14,350]];
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform3f(uP0, pal[0][0], pal[0][1], pal[0][2]);
+      gl.uniform3f(uP1, pal[1][0], pal[1][1], pal[1][2]);
+      gl.uniform3f(uP2, pal[2][0], pal[2][1], pal[2][2]);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    draw();
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed() {},
+      seek() {},
+      resume() {},
+      async renderFrame() { draw(); await new Promise((r) => requestAnimationFrame(r)); },
+      state() { return { palette: (window.__benchHost?.params?.palette || []).map((c) => [...c]), reducedMotion: false, pointer: [0.5, 0.5] }; },
+      stats() { return { drawCalls: 1, triangles: 1, geometries: 1, textures: 0, programs: 1, listeners: 0 }; }
+    };
+  </script>
+</body>
+</html>

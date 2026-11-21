@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "summary": "Reference r1 renovation: calmed motion and saturation, fixed stale star aspect ratio after resize, added prefers-reduced-motion support, added IGN dithering, and preserved the horizon silhouette.",
+  "deliverables": ["report.json", "decisions.json"],
+  "claims": [
+    { "metric_id": "G-load", "status": "verified", "meets_target": true },
+    { "metric_id": "G-contract", "status": "verified", "meets_target": true },
+    { "metric_id": "G-decisions", "status": "verified", "meets_target": true },
+    { "metric_id": "perf.frame_p95_norm_ms", "status": "not_verified", "method": "not measured on reference GPU" }
+  ],
+  "blocked": false
+}

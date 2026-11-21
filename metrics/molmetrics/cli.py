@@ -70,6 +70,47 @@ def _resolve_mask(
     return load_mask(p, target_shape=target_shape)
 
 
+def _motion_pairs_from_samples(
+    samples_all: list[dict[str, Any]],
+    at_filter: AtFilter,
+    variant: str,
+    vp_default: str | None,
+) -> list[tuple[str, list[tuple[dict[str, Any], dict[str, Any]]]]]:
+    """Group (t, t + 16.667ms) sample pairs per (seed, viewport, scheme) when emitted by motionFrames."""
+    selected = select_samples(
+        samples_all, at_filter, default_variant=variant, viewport_default=vp_default
+    )
+    groups: dict[tuple[Any, Any, Any], list[dict[str, Any]]] = {}
+    for s in selected:
+        if s.get("t") is None:
+            continue
+        gk = (s.get("seed"), s.get("viewport"), s.get("scheme", "light"))
+        groups.setdefault(gk, []).append(s)
+
+    grouped_pairs: list[tuple[str, list[tuple[dict[str, Any], dict[str, Any]]]]] = []
+    for (seed, viewport, scheme), items in groups.items():
+        items_sorted = sorted(items, key=lambda x: float(x["t"]))
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        used: set[int] = set()
+        for i, s0 in enumerate(items_sorted):
+            if i in used:
+                continue
+            t0 = float(s0["t"])
+            for j in range(i + 1, len(items_sorted)):
+                if j in used:
+                    continue
+                t1 = float(items_sorted[j]["t"])
+                if abs((t1 - t0) - 16.667) <= 0.05:
+                    pairs.append((s0, items_sorted[j]))
+                    used.add(i)
+                    used.add(j)
+                    break
+        if pairs:
+            key = f"motion_s{seed}_{viewport}_{scheme}_{variant}"
+            grouped_pairs.append((key, pairs[:10]))
+    return grouped_pairs
+
+
 def _compute_single_metric(
     metric_id: str,
     metric_cfg: dict[str, Any],
@@ -78,6 +119,7 @@ def _compute_single_metric(
     start_manifest: dict[str, Any] | None,
     base_dirs: tuple[Path | None, ...],
     start_dirs: tuple[Path | None, ...],
+    img_cache: dict[Path, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Compute one implemented metric. Returns result dict or None if required inputs are absent."""
     at_filter: AtFilter = parse_at(metric_cfg.get("at"))
@@ -87,11 +129,21 @@ def _compute_single_metric(
     seqs_all = manifest.get("sequences", [])
     vp_default = manifest.get("viewport_default")
 
+    def _load_cached(rel_or_abs: str | Path, dirs: tuple[Path | None, ...]):
+        resolved = resolve_path(rel_or_abs, *dirs)
+        if img_cache is not None and resolved in img_cache:
+            return img_cache[resolved]
+        arr = load_image(resolved)
+        if img_cache is not None and len(img_cache) < 200:
+            arr.setflags(write=False)
+            img_cache[resolved] = arr
+        return arr
+
     def _load(sample: dict[str, Any]):
-        return load_image(resolve_path(sample["file"], *base_dirs))
+        return _load_cached(sample["file"], base_dirs)
 
     def _load_start(sample: dict[str, Any]):
-        return load_image(resolve_path(sample["file"], *start_dirs))
+        return _load_cached(sample["file"], start_dirs)
 
     results: list[dict[str, Any]] = []
     detail: dict[str, Any] = {}
@@ -99,26 +151,33 @@ def _compute_single_metric(
     # 1. Sequence-based time metrics
     if metric_id in {"time.motion", "a11y.reduced_motion"}:
         variant = "reduced_motion" if metric_id == "a11y.reduced_motion" else "normal"
-        seqs = select_sequences(seqs_all, at_filter, default_variant=variant)
-        if not seqs and metric_id == "time.motion":
-            # Fallback: look for sequence entries tagged with metric or kind
-            seqs = [s for s in seqs_all if s.get("variant", "normal") == "normal"]
-        if not seqs:
-            return None
-        for seq in seqs:
-            if "pairs" in seq:
-                pairs = [
-                    (
-                        load_image(resolve_path(a, *base_dirs)),
-                        load_image(resolve_path(b, *base_dirs)),
-                    )
-                    for a, b in seq["pairs"]
-                ]
-                val = time_.motion_from_pairs(pairs)
-            else:
-                frames = load_sequence_frames(seq, base_dirs)
-                val = time_.motion(frames)
-            results.append({"key": seq["key"], "value": val})
+        sample_groups = _motion_pairs_from_samples(samples_all, at_filter, variant, vp_default)
+        if sample_groups:
+            for gkey, spairs in sample_groups:
+                img_pairs = [(_load(a), _load(b)) for a, b in spairs]
+                val = time_.motion_from_pairs(img_pairs)
+                results.append({"key": gkey, "value": val})
+        else:
+            seqs = select_sequences(seqs_all, at_filter, default_variant=variant)
+            if not seqs and metric_id == "time.motion":
+                # Fallback: look for sequence entries tagged with metric or kind
+                seqs = [s for s in seqs_all if s.get("variant", "normal") == "normal"]
+            if not seqs:
+                return None
+            for seq in seqs:
+                if "pairs" in seq:
+                    pairs = [
+                        (
+                            load_image(resolve_path(a, *base_dirs)),
+                            load_image(resolve_path(b, *base_dirs)),
+                        )
+                        for a, b in seq["pairs"]
+                    ]
+                    val = time_.motion_from_pairs(pairs)
+                else:
+                    frames = load_sequence_frames(seq, base_dirs)
+                    val = time_.motion(frames)
+                results.append({"key": seq["key"], "value": val})
 
     elif metric_id in {"time.flicker", "time.flicker_region"}:
         default_var = "camera_drift" if metric_id == "time.flicker_region" else "normal"
@@ -305,8 +364,8 @@ def _compute_single_metric(
                 common = sorted(set(bboxes0) & set(bboxes1))
                 if not common:
                     continue
-                img0 = _load_start(s0)
-                img1 = _load(s)
+                img0 = load_image(resolve_path(s0.get("full_file") or s0["file"], *start_dirs))
+                img1 = load_image(resolve_path(s.get("full_file") or s["file"], *base_dirs))
                 pairs = []
                 for sel_name in common:
                     c0 = mask.crop_bbox(img0, bboxes0[sel_name])
@@ -454,6 +513,7 @@ def compute_metrics(
 
     output: dict[str, Any] = {}
     skipped: list[str] = []
+    img_cache: dict[Path, Any] = {}
 
     for mid in target_ids:
         if mid not in IMPLEMENTED_METRICS:
@@ -461,7 +521,7 @@ def compute_metrics(
             continue
         cfg = spec_by_id.get(mid, {"id": mid})
         res = _compute_single_metric(
-            mid, cfg, manifest, spec, start_manifest, base_dirs, start_dirs
+            mid, cfg, manifest, spec, start_manifest, base_dirs, start_dirs, img_cache=img_cache
         )
         if res is None:
             skipped.append(mid)

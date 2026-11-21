@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateReportGate, validateDecisionsGate, checkScope, combineGates } from "../src/gates.mjs";
+import { validateReportGate, validateDecisionsGate, checkScope, combineGates, evaluateAliveGate } from "../src/gates.mjs";
 import { loadSpec } from "../src/spec.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -135,4 +135,28 @@ test("combineGates merges static and capture gates and marks skipped capture gat
     { captureSkipped: false }
   );
   assert.equal(missing["G-load"].pass, false);
+});
+
+test("G-alive passes only when normal-variant time.motion median exceeds 0.0005", () => {
+  const mk = (vals) => ({
+    "time.motion": { raw: vals[0], samples: vals.map((v, i) => ({ key: `motion_s${i}_1440x900_light_normal`, value: v })) }
+  });
+  assert.equal(evaluateAliveGate(mk([0.012, 0.015, 0.011])).pass, true);
+  assert.equal(evaluateAliveGate(mk([0, 0, 0])).pass, false);
+  assert.equal(evaluateAliveGate(mk([0.0005, 0.0005])).pass, false);
+  // non-normal variants are ignored when normal samples exist
+  assert.equal(
+    evaluateAliveGate({ "time.motion": [{ key: "m_a_normal", value: 0 }, { key: "m_b_reduced", value: 0.5 }] }).pass,
+    false
+  );
+  // scalar fallback
+  assert.equal(evaluateAliveGate({ "time.motion": 0.01 }).pass, true);
+  // missing metric: fail normally, null when capture/python was skipped
+  assert.equal(evaluateAliveGate({}).pass, false);
+  assert.equal(evaluateAliveGate({}, { skipped: true }).pass, null);
+});
+
+test("G-alive failure is reported through combineGates", () => {
+  const combined = combineGates(["G-load", "G-alive"], {}, { "G-load": { pass: true }, "G-alive": evaluateAliveGate({}) });
+  assert.equal(combined["G-alive"].pass, false);
 });

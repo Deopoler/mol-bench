@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,18 @@ import { generateLeaderboard } from "../../harness/src/leaderboard.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const WORK_ROOT = path.join(REPO_ROOT, "work");
+
+function makeTmpWorkBase(prefix) {
+  try {
+    fs.mkdirSync(WORK_ROOT, { recursive: true });
+    return fs.mkdtempSync(path.join(WORK_ROOT, prefix));
+  } catch (err) {
+    if (err?.code === "EPERM" || err?.code === "EACCES") {
+      return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    }
+    throw err;
+  }
+}
 
 function makeFixtureRepo(baseDir) {
   const repo = path.join(baseDir, "repo");
@@ -40,6 +53,14 @@ function makeFixtureRepo(baseDir) {
   fs.writeFileSync(path.join(repo, "metrics", "molmetrics", "__init__.py"), "");
   fs.mkdirSync(path.join(repo, "node_modules", "pkg"), { recursive: true });
   fs.writeFileSync(path.join(repo, "node_modules", "pkg", "index.js"), "export default 1;\n");
+  if (!path.resolve(baseDir).startsWith(path.resolve(REPO_ROOT))) {
+    for (const dep of ["pngjs", "ajv", "ajv-formats", "fast-deep-equal", "fast-uri", "json-schema-traverse", "require-from-string"]) {
+      const srcDep = path.join(REPO_ROOT, "node_modules", dep);
+      if (fs.existsSync(srcDep)) {
+        fs.cpSync(srcDep, path.join(repo, "node_modules", dep), { recursive: true });
+      }
+    }
+  }
   fs.mkdirSync(path.join(repo, ".venv", "Scripts"), { recursive: true });
   fs.writeFileSync(path.join(repo, ".venv", "pyvenv.cfg"), "home = C:\\Python\n");
 
@@ -47,8 +68,7 @@ function makeFixtureRepo(baseDir) {
 }
 
 test("prepareRun creates isolated folder without hidden files and commits start state", () => {
-  fs.mkdirSync(WORK_ROOT, { recursive: true });
-  const tmpBase = fs.mkdtempSync(path.join(WORK_ROOT, "test-prepare-"));
+  const tmpBase = makeTmpWorkBase("test-prepare-");
   try {
     const fixtureRepo = makeFixtureRepo(tmpBase);
     const runsRoot = path.join(tmpBase, "runs");
@@ -106,8 +126,7 @@ test("prepareRun creates isolated folder without hidden files and commits start 
 });
 
 test("prepareRun supports renovation track from anchors/a5 without report.json", () => {
-  fs.mkdirSync(WORK_ROOT, { recursive: true });
-  const tmpBase = fs.mkdtempSync(path.join(WORK_ROOT, "test-renovation-"));
+  const tmpBase = makeTmpWorkBase("test-renovation-");
   try {
     const fixtureRepo = makeFixtureRepo(tmpBase);
     fs.mkdirSync(path.join(fixtureRepo, "rooms", "aurora", "renovation"), { recursive: true });
@@ -147,8 +166,7 @@ test("prepareRun supports renovation track from anchors/a5 without report.json",
 });
 
 test("collectRun captures diff, flags leakage, grades, and removes heavy folders", () => {
-  fs.mkdirSync(WORK_ROOT, { recursive: true });
-  const tmpBase = fs.mkdtempSync(path.join(WORK_ROOT, "test-collect-"));
+  const tmpBase = makeTmpWorkBase("test-collect-");
   try {
     const fixtureRepo = makeFixtureRepo(tmpBase);
     const runsRoot = path.join(tmpBase, "runs");
@@ -217,8 +235,7 @@ test("collectRun captures diff, flags leakage, grades, and removes heavy folders
 });
 
 test("leaderboard aggregates fixture results per room and overall and embeds preview links", () => {
-  fs.mkdirSync(WORK_ROOT, { recursive: true });
-  const tmpBase = fs.mkdtempSync(path.join(WORK_ROOT, "test-leaderboard-"));
+  const tmpBase = makeTmpWorkBase("test-leaderboard-");
   try {
     const resultsDir = path.join(tmpBase, "results");
     const siteDir = path.join(tmpBase, "site", "leaderboard");

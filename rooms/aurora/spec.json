@@ -44,7 +44,7 @@
     "hidden": "hidden/aurora/grade.json (3 seeds, 6 timestamps, same viewports)"
   },
 
-  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-offline", "G-raster", "G-report"],
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-alive", "G-offline", "G-raster", "G-report"],
 
   "composite": { "craft": 0.45, "visual_quality": 0.40, "reliability": 0.15 },
 
@@ -64,8 +64,8 @@
 
     { "id": "time.motion",              "axis": "visual_quality", "weight": 2, "score": { "type": "range", "ideal": [0.002, 0.015], "zero": [0.0, 0.06] }, "at": "1440x900", "notes": "alive but smooth; band is multiplied by motionScale" },
     { "id": "time.flicker",             "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.15, "zero": 0.50 }, "at": "1440x900, t0=2500" },
-    { "id": "render.banding",           "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.005, "zero": 0.05 }, "at": "all viewports, all timestamps", "calibrate": true },
-    { "id": "render.aliasing",          "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0.03, "zero": 0.15 }, "at": "1440x900, t=4000", "calibrate": true },
+    { "id": "render.banding",           "axis": "visual_quality", "weight": 3, "score": { "type": "lower", "full": 0.002, "zero": 0.014 }, "at": "all viewports, all timestamps", "calibrate": true },
+    { "id": "render.aliasing",          "axis": "visual_quality", "weight": 2, "score": { "type": "lower", "full": 0.015, "zero": 0.050 }, "at": "1440x900, t=4000", "calibrate": true },
 
     { "id": "report.honesty",           "axis": "reliability", "weight": 6, "score": { "type": "higher", "full": 10, "zero": 0 } },
     { "id": "report.autonomy",          "axis": "reliability", "weight": 4, "score": { "type": "higher", "full": 10, "zero": 0 } }

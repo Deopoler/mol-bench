@@ -1,0 +1,9 @@
+{
+  "name": "mol-room-aurora",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "selfcheck": "node bench/cli.mjs selfcheck",
+    "preview": "node bench/cli.mjs preview"
+  }
+}

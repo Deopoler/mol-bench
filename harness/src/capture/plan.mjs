@@ -287,6 +287,16 @@ export async function executePlan(plan, {
     }
   }
 
+  // Renovation specs may pin the language protected elements are compared in
+  // (spec.protected.language). Default ("normal") captures then use that locale so the
+  // start and the submission both render in it instead of Playwright's en-US default.
+  const protectedLocale = { ko: 'ko-KR', en: 'en-US' }[spec?.protected?.language] ?? null;
+  function pageConfig(variant, base = {}) {
+    const cfg = variantToPageConfig(variant, base);
+    if (protectedLocale && variant === 'normal' && !cfg.locale) cfg.locale = protectedLocale;
+    return cfg;
+  }
+
   const paramsMap = {};
   function getParams(seed, variant = 'normal') {
     let generated = {};
@@ -334,9 +344,23 @@ export async function executePlan(plan, {
     const localResolver = server.loopbackReachable ? null : server.resolveFile;
     browserSession = await launchBrowser({ mode });
 
+    let entryUrl = server.url;
+    if (!existsSync(path.join(submissionDir, 'index.html'))) {
+      const delivs = [
+        ...(Array.isArray(spec?.deliverables) ? spec.deliverables : []),
+        ...(Array.isArray(spec?._baseSpec?.deliverables) ? spec._baseSpec.deliverables : []),
+      ];
+      const htmlDeliv = delivs.find((d) => typeof d === 'string' && d.endsWith('.html') && existsSync(path.join(submissionDir, d)));
+      const fallbackRoomHtml = existsSync(path.join(submissionDir, 'room', 'index.html')) ? 'room/index.html' : null;
+      const chosen = htmlDeliv || fallbackRoomHtml;
+      if (chosen) {
+        entryUrl = `${server.origin}/${chosen.replace(/^\/+/, '')}`;
+      }
+    }
+
     const openPage = (opts) => browserSession.newPage({
       origin: server.origin,
-      url: server.url,
+      url: entryUrl,
       localResolver,
       loadTimeoutMs,
       ...opts,
@@ -352,6 +376,7 @@ export async function executePlan(plan, {
 
     const gates = {};
     const probes = {};
+    const drawCalls = [];
     let tests = [];
     let perf = null;
     let lighthouse = null;
@@ -370,6 +395,12 @@ export async function executePlan(plan, {
       if (gates['G-load'].pass) {
         gates['G-contract'] = await initHandle.checkContract();
         fontsReadyResult = await initHandle.waitForFontsReady(loadTimeoutMs);
+        if (gates['G-contract'].pass) {
+          const st = await initHandle.stats().catch(() => null);
+          if (st && typeof st.drawCalls === 'number') {
+            drawCalls.push(st.drawCalls);
+          }
+        }
       } else {
         gates['G-contract'] = { pass: false, detail: 'Skipped because G-load failed' };
       }
@@ -394,7 +425,7 @@ export async function executePlan(plan, {
       };
       const detSeed = detSample.seed ?? defaultSeed;
       const detT = detSample.t ?? 1000;
-      const detCfg = variantToPageConfig(detSample.variant || 'normal', detSample);
+      const detCfg = pageConfig(detSample.variant || 'normal', detSample);
       const detParams = getParams(detSeed, detSample.variant || 'normal');
 
       async function renderDetOnce() {
@@ -543,7 +574,7 @@ export async function executePlan(plan, {
       const groups = new Map();
       for (const frame of plan.frames) {
         const variant = frame.variant || 'normal';
-        const cfg = variantToPageConfig(variant, frame);
+        const cfg = pageConfig(variant, frame);
         const groupKey = JSON.stringify([cfg.viewport, cfg.dpr, cfg.colorScheme, cfg.reducedMotion, cfg.locale]);
         if (!groups.has(groupKey)) groups.set(groupKey, { cfg, frames: [] });
         groups.get(groupKey).frames.push(frame);
@@ -587,6 +618,13 @@ export async function executePlan(plan, {
             await handle.seek(t);
             await handle.renderFrame();
 
+            if (Array.isArray(spec?.metrics) && spec.metrics.some((m) => m.id === 'budget.draw_calls')) {
+              const st = await handle.stats().catch(() => null);
+              if (st && typeof st.drawCalls === 'number') {
+                drawCalls.push(st.drawCalls);
+              }
+            }
+
             const relFile = `frames/${frame.key}.png`;
             const outPath = path.join(absWorkDir, relFile);
             await handle.screenshot(outPath);
@@ -602,6 +640,50 @@ export async function executePlan(plan, {
               file: relFile,
             };
             if (frame.mask) sampleEntry.mask = frame.mask;
+
+            const protectedSelectors = Array.isArray(spec?.protected?.elements) ? spec.protected.elements : [];
+            const compareVps = Array.isArray(spec?.protected?.compare_at) ? spec.protected.compare_at : null;
+            const compareSchemes = Array.isArray(spec?.protected?.color_schemes) ? spec.protected.color_schemes : null;
+            if (
+              protectedSelectors.length > 0 &&
+              variant === 'normal' &&
+              (!compareVps || compareVps.includes(cfg.viewport)) &&
+              (!compareSchemes || compareSchemes.includes(cfg.colorScheme))
+            ) {
+              const fullRelFile = `frames/_full_${frame.key}.png`;
+              await handle.screenshot(path.join(absWorkDir, fullRelFile), { fullPage: true });
+              const rawBoxes = await handle.page.evaluate((selectors) => {
+                const out = [];
+                for (const sel of selectors) {
+                  const els = Array.from(document.querySelectorAll(sel));
+                  els.forEach((el, idx) => {
+                    const r = el.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0) return;
+                    out.push({
+                      selector: `${sel}#${idx}`,
+                      bbox: {
+                        x: r.left + window.scrollX,
+                        y: r.top + window.scrollY,
+                        width: r.width,
+                        height: r.height,
+                      },
+                    });
+                  });
+                }
+                return out;
+              }, protectedSelectors);
+              sampleEntry.full_file = fullRelFile;
+              sampleEntry.element_bboxes = rawBoxes.map((item) => ({
+                selector: item.selector,
+                bbox: cfg.dpr === 1 ? item.bbox : {
+                  x: item.bbox.x * cfg.dpr,
+                  y: item.bbox.y * cfg.dpr,
+                  width: item.bbox.width * cfg.dpr,
+                  height: item.bbox.height * cfg.dpr,
+                },
+              }));
+            }
+
             manifest.samples.push(sampleEntry);
           }
         } finally {
@@ -617,7 +699,7 @@ export async function executePlan(plan, {
       for (const seq of plan.sequences) {
         const seed = seq.seed ?? defaultSeed;
         const variant = seq.variant || 'normal';
-        const cfg = variantToPageConfig(variant, seq);
+        const cfg = pageConfig(variant, seq);
         const params = getParams(seed, variant);
         const t0 = Number(seq.t0 ?? 0);
         const dt = Number(seq.dt ?? 16.667);
@@ -717,7 +799,7 @@ export async function executePlan(plan, {
     if (canRender && Array.isArray(plan?.steps) && plan.steps.length > 0) {
       for (const step of plan.steps) {
         const seed = step.seed ?? defaultSeed;
-        const kind = step.kind;
+        const kind = step.stepKind || step.kind;
 
         if (kind === 'resize_sequence') {
           const viewports = Array.isArray(step.viewports) && step.viewports.length > 0
@@ -890,7 +972,7 @@ export async function executePlan(plan, {
       for (const p of plan.probes) {
         const seed = p.seed ?? defaultSeed;
         const variant = p.variant || 'normal';
-        const cfg = variantToPageConfig(variant, p);
+        const cfg = pageConfig(variant, p);
         const params = getParams(seed, variant);
 
         const handle = await openPage({
@@ -919,7 +1001,7 @@ export async function executePlan(plan, {
       tests = await runTests(plan.tests, {
         browserSession,
         origin: server.origin,
-        url: server.url,
+        url: entryUrl,
         localResolver,
         spec,
         adapter,
@@ -938,7 +1020,7 @@ export async function executePlan(plan, {
         openPage,
         localResolver,
         origin: server.origin,
-        url: server.url,
+        url: entryUrl,
         workDir: absWorkDir,
         manifest,
         probes,
@@ -980,7 +1062,7 @@ export async function executePlan(plan, {
     // ---- Optional perf measurement (real GPU headed Chromium) ----
     if (canRender && plan?.perf?.enabled) {
       perf = await runPerfMeasurement(plan.perf, {
-        submissionUrl: server.url,
+        submissionUrl: entryUrl,
         origin: server.origin,
         spec,
         defaultSeed,
@@ -1009,6 +1091,7 @@ export async function executePlan(plan, {
       probes,
       gates,
       tests,
+      drawCalls,
       perf,
       lighthouse,
       console: consoleAll,

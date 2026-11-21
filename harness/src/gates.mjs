@@ -232,6 +232,40 @@ export function evaluateStaticGates(submissionDir, spec, opts = {}) {
  * Combine spec-declared gates with static and capture-time gate results.
  * Capture-time gates missing because capture was skipped are marked pass: null.
  */
+export const ALIVE_MIN_MOTION = 0.0005;
+
+/**
+ * G-alive (room-optional, animated rooms): passes iff the median time.motion of the
+ * "normal" variant samples exceeds ALIVE_MIN_MOTION. Returns pass:null when the motion
+ * metric could not be evaluated because capture/python was skipped on purpose.
+ */
+export function evaluateAliveGate(rawMetrics = {}, opts = {}) {
+  const { skipped = false } = opts;
+  const entry = rawMetrics["time.motion"];
+  const samples = Array.isArray(entry) ? entry : Array.isArray(entry?.samples) ? entry.samples : null;
+  let values = [];
+  if (samples) {
+    const nums = samples.filter((x) => Number.isFinite(Number(x?.value)));
+    const normal = nums.filter((x) => /(^|_)normal$/.test(String(x.key ?? "")));
+    values = (normal.length ? normal : nums).map((x) => Number(x.value));
+  } else {
+    const raw = entry && typeof entry === "object" ? (entry.raw ?? entry.value) : entry;
+    if (Number.isFinite(Number(raw)) && raw !== null && raw !== "") values = [Number(raw)];
+  }
+  if (!values.length) {
+    return skipped
+      ? { pass: null, detail: "not evaluated (time.motion unavailable)" }
+      : { pass: false, detail: "time.motion not measured; cannot show the scene is animated" };
+  }
+  values.sort((a, b) => a - b);
+  const mid = Math.floor(values.length / 2);
+  const median = values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+  return {
+    pass: median > ALIVE_MIN_MOTION,
+    detail: `time.motion median ${median.toPrecision(4)} (normal variant, n=${values.length}) must be > ${ALIVE_MIN_MOTION}`
+  };
+}
+
 export function combineGates(specGates = [], staticGates = {}, captureGates = {}, opts = {}) {
   const { captureSkipped = false } = opts;
   const combined = {};

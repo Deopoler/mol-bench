@@ -345,9 +345,18 @@ const DEFINITIONS = {
   },
 
   // layout.* / text.* / type.* / space.* / align.*
-  "layout.overflow_count": { source: "probe", needs: (m, c) => emitProbes("layout", m, c) },
-  "layout.tap_targets": { source: "probe", needs: (m, c) => emitProbes("layout", m, c) },
-  "layout.shift_px": { source: "probe", needs: (m, c) => emitProbes("layout", m, c) },
+  "layout.overflow_count": {
+    source: "probe",
+    needs: (m, c) => emitProbes("layout", m, c, c.spec?.protected?.elements ? { args: { selectors: c.spec.protected.elements } } : {})
+  },
+  "layout.tap_targets": {
+    source: "probe",
+    needs: (m, c) => emitProbes("layout", m, c, c.spec?.protected?.elements ? { args: { selectors: c.spec.protected.elements } } : {})
+  },
+  "layout.shift_px": {
+    source: "probe",
+    needs: (m, c) => emitProbes("layout", m, c, { args: { selectors: c.spec?.protected?.elements ?? [] } })
+  },
   "text.clipped_count": { source: "probe", needs: (m, c) => emitProbes("text", m, c) },
   "text.hangul_midword_breaks": { source: "probe", needs: (m, c) => emitProbes("text", m, c) },
   "text.line_length": { source: "probe", needs: (m, c) => emitProbes("text", m, c) },
@@ -405,9 +414,10 @@ const DEFINITIONS = {
     needs: (m, c) => {
       const viewports = c.spec?.protected?.compare_at ?? resolveViewports(m, c);
       const schemes = c.spec?.protected?.color_schemes ?? ["light", "dark"];
+      const args = c.spec?.protected?.elements ? { selectors: c.spec.protected.elements } : {};
       return [
         ...emitFrames(m, c, { viewports, schemes }),
-        ...emitProbes("layout", m, c, { viewports, schemes })
+        ...emitProbes("layout", m, c, { viewports, schemes, args })
       ];
     }
   },

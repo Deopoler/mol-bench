@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "../src/report.mjs";
@@ -105,11 +106,24 @@ test("evaluateAutonomy covers all outcomes in SCORING.md §5", () => {
 });
 
 test("evaluateAutonomy requires report.json when deliverables are empty and a changed source file", () => {
-  const dir = fs.mkdtempSync(path.join(process.cwd(), "work", "mol-autonomy-"));
-  fs.writeFileSync(path.join(dir, "report.json"), "{}");
-  const spec = { deliverables: [] };
-  assert.ok(evaluateAutonomy({ report: { blocked: false }, spec, submissionDir: dir }).score < 10);
-  assert.equal(evaluateAutonomy({ report: { blocked: false }, spec, submissionDir: dir, changedSourceFiles: 1 }).score, 10);
+  let dir;
+  try {
+    dir = fs.mkdtempSync(path.join(process.cwd(), "work", "mol-autonomy-"));
+  } catch (err) {
+    if (err?.code === "EPERM" || err?.code === "EACCES") {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-autonomy-"));
+    } else {
+      throw err;
+    }
+  }
+  try {
+    fs.writeFileSync(path.join(dir, "report.json"), "{}");
+    const spec = { deliverables: [] };
+    assert.ok(evaluateAutonomy({ report: { blocked: false }, spec, submissionDir: dir }).score < 10);
+    assert.equal(evaluateAutonomy({ report: { blocked: false }, spec, submissionDir: dir, changedSourceFiles: 1 }).score, 10);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("evaluateDecisionCorrect enforces expected sets and genuine achievement for done", () => {
