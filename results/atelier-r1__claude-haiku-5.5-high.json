@@ -1,0 +1,413 @@
+{
+  "run_id": "atelier-r1__claude-haiku-5.5-high",
+  "model": "Claude Haiku 5.5 (high)",
+  "seed": null,
+  "created_at": "2026-11-21T05:16:09.331Z",
+  "ended_at": "2026-11-21T05:25:47.949Z",
+  "room": "atelier",
+  "renovation": "r1",
+  "track": "renovation",
+  "spec_version": "0.1.0-draft",
+  "bench_version": "0.1.0",
+  "submission": "C:\\Users\\seonj\\Documents\\workspace\\mol-bench\\results\\submissions\\atelier-r1__claude-haiku-5.5-high",
+  "seeds": "hidden",
+  "gates": {
+    "G-blender-run": {
+      "pass": true,
+      "detail": "completed in 0.9s"
+    },
+    "G-reproducible": {
+      "pass": false,
+      "detail": "geometry hash mismatch (submitted=481e5fc1ad7b, rerun=acd804fd0762)"
+    },
+    "G-provenance": {
+      "pass": true,
+      "detail": "clean provenance"
+    },
+    "G-gltf-valid": {
+      "pass": true,
+      "detail": "0 glTF 2.0 validation errors"
+    },
+    "G-offline": {
+      "pass": true,
+      "detail": "0 external network requests (Blender background mode)"
+    },
+    "G-report": {
+      "pass": true,
+      "detail": "valid report.json"
+    },
+    "G-decisions": {
+      "pass": true,
+      "detail": "valid decisions.json"
+    }
+  },
+  "metrics": {
+    "request.AT-R1": {
+      "raw": 5,
+      "samples": [],
+      "score": 5,
+      "axis": "revision",
+      "weight": 2
+    },
+    "request.AT-R2": {
+      "raw": 9.485454545454548,
+      "samples": [],
+      "score": 9.485454545454548,
+      "axis": "revision",
+      "weight": 3
+    },
+    "request.AT-R3": {
+      "raw": 10,
+      "samples": [],
+      "score": 10,
+      "axis": "revision",
+      "weight": 3
+    },
+    "request.AT-R4": {
+      "raw": 10,
+      "samples": [],
+      "score": 10,
+      "axis": "revision",
+      "weight": 2
+    },
+    "tests.preservation": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "revision",
+      "weight": 3
+    },
+    "diff.change_ratio": {
+      "raw": 1.1111,
+      "samples": [],
+      "score": 10,
+      "axis": "revision",
+      "weight": 1
+    },
+    "diff.rewrite": {
+      "raw": true,
+      "samples": [],
+      "score": 10,
+      "axis": "revision",
+      "weight": 2
+    },
+    "diff.out_of_scope_files": {
+      "raw": 0,
+      "samples": [],
+      "score": 10,
+      "axis": "revision",
+      "weight": 1
+    },
+    "topo.manifold": {
+      "raw": 0,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "rig.hinge": {
+      "raw": 0.75,
+      "samples": [],
+      "score": 7.5,
+      "axis": "craft",
+      "weight": 1
+    },
+    "web.three_load": {
+      "raw": true,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "vq.shading_artifacts": {
+      "raw": 0.04815,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 2,
+      "calibrate": true
+    },
+    "vq.exposure": {
+      "raw": 0.40985,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "report.honesty": {
+      "raw": 3,
+      "samples": [],
+      "score": 3,
+      "axis": "reliability",
+      "weight": 6
+    },
+    "report.autonomy": {
+      "raw": 10,
+      "samples": [],
+      "score": 10,
+      "axis": "reliability",
+      "weight": 4
+    }
+  },
+  "requests": {
+    "AT-R1": {
+      "id": "AT-R1",
+      "weight": 2,
+      "score": 5,
+      "metrics": {
+        "dims.part_scale": {
+          "raw": 1.25,
+          "samples": [],
+          "score": 10,
+          "weight": 2
+        },
+        "geo.others_hausdorff_mm": {
+          "raw": 28,
+          "samples": [],
+          "score": 0,
+          "weight": 2
+        }
+      }
+    },
+    "AT-R2": {
+      "id": "AT-R2",
+      "weight": 3,
+      "score": 9.485454545454548,
+      "metrics": {
+        "budget.triangles_abs": {
+          "raw": 4880,
+          "samples": [],
+          "score": 10,
+          "weight": 2
+        },
+        "shape.iou_vs_start": {
+          "raw": 0.94585,
+          "samples": [
+            {
+              "key": "hidden_00",
+              "value": 0.94513
+            },
+            {
+              "key": "hidden_01",
+              "value": 0.94996
+            },
+            {
+              "key": "hidden_02",
+              "value": 0.9433
+            },
+            {
+              "key": "hidden_03",
+              "value": 0.94996
+            },
+            {
+              "key": "hidden_04",
+              "value": 0.94513
+            },
+            {
+              "key": "hidden_05",
+              "value": 0.94996
+            },
+            {
+              "key": "hidden_06",
+              "value": 0.9433
+            },
+            {
+              "key": "hidden_07",
+              "value": 0.94996
+            },
+            {
+              "key": "hidden_08",
+              "value": 0.94657
+            },
+            {
+              "key": "hidden_09",
+              "value": 0.94447
+            },
+            {
+              "key": "hidden_10",
+              "value": 0.94657
+            },
+            {
+              "key": "hidden_11",
+              "value": 0.94447
+            }
+          ],
+          "score": 8.713636363636368,
+          "weight": 2
+        },
+        "render.flip_vs_start": {
+          "raw": 0.02014,
+          "samples": [
+            {
+              "key": "turntable_00",
+              "value": 0.0209
+            },
+            {
+              "key": "turntable_01",
+              "value": 0.02436
+            },
+            {
+              "key": "turntable_02",
+              "value": 0.01765
+            },
+            {
+              "key": "turntable_03",
+              "value": 0.01884
+            },
+            {
+              "key": "turntable_04",
+              "value": 0.02206
+            },
+            {
+              "key": "turntable_05",
+              "value": 0.01937
+            },
+            {
+              "key": "turntable_06",
+              "value": 0.01707
+            },
+            {
+              "key": "turntable_07",
+              "value": 0.02324
+            }
+          ],
+          "score": 10,
+          "weight": 1
+        }
+      }
+    },
+    "AT-R3": {
+      "id": "AT-R3",
+      "weight": 3,
+      "score": 10,
+      "metrics": {
+        "mat.roughness_mean": {
+          "raw": 0.6435000000000001,
+          "samples": [],
+          "score": 10,
+          "weight": 2
+        },
+        "mat.variation": {
+          "raw": 0.04584,
+          "samples": [],
+          "score": 10,
+          "weight": 2
+        },
+        "color.chroma_mean": {
+          "raw": -0.08091698942740501,
+          "samples": [],
+          "score": 10,
+          "weight": 1
+        },
+        "color.hue_shift": {
+          "raw": 1.24311,
+          "samples": [
+            {
+              "key": "turntable_00",
+              "value": 1.27023
+            },
+            {
+              "key": "turntable_01",
+              "value": 1.38686
+            },
+            {
+              "key": "turntable_02",
+              "value": 1.4618
+            },
+            {
+              "key": "turntable_03",
+              "value": 0.93546
+            },
+            {
+              "key": "turntable_04",
+              "value": 1.9717
+            },
+            {
+              "key": "turntable_05",
+              "value": 0.97237
+            },
+            {
+              "key": "turntable_06",
+              "value": 1.21599
+            },
+            {
+              "key": "turntable_07",
+              "value": 1.04969
+            }
+          ],
+          "score": 10,
+          "weight": 1
+        },
+        "vq.bevel_ratio": {
+          "raw": 0.9243,
+          "samples": [],
+          "score": 10,
+          "weight": 1
+        }
+      }
+    },
+    "AT-R4": {
+      "id": "AT-R4",
+      "weight": 2,
+      "score": 10,
+      "metrics": {
+        "rig.no_collision": {
+          "raw": true,
+          "samples": [],
+          "score": 10,
+          "weight": 3
+        },
+        "rig.open_angle": {
+          "raw": 180,
+          "samples": [],
+          "score": 10,
+          "weight": 1
+        },
+        "geo.frame_unchanged": {
+          "raw": 0.3376,
+          "samples": [],
+          "score": 10,
+          "weight": 2
+        },
+        "decision.correct": {
+          "raw": true,
+          "samples": [],
+          "score": 10,
+          "weight": 2
+        }
+      }
+    }
+  },
+  "axes": {
+    "revision": 0,
+    "craft": 0,
+    "visual_quality": 0,
+    "reliability": 5.8
+  },
+  "composite": 0.87,
+  "completeness": null,
+  "completeness_multiplier": 1,
+  "taste": null,
+  "efficiency": {
+    "wall_min": 9.6436,
+    "tokens": {
+      "source": "claude",
+      "sessions": 1,
+      "input": 86,
+      "output": 84866,
+      "cache_read": 6367675,
+      "cache_write": 202679,
+      "reasoning": 0,
+      "total": 6655306
+    }
+  },
+  "leakage": {
+    "flagged": false,
+    "matches": []
+  },
+  "diff_file": "submissions/atelier-r1__claude-haiku-5.5-high.diff",
+  "submission_copy": "submissions/atelier-r1__claude-haiku-5.5-high",
+  "preview_sheets": [
+    "submissions/atelier-r1__claude-haiku-5.5-high/preview/atelier_sheet_1.png"
+  ]
+}

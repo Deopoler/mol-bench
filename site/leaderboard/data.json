@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-11-21T05:16:56.725Z",
+  "generated_at": "2026-11-21T05:29:05.282Z",
   "summary": {
-    "total_runs": 23,
-    "valid_runs": 23,
+    "total_runs": 24,
+    "valid_runs": 24,
     "models_count": 18,
-    "rooms_count": 4
+    "rooms_count": 5
   },
   "overall": [
     {
@@ -361,41 +361,6 @@
       }
     },
     {
-      "model": "Claude Haiku 5.5 (high)",
-      "composite": 8.7,
-      "composite_raw": 8.695340468173802,
-      "axes": {
-        "craft": 9.5,
-        "visual_quality": 6.4,
-        "revision": 8,
-        "reliability": 9.6
-      },
-      "reliability": 9.6,
-      "avg_wall_min": 17.91,
-      "rooms_count": 4,
-      "runs_count": 4,
-      "invalid_count": 0,
-      "leakage_count": 0,
-      "room_scores": {
-        "atelier": {
-          "composite": 9.7,
-          "runs": 1
-        },
-        "lobby/r1": {
-          "composite": 7.3,
-          "runs": 1
-        },
-        "lobby": {
-          "composite": 9.5,
-          "runs": 1
-        },
-        "restoration": {
-          "composite": 8.3,
-          "runs": 1
-        }
-      }
-    },
-    {
       "model": "Claude Haiku 5.5 (medium)",
       "composite": 8.6,
       "composite_raw": 8.633838383838384,
@@ -437,6 +402,45 @@
       "room_scores": {
         "lobby": {
           "composite": 8.6,
+          "runs": 1
+        }
+      }
+    },
+    {
+      "model": "Claude Haiku 5.5 (high)",
+      "composite": 7.1,
+      "composite_raw": 7.130272374539041,
+      "axes": {
+        "craft": 7.6,
+        "visual_quality": 5.1,
+        "revision": 4,
+        "reliability": 8.8
+      },
+      "reliability": 8.8,
+      "avg_wall_min": 16.26,
+      "rooms_count": 5,
+      "runs_count": 5,
+      "invalid_count": 0,
+      "leakage_count": 0,
+      "room_scores": {
+        "atelier/r1": {
+          "composite": 0.9,
+          "runs": 1
+        },
+        "atelier": {
+          "composite": 9.7,
+          "runs": 1
+        },
+        "lobby/r1": {
+          "composite": 7.3,
+          "runs": 1
+        },
+        "lobby": {
+          "composite": 9.5,
+          "runs": 1
+        },
+        "restoration": {
+          "composite": 8.3,
           "runs": 1
         }
       }
@@ -626,6 +630,110 @@
               "file": "atelier_sheet_1.png",
               "md_path": "submissions/atelier__claude-sonnet-5.5-high/preview/atelier_sheet_1.png",
               "site_path": "previews/atelier__claude-sonnet-5.5-high/atelier_sheet_1.png"
+            }
+          ]
+        }
+      ]
+    },
+    "atelier/r1": {
+      "room_key": "atelier/r1",
+      "room": "atelier",
+      "renovation": "r1",
+      "track": "renovation",
+      "runs": [
+        {
+          "run_id": "atelier-r1__claude-haiku-5.5-high",
+          "model": "Claude Haiku 5.5 (high)",
+          "room": "atelier",
+          "renovation": "r1",
+          "room_key": "atelier/r1",
+          "track": "renovation",
+          "seed": null,
+          "seeds": "hidden",
+          "composite": 0.9,
+          "composite_raw": 0.87,
+          "axes": {
+            "craft": 0,
+            "visual_quality": 0,
+            "revision": 0,
+            "reliability": 5.8
+          },
+          "axes_raw": {
+            "craft": 0,
+            "visual_quality": 0,
+            "revision": 0,
+            "reliability": 5.8
+          },
+          "reliability": 5.8,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 9.6436,
+            "tokens_in": 86,
+            "tokens_out": 84866,
+            "tokens_total": 6655306,
+            "tokens": {
+              "source": "claude",
+              "sessions": 1,
+              "input": 86,
+              "output": 84866,
+              "cache_read": 6367675,
+              "cache_write": 202679,
+              "reasoning": 0,
+              "total": 6655306
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 6,
+            "evaluated": 7,
+            "total": 7,
+            "failed": [
+              "G-reproducible"
+            ]
+          },
+          "gates_detail": {
+            "G-blender-run": {
+              "pass": true,
+              "detail": "completed in 0.9s"
+            },
+            "G-reproducible": {
+              "pass": false,
+              "detail": "geometry hash mismatch (submitted=481e5fc1ad7b, rerun=acd804fd0762)"
+            },
+            "G-provenance": {
+              "pass": true,
+              "detail": "clean provenance"
+            },
+            "G-gltf-valid": {
+              "pass": true,
+              "detail": "0 glTF 2.0 validation errors"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 external network requests (Blender background mode)"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            },
+            "G-decisions": {
+              "pass": true,
+              "detail": "valid decisions.json"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-21T05:16:09.331Z",
+          "ended_at": "2026-11-21T05:25:47.949Z",
+          "diff_file": "submissions/atelier-r1__claude-haiku-5.5-high.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "atelier_sheet_1.png",
+              "md_path": "submissions/atelier-r1__claude-haiku-5.5-high/preview/atelier_sheet_1.png",
+              "site_path": "previews/atelier-r1__claude-haiku-5.5-high/atelier_sheet_1.png"
             }
           ]
         }
@@ -5162,6 +5270,102 @@
           "file": "lobby_sheet_1.png",
           "md_path": "submissions/lobby-r1__claude-haiku-5.5-high/preview/lobby_sheet_1.png",
           "site_path": "previews/lobby-r1__claude-haiku-5.5-high/lobby_sheet_1.png"
+        }
+      ]
+    },
+    {
+      "run_id": "atelier-r1__claude-haiku-5.5-high",
+      "model": "Claude Haiku 5.5 (high)",
+      "room": "atelier",
+      "renovation": "r1",
+      "room_key": "atelier/r1",
+      "track": "renovation",
+      "seed": null,
+      "seeds": "hidden",
+      "composite": 0.9,
+      "composite_raw": 0.87,
+      "axes": {
+        "craft": 0,
+        "visual_quality": 0,
+        "revision": 0,
+        "reliability": 5.8
+      },
+      "axes_raw": {
+        "craft": 0,
+        "visual_quality": 0,
+        "revision": 0,
+        "reliability": 5.8
+      },
+      "reliability": 5.8,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 9.6436,
+        "tokens_in": 86,
+        "tokens_out": 84866,
+        "tokens_total": 6655306,
+        "tokens": {
+          "source": "claude",
+          "sessions": 1,
+          "input": 86,
+          "output": 84866,
+          "cache_read": 6367675,
+          "cache_write": 202679,
+          "reasoning": 0,
+          "total": 6655306
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 6,
+        "evaluated": 7,
+        "total": 7,
+        "failed": [
+          "G-reproducible"
+        ]
+      },
+      "gates_detail": {
+        "G-blender-run": {
+          "pass": true,
+          "detail": "completed in 0.9s"
+        },
+        "G-reproducible": {
+          "pass": false,
+          "detail": "geometry hash mismatch (submitted=481e5fc1ad7b, rerun=acd804fd0762)"
+        },
+        "G-provenance": {
+          "pass": true,
+          "detail": "clean provenance"
+        },
+        "G-gltf-valid": {
+          "pass": true,
+          "detail": "0 glTF 2.0 validation errors"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 external network requests (Blender background mode)"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        },
+        "G-decisions": {
+          "pass": true,
+          "detail": "valid decisions.json"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-21T05:16:09.331Z",
+      "ended_at": "2026-11-21T05:25:47.949Z",
+      "diff_file": "submissions/atelier-r1__claude-haiku-5.5-high.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "atelier_sheet_1.png",
+          "md_path": "submissions/atelier-r1__claude-haiku-5.5-high/preview/atelier_sheet_1.png",
+          "site_path": "previews/atelier-r1__claude-haiku-5.5-high/atelier_sheet_1.png"
         }
       ]
     }

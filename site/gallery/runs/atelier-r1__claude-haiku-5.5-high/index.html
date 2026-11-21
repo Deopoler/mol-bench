@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atelier 3D View — Claude Haiku 5.5 (high)</title>
+  <style>
+    :root {
+      --bg: #121316;
+      --surface: #1b1c21;
+      --text: #f0ede6;
+      --muted: #9a968f;
+      --accent: #f2b84b;
+      --border: #2a2c34;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      overflow-x: hidden;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header.viewer-header {
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .left-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .back-btn {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .back-btn:hover { text-decoration: underline; }
+    .title-group h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+    .title-group span {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .score-badge {
+      background: rgba(242, 184, 75, 0.18);
+      color: var(--accent);
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-family: monospace;
+    }
+    .btn-anim {
+      background: var(--accent);
+      color: #121316;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: transform 0.1s ease, filter 0.15s ease;
+    }
+    .btn-anim:hover { filter: brightness(1.1); }
+    .btn-anim:active { transform: scale(0.97); }
+    #canvas-container {
+      flex: 1;
+      width: 100%;
+      height: 70vh;
+      min-height: 480px;
+      position: relative;
+      background: radial-gradient(circle at center, #23252d 0%, #0f1013 100%);
+    }
+    #three-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: rgba(18, 19, 22, 0.85);
+      color: var(--text);
+      font-size: 0.95rem;
+      transition: opacity 0.3s ease;
+    }
+    .turntable-panel {
+      padding: 18px 20px 28px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .turntable-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .turntable-view img {
+      max-width: 320px;
+      height: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      display: block;
+    }
+    .turntable-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .turntable-controls input {
+      width: 220px;
+      cursor: pointer;
+    }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "../../vendor/three.module.js",
+      "three/addons/": "../../vendor/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="viewer-header">
+    <div class="left-controls">
+      <a class="back-btn" href="../../index.html">← Gallery</a>
+      <div class="title-group">
+        <h1>Claude Haiku 5.5 (high) · Atelier 3D Lantern</h1>
+        <span>Room: atelier (build) · Run: atelier-r1__claude-haiku-5.5-high</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="score-badge">Score: 0.9</span>
+      <button class="btn-anim" id="btn-toggle-anim" type="button">Play 'door_open' Animation</button>
+    </div>
+  </header>
+
+  <div id="canvas-container">
+    <canvas id="three-canvas"></canvas>
+    <div id="loading" class="loading-overlay">
+      <div>Loading 3D Lantern model…</div>
+    </div>
+  </div>
+
+  
+    <div class="turntable-panel">
+      <div class="turntable-title">Turntable Renders (360° Inspection)</div>
+      <div class="turntable-view">
+        <img id="turntable-img" src="turntable/turntable_00.png" alt="Turntable angle 0" />
+      </div>
+      <div class="turntable-controls">
+        <label for="turntable-slider">Angle: <span id="turntable-val">0°</span></label>
+        <input id="turntable-slider" type="range" min="0" max="7" value="0" />
+      </div>
+    </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from '../../vendor/GLTFLoader.js';
+    import { OrbitControls } from '../../vendor/OrbitControls.js';
+
+    const container = document.getElementById('canvas-container');
+    const canvas = document.getElementById('three-canvas');
+    const loadingEl = document.getElementById('loading');
+    const btnAnim = document.getElementById('btn-toggle-anim');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x15161a);
+
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera.position.set(2.5, 1.8, 3.2);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Studio-like lighting setup
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x333340, 1.2);
+    scene.add(hemiLight);
+
+    const keyLight = new THREE.DirectionalLight(0xfffaed, 2.2);
+    keyLight.position.set(4, 6, 4);
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0xd4e4ff, 1.0);
+    fillLight.position.set(-4, 3, -3);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xffeedd, 0.8);
+    rimLight.position.set(0, -3, -4);
+    scene.add(rimLight);
+
+    let mixer = null;
+    let doorAction = null;
+    let isPlaying = false;
+
+    const loader = new GLTFLoader();
+    loader.load(
+      'out/lantern.glb',
+      (gltf) => {
+        const model = gltf.scene;
+        scene.add(model);
+
+        // Center and frame camera on object
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 0.5);
+
+        controls.target.copy(center);
+        camera.position.set(center.x + maxDim * 1.5, center.y + maxDim * 0.8, center.z + maxDim * 1.7);
+        camera.lookAt(center);
+        controls.update();
+
+        // Setup door_open animation if available
+        if (gltf.animations && gltf.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(model);
+          const clip = gltf.animations.find((c) => c.name === 'door_open') || gltf.animations[0];
+          if (clip) {
+            doorAction = mixer.clipAction(clip);
+            doorAction.setLoop(THREE.LoopOnce);
+            doorAction.clampWhenFinished = true;
+          }
+        }
+
+        if (loadingEl) {
+          loadingEl.style.opacity = '0';
+          setTimeout(() => loadingEl.remove(), 300);
+        }
+      },
+      undefined,
+      (err) => {
+        console.error('Failed to load lantern.glb:', err);
+        if (loadingEl) loadingEl.textContent = 'Failed to load model file.';
+      }
+    );
+
+    btnAnim.addEventListener('click', () => {
+      if (!doorAction || !mixer) return;
+      if (isPlaying) {
+        doorAction.paused = true;
+        isPlaying = false;
+        btnAnim.textContent = "Resume 'door_open'";
+      } else {
+        if (doorAction.time >= doorAction.getClip().duration - 0.01) {
+          doorAction.reset();
+        }
+        doorAction.paused = false;
+        doorAction.play();
+        isPlaying = true;
+        btnAnim.textContent = "Pause 'door_open'";
+      }
+    });
+
+    const clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // Turntable scrubber logic
+    const turntableImg = document.getElementById('turntable-img');
+    const turntableSlider = document.getElementById('turntable-slider');
+    const turntableVal = document.getElementById('turntable-val');
+    const turntablePngs = ["turntable/turntable_00.png","turntable/turntable_01.png","turntable/turntable_02.png","turntable/turntable_03.png","turntable/turntable_04.png","turntable/turntable_05.png","turntable/turntable_06.png","turntable/turntable_07.png"];
+    if (turntableSlider && turntableImg && turntablePngs.length > 0) {
+      turntableSlider.addEventListener('input', (ev) => {
+        const idx = Number(ev.target.value);
+        if (turntablePngs[idx]) {
+          turntableImg.src = turntablePngs[idx];
+          turntableVal.textContent = Math.round((idx / turntablePngs.length) * 360) + '°';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

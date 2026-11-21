@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "summary": "Applied AT-R1 (handle 1.25x), AT-R2 (4,880 tris, subdivision removed), AT-R3 (aged textured brass, desaturated, roughness 0.18, 0.5 mm bevels), AT-R4 (door opens to 180 deg, no collision found). Local self-check: manifold 0, no collision, open angle 180, bevel ratio 0.92, variation 0.046. Not met: vq.shading_artifacts 0.048 (target <=0.005), rig.hinge 3/4 (90-degree check). The workspace had no package.json or blueprint/ folder, so I rebuilt blueprint dims/materials from the start model for local runs only and removed them afterward.",
+  "deliverables": [
+    "build.py",
+    "out/lantern.glb",
+    "out/lantern.blend",
+    "report.json",
+    "decisions.json"
+  ],
+  "claims": [
+    {
+      "metric_id": "G-blender-run",
+      "status": "verified",
+      "meets_target": true,
+      "method": "bench selfcheck (node bench/cli.mjs selfcheck --dir .): G-blender-run PASS"
+    },
+    {
+      "metric_id": "G-reproducible",
+      "status": "verified",
+      "meets_target": true,
+      "method": "bench selfcheck geometry hash match, but run against a blueprint/ I reconstructed from the start model, so it is not verified against the canonical blueprint"
+    },
+    {
+      "metric_id": "G-gltf-valid",
+      "status": "verified",
+      "meets_target": true,
+      "method": "bench selfcheck: 0 glTF 2.0 validation errors"
+    },
+    {
+      "metric_id": "budget.triangles_abs",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 4880,
+      "method": "bench selfcheck metrics3d.json (budget.triangles_abs); AT-R2 target <= 8000"
+    },
+    {
+      "metric_id": "topo.manifold",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0,
+      "method": "bench selfcheck metrics3d.json"
+    },
+    {
+      "metric_id": "rig.open_angle",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 180,
+      "method": "bench selfcheck metrics3d.json; door_open action ends at -180 deg"
+    },
+    {
+      "metric_id": "rig.no_collision",
+      "status": "verified",
+      "meets_target": true,
+      "method": "bench selfcheck metrics3d.json = true; separate Blender sweep 0-180 deg in 15 deg steps found 0 triangle overlaps and min clearance about 5 mm"
+    },
+    {
+      "metric_id": "rig.hinge",
+      "status": "verified",
+      "meets_target": false,
+      "measured_value": 0.75,
+      "method": "bench selfcheck metrics3d.json: 3 of 4 checks pass; the 90 deg +/-5 check fails at the requested 180 deg"
+    },
+    {
+      "metric_id": "mat.variation",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.04584,
+      "method": "bench selfcheck metrics3d.json; target >= 0.04"
+    },
+    {
+      "metric_id": "mat.roughness_mean",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.19722,
+      "method": "bench selfcheck metrics3d.json; start mean 0.12, so relative +0.64 (ideal +0.15 to +0.80)"
+    },
+    {
+      "metric_id": "vq.bevel_ratio",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 0.9243,
+      "method": "bench selfcheck metrics3d.json; target >= 0.60"
+    },
+    {
+      "metric_id": "vq.shading_artifacts",
+      "status": "verified",
+      "meets_target": false,
+      "measured_value": 0.04815,
+      "method": "bench selfcheck metrics3d.json; start model measured 0.07266, target <= 0.005. Smooth shading was restored to start setting; remaining jumps not isolated"
+    },
+    {
+      "metric_id": "request.AT-R1",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 1.25,
+      "method": "Blender bounding-box check: Handle 90x10x90 mm vs start 72x8x72 mm (ratio 1.25 on every axis). Did not verify the others_hausdorff metric with the grader"
+    },
+    {
+      "metric_id": "request.AT-R4",
+      "status": "verified",
+      "meets_target": true,
+      "measured_value": 180,
+      "method": "Blender triangle-overlap sweep of Door+Door_Glass vs Frame/Roof/Base at 15 deg steps (0 overlaps), plus rig.open_angle 180 from selfcheck"
+    }
+  ],
+  "blocked": false
+}

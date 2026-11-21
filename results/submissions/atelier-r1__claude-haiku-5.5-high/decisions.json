@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "requests": [
+    {
+      "request_id": "AT-R1",
+      "status": "done",
+      "reason": "NONE",
+      "tradeoff": "Set HANDLE_SCALE to 1.25; the torus radii scale together so the Handle bbox goes from 72x8x72 mm to 90x10x90 mm. No other part geometry was changed by this request.",
+      "expected_metrics": [
+        {"metric_id": "dims.part_scale", "value": 1.25}
+      ]
+    },
+    {
+      "request_id": "AT-R2",
+      "status": "done",
+      "reason": "NONE",
+      "tradeoff": "Set both subdivision cut counts to 0 (the Handle went from 35,200 to 1,408 triangles). Total triangles are 4,880 (under 8,000). Silhouettes are unchanged except for the 0.5 mm bevel on brass edges, which removes at most about 0.35 mm at each sharp corner.",
+      "expected_metrics": [
+        {"metric_id": "budget.triangles_abs", "value": 4880}
+      ]
+    },
+    {
+      "request_id": "AT-R3",
+      "status": "done",
+      "reason": "AMBIGUOUS_RESOLVED",
+      "tradeoff": "Brass now uses a procedural aged texture (TEXTURED_BRASS=True, PATINA_STRENGTH=1.5). Base color chroma is reduced to about 0.7x of the start, roughness mean is 0.18 (start 0.12), and brass edges get 0.5 mm two-segment bevels. The 'aged' look is a best interpretation of an ambiguous request. vq.shading_artifacts is still above target (0.048 measured; target <= 0.005).",
+      "expected_metrics": [
+        {"metric_id": "mat.variation", "value": 0.0458},
+        {"metric_id": "vq.bevel_ratio", "value": 0.9243}
+      ]
+    },
+    {
+      "request_id": "AT-R4",
+      "status": "done",
+      "reason": "NONE",
+      "tradeoff": "Set DOOR_OPEN_DEG to 180 with the pivot and Frame unchanged. Triangle-overlap tests at 15-degree steps from 0 to 180 found no contact between Door, Door_Glass and Frame/Roof/Base; the minimum clearance was about 5 mm. The rig.hinge check in the self-check is written for a 90 degree open angle, so it reports 3 of 4 at this request."
+    }
+  ]
+}

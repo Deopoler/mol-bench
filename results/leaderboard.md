@@ -1,6 +1,6 @@
 # MoL-Bench Leaderboard
 
-Generated: 2026-11-21T05:16:56.725Z | Models: 18 | Rooms: 4 | Runs: 23 | [Gallery](../site/gallery/)
+Generated: 2026-11-21T05:29:05.282Z | Models: 18 | Rooms: 5 | Runs: 24 | [Gallery](../site/gallery/)
 
 ## Overall (by Model)
 
@@ -21,9 +21,9 @@ Generated: 2026-11-21T05:16:56.725Z | Models: 18 | Rooms: 4 | Runs: 23 | [Galler
 | 13 | Claude Sonnet 5.5 (high) | 9.2 | 9.4 | 8.2 | — | 9.6 | 16.5 | 3 | 3 |
 | 14 | Gemini 4 Hydrogen (Medium) | 9.1 | 10.0 | 8.7 | — | 8.0 | 9.8 | 1 | 1 |
 | 15 | GPT-6-Luna (max) | 9.0 | 8.8 | 8.9 | — | 10.0 | 41.0 | 1 | 1 |
-| 16 | Claude Haiku 5.5 (high) | 8.7 | 9.5 | 6.4 | 8.0 | 9.6 | 17.9 | 4 | 4 |
-| 17 | Claude Haiku 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 10.2 | 1 | 1 |
-| 18 | Claude Sonnet 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 6.4 | 1 | 1 |
+| 16 | Claude Haiku 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 10.2 | 1 | 1 |
+| 17 | Claude Sonnet 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 6.4 | 1 | 1 |
+| 18 | Claude Haiku 5.5 (high) | 7.1 | 7.6 | 5.1 | 4.0 | 8.8 | 16.3 | 5 | 5 |
 
 ## Per Room
 
@@ -33,6 +33,12 @@ Generated: 2026-11-21T05:16:56.725Z | Models: 18 | Rooms: 4 | Runs: 23 | [Galler
 |---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|
 | 1 | atelier__claude-haiku-5.5-high | Claude Haiku 5.5 (high) | 9.7 | 10.0 | 8.9 | — | 10.0 | 9.6 | 88.2k | 4.5M | 6/6 | [View](../gallery/runs/atelier__claude-haiku-5.5-high/), [sheet 1](submissions/atelier__claude-haiku-5.5-high/preview/atelier_sheet_1.png) | — |
 | 2 | atelier__claude-sonnet-5.5-high | Claude Sonnet 5.5 (high) | 9.5 | 10.0 | 8.2 | — | 10.0 | 22.6 | 134k | 15.6M | 6/6 | [View](../gallery/runs/atelier__claude-sonnet-5.5-high/), [sheet 1](submissions/atelier__claude-sonnet-5.5-high/preview/atelier_sheet_1.png) | — |
+
+### atelier/r1 (renovation)
+
+| Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Wall (min) | Output tok | Total tok | Gates | Previews | Flags |
+|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|
+| 1 | atelier-r1__claude-haiku-5.5-high | Claude Haiku 5.5 (high) | 0.9 | 0.0 | 0.0 | 0.0 | 5.8 | 9.6 | 84.9k | 6.7M | 6/7 | [View](../gallery/runs/atelier-r1__claude-haiku-5.5-high/), [sheet 1](submissions/atelier-r1__claude-haiku-5.5-high/preview/atelier_sheet_1.png) | fail:G-reproducible |
 
 ### lobby (build)
 
