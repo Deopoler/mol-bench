@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
 import { loadSpec, buildPlan } from "./spec.mjs";
 import { scoreSubmission, scoreMetric, round1 } from "./score.mjs";
-import { evaluateStaticGates, combineGates, getGitChangedFiles } from "./gates.mjs";
+import { evaluateStaticGates, combineGates, getGitChangedFiles, evaluateAliveGate } from "./gates.mjs";
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "./report.mjs";
 import { compareSourceTrees, compareAllFiles, countPatchLines, computeDiffMetrics } from "./diffmetrics.mjs";
 
@@ -494,6 +494,9 @@ export async function gradeSubmission({
     );
   }
 
+  if ((spec.gates || []).includes("G-alive")) {
+    captureGates = { ...captureGates, "G-alive": evaluateAliveGate(rawMetrics, { skipped: noCapture || noPython }) };
+  }
   const gates = combineGates(spec.gates, staticRes.gates, captureGates, { captureSkipped: noCapture });
 
   // Evaluate decision.correct for renovation before scoring request.<id> and honesty

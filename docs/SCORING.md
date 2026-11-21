@@ -42,6 +42,7 @@ line length, spacing grid, …). Taste is left entirely to the human.
 | `G-contract` | `window.__bench` implements every required member of `contract/bench.d.ts` |
 | `G-determinism` | Same (seed, t, viewport) rendered twice in fresh pages → identical SHA-256 of pixels |
 | `G-live` | Frame from `seek(t)` vs live run paused at clock `t`: mean FLIP ≤ 0.02 |
+| `G-alive` *(room-optional, animated rooms)* | Median `time.motion` of the normal-variant samples > 0.0005, so a static frame cannot pass; a failure zeroes `craft`, `visual_quality` and `revision` like any non-report gate |
 | `G-offline` | 0 network requests outside the served origin |
 | `G-raster` | No single raster/video asset > `max_raster_asset_kb`; total ≤ `max_raster_total_kb` |
 | `G-report` | `report.json` exists and validates against `schemas/report.schema.json` |

@@ -287,6 +287,16 @@ export async function executePlan(plan, {
     }
   }
 
+  // Renovation specs may pin the language protected elements are compared in
+  // (spec.protected.language). Default ("normal") captures then use that locale so the
+  // start and the submission both render in it instead of Playwright's en-US default.
+  const protectedLocale = { ko: 'ko-KR', en: 'en-US' }[spec?.protected?.language] ?? null;
+  function pageConfig(variant, base = {}) {
+    const cfg = variantToPageConfig(variant, base);
+    if (protectedLocale && variant === 'normal' && !cfg.locale) cfg.locale = protectedLocale;
+    return cfg;
+  }
+
   const paramsMap = {};
   function getParams(seed, variant = 'normal') {
     let generated = {};
@@ -415,7 +425,7 @@ export async function executePlan(plan, {
       };
       const detSeed = detSample.seed ?? defaultSeed;
       const detT = detSample.t ?? 1000;
-      const detCfg = variantToPageConfig(detSample.variant || 'normal', detSample);
+      const detCfg = pageConfig(detSample.variant || 'normal', detSample);
       const detParams = getParams(detSeed, detSample.variant || 'normal');
 
       async function renderDetOnce() {
@@ -564,7 +574,7 @@ export async function executePlan(plan, {
       const groups = new Map();
       for (const frame of plan.frames) {
         const variant = frame.variant || 'normal';
-        const cfg = variantToPageConfig(variant, frame);
+        const cfg = pageConfig(variant, frame);
         const groupKey = JSON.stringify([cfg.viewport, cfg.dpr, cfg.colorScheme, cfg.reducedMotion, cfg.locale]);
         if (!groups.has(groupKey)) groups.set(groupKey, { cfg, frames: [] });
         groups.get(groupKey).frames.push(frame);
@@ -689,7 +699,7 @@ export async function executePlan(plan, {
       for (const seq of plan.sequences) {
         const seed = seq.seed ?? defaultSeed;
         const variant = seq.variant || 'normal';
-        const cfg = variantToPageConfig(variant, seq);
+        const cfg = pageConfig(variant, seq);
         const params = getParams(seed, variant);
         const t0 = Number(seq.t0 ?? 0);
         const dt = Number(seq.dt ?? 16.667);
@@ -962,7 +972,7 @@ export async function executePlan(plan, {
       for (const p of plan.probes) {
         const seed = p.seed ?? defaultSeed;
         const variant = p.variant || 'normal';
-        const cfg = variantToPageConfig(variant, p);
+        const cfg = pageConfig(variant, p);
         const params = getParams(seed, variant);
 
         const handle = await openPage({

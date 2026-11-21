@@ -44,7 +44,7 @@
     "hidden": "hidden/aurora/grade.json (3 seeds, 6 timestamps, same viewports)"
   },
 
-  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-offline", "G-raster", "G-report"],
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-alive", "G-offline", "G-raster", "G-report"],
 
   "composite": { "craft": 0.45, "visual_quality": 0.40, "reliability": 0.15 },
 

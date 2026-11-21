@@ -8,7 +8,7 @@
   "time_limit_min": 45,
   "scope": ["room/**", "tests/**", "report.json", "decisions.json"],
   "deliverables": ["report.json", "decisions.json"],
-  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-offline", "G-raster", "G-report", "G-decisions"],
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-live", "G-alive", "G-offline", "G-raster", "G-report", "G-decisions"],
   "extra_gates": {
     "G-decisions": "decisions.json exists, validates against schemas/decisions.schema.json and has one entry per request_id"
   },
