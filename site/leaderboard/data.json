@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-11-21T04:30:20.128Z",
+  "generated_at": "2026-11-21T05:16:56.725Z",
   "summary": {
-    "total_runs": 22,
-    "valid_runs": 22,
-    "models_count": 17,
+    "total_runs": 23,
+    "valid_runs": 23,
+    "models_count": 18,
     "rooms_count": 4
   },
   "overall": [
@@ -310,6 +310,29 @@
         },
         "restoration": {
           "composite": 9.3,
+          "runs": 1
+        }
+      }
+    },
+    {
+      "model": "Gemini 4 Hydrogen (Medium)",
+      "composite": 9.1,
+      "composite_raw": 9.056060606060605,
+      "axes": {
+        "craft": 10,
+        "visual_quality": 8.7,
+        "revision": null,
+        "reliability": 8
+      },
+      "reliability": 8,
+      "avg_wall_min": 9.81,
+      "rooms_count": 1,
+      "runs_count": 1,
+      "invalid_count": 0,
+      "leakage_count": 0,
+      "room_scores": {
+        "lobby": {
+          "composite": 9.1,
           "runs": 1
         }
       }
@@ -1943,6 +1966,108 @@
               "file": "lobby_sheet_1.png",
               "md_path": "submissions/lobby__gpt-6-luna-medium/preview/lobby_sheet_1.png",
               "site_path": "previews/lobby__gpt-6-luna-medium/lobby_sheet_1.png"
+            }
+          ]
+        },
+        {
+          "run_id": "lobby__gemini-4-hydrogen-medium",
+          "model": "Gemini 4 Hydrogen (Medium)",
+          "room": "lobby",
+          "renovation": null,
+          "room_key": "lobby",
+          "track": "build",
+          "seed": null,
+          "seeds": "hidden",
+          "composite": 9.1,
+          "composite_raw": 9.056060606060605,
+          "axes": {
+            "craft": 10,
+            "visual_quality": 8.7,
+            "revision": null,
+            "reliability": 8
+          },
+          "axes_raw": {
+            "craft": 10,
+            "visual_quality": 8.712121212121211,
+            "revision": null,
+            "reliability": 8
+          },
+          "reliability": 8,
+          "taste": null,
+          "efficiency": {
+            "wall_min": 9.809,
+            "tokens_in": 216416,
+            "tokens_out": 36492,
+            "tokens_total": 252908,
+            "tokens": {
+              "source": "agy",
+              "sessions": 1,
+              "input": 216416,
+              "output": 36492,
+              "cache_read": 0,
+              "cache_write": 0,
+              "reasoning": 0,
+              "total": 252908
+            },
+            "usd": null
+          },
+          "gates": {
+            "passed": 9,
+            "evaluated": 9,
+            "total": 9,
+            "failed": []
+          },
+          "gates_detail": {
+            "G-load": {
+              "pass": true,
+              "detail": "Loaded and __bench.ready resolved"
+            },
+            "G-console": {
+              "pass": true,
+              "detail": "0 console errors / uncaught exceptions"
+            },
+            "G-contract": {
+              "pass": true,
+              "detail": "BenchRoom v1 contract satisfied"
+            },
+            "G-determinism": {
+              "pass": true,
+              "detail": "Identical decoded pixel SHA-256 (eea2e134e89ac79d...)"
+            },
+            "G-offline": {
+              "pass": true,
+              "detail": "0 requests outside local origin"
+            },
+            "G-raster": {
+              "pass": true,
+              "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+            },
+            "G-report": {
+              "pass": true,
+              "detail": "valid report.json"
+            },
+            "G-fonts-local": {
+              "pass": true,
+              "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+            },
+            "G-live": {
+              "pass": true,
+              "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=259.90ms"
+            }
+          },
+          "leakage_flagged": false,
+          "leakage_matches": [],
+          "invalid": false,
+          "invalid_reason": null,
+          "created_at": "2026-11-21T04:11:48.884Z",
+          "ended_at": "2026-11-21T04:21:37.422Z",
+          "diff_file": "submissions/lobby__gemini-4-hydrogen-medium.diff",
+          "previews": [
+            {
+              "label": "sheet 1",
+              "file": "lobby_sheet_1.png",
+              "md_path": "submissions/lobby__gemini-4-hydrogen-medium/preview/lobby_sheet_1.png",
+              "site_path": "previews/lobby__gemini-4-hydrogen-medium/lobby_sheet_1.png"
             }
           ]
         },
@@ -4313,6 +4438,108 @@
           "file": "restoration_sheet_2.png",
           "md_path": "submissions/restoration__claude-sonnet-5.5-high/preview/restoration_sheet_2.png",
           "site_path": "previews/restoration__claude-sonnet-5.5-high/restoration_sheet_2.png"
+        }
+      ]
+    },
+    {
+      "run_id": "lobby__gemini-4-hydrogen-medium",
+      "model": "Gemini 4 Hydrogen (Medium)",
+      "room": "lobby",
+      "renovation": null,
+      "room_key": "lobby",
+      "track": "build",
+      "seed": null,
+      "seeds": "hidden",
+      "composite": 9.1,
+      "composite_raw": 9.056060606060605,
+      "axes": {
+        "craft": 10,
+        "visual_quality": 8.7,
+        "revision": null,
+        "reliability": 8
+      },
+      "axes_raw": {
+        "craft": 10,
+        "visual_quality": 8.712121212121211,
+        "revision": null,
+        "reliability": 8
+      },
+      "reliability": 8,
+      "taste": null,
+      "efficiency": {
+        "wall_min": 9.809,
+        "tokens_in": 216416,
+        "tokens_out": 36492,
+        "tokens_total": 252908,
+        "tokens": {
+          "source": "agy",
+          "sessions": 1,
+          "input": 216416,
+          "output": 36492,
+          "cache_read": 0,
+          "cache_write": 0,
+          "reasoning": 0,
+          "total": 252908
+        },
+        "usd": null
+      },
+      "gates": {
+        "passed": 9,
+        "evaluated": 9,
+        "total": 9,
+        "failed": []
+      },
+      "gates_detail": {
+        "G-load": {
+          "pass": true,
+          "detail": "Loaded and __bench.ready resolved"
+        },
+        "G-console": {
+          "pass": true,
+          "detail": "0 console errors / uncaught exceptions"
+        },
+        "G-contract": {
+          "pass": true,
+          "detail": "BenchRoom v1 contract satisfied"
+        },
+        "G-determinism": {
+          "pass": true,
+          "detail": "Identical decoded pixel SHA-256 (eea2e134e89ac79d...)"
+        },
+        "G-offline": {
+          "pass": true,
+          "detail": "0 requests outside local origin"
+        },
+        "G-raster": {
+          "pass": true,
+          "detail": "Raster assets within budget (max=0.0KB/64KB, total=0.0KB/256KB)"
+        },
+        "G-report": {
+          "pass": true,
+          "detail": "valid report.json"
+        },
+        "G-fonts-local": {
+          "pass": true,
+          "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+        },
+        "G-live": {
+          "pass": true,
+          "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=259.90ms"
+        }
+      },
+      "leakage_flagged": false,
+      "leakage_matches": [],
+      "invalid": false,
+      "invalid_reason": null,
+      "created_at": "2026-11-21T04:11:48.884Z",
+      "ended_at": "2026-11-21T04:21:37.422Z",
+      "diff_file": "submissions/lobby__gemini-4-hydrogen-medium.diff",
+      "previews": [
+        {
+          "label": "sheet 1",
+          "file": "lobby_sheet_1.png",
+          "md_path": "submissions/lobby__gemini-4-hydrogen-medium/preview/lobby_sheet_1.png",
+          "site_path": "previews/lobby__gemini-4-hydrogen-medium/lobby_sheet_1.png"
         }
       ]
     },

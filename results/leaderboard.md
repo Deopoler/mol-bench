@@ -1,6 +1,6 @@
 # MoL-Bench Leaderboard
 
-Generated: 2026-11-21T04:30:20.128Z | Models: 17 | Rooms: 4 | Runs: 22 | [Gallery](../site/gallery/)
+Generated: 2026-11-21T05:16:56.725Z | Models: 18 | Rooms: 4 | Runs: 23 | [Gallery](../site/gallery/)
 
 ## Overall (by Model)
 
@@ -19,10 +19,11 @@ Generated: 2026-11-21T04:30:20.128Z | Models: 17 | Rooms: 4 | Runs: 22 | [Galler
 | 11 | Gemini 3.8 Flash (Medium) | 9.5 | 9.9 | 9.1 | — | 10.0 | 17.8 | 1 | 1 |
 | 12 | GPT-6-Luna (medium) | 9.4 | 9.9 | 8.8 | — | 10.0 | 14.7 | 1 | 1 |
 | 13 | Claude Sonnet 5.5 (high) | 9.2 | 9.4 | 8.2 | — | 9.6 | 16.5 | 3 | 3 |
-| 14 | GPT-6-Luna (max) | 9.0 | 8.8 | 8.9 | — | 10.0 | 41.0 | 1 | 1 |
-| 15 | Claude Haiku 5.5 (high) | 8.7 | 9.5 | 6.4 | 8.0 | 9.6 | 17.9 | 4 | 4 |
-| 16 | Claude Haiku 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 10.2 | 1 | 1 |
-| 17 | Claude Sonnet 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 6.4 | 1 | 1 |
+| 14 | Gemini 4 Hydrogen (Medium) | 9.1 | 10.0 | 8.7 | — | 8.0 | 9.8 | 1 | 1 |
+| 15 | GPT-6-Luna (max) | 9.0 | 8.8 | 8.9 | — | 10.0 | 41.0 | 1 | 1 |
+| 16 | Claude Haiku 5.5 (high) | 8.7 | 9.5 | 6.4 | 8.0 | 9.6 | 17.9 | 4 | 4 |
+| 17 | Claude Haiku 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 10.2 | 1 | 1 |
+| 18 | Claude Sonnet 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 6.4 | 1 | 1 |
 
 ## Per Room
 
@@ -50,10 +51,11 @@ Generated: 2026-11-21T04:30:20.128Z | Models: 17 | Rooms: 4 | Runs: 22 | [Galler
 | 11 | lobby__claude-haiku-5.5-high | Claude Haiku 5.5 (high) | 9.5 | 9.9 | 9.1 | — | 10.0 | 12.9 | 94.9k | 8.8M | 9/9 | [View](../gallery/runs/lobby__claude-haiku-5.5-high/), [sheet 1](submissions/lobby__claude-haiku-5.5-high/preview/lobby_sheet_1.png) | — |
 | 12 | lobby__gemini-3.8-flash-medium | Gemini 3.8 Flash (Medium) | 9.5 | 9.9 | 9.1 | — | 10.0 | 17.8 | 72.4k | 527k | 9/9 | [View](../gallery/runs/lobby__gemini-3.8-flash-medium/), [sheet 1](submissions/lobby__gemini-3.8-flash-medium/preview/lobby_sheet_1.png) | possible_leakage |
 | 13 | lobby__gpt-6-luna-medium | GPT-6-Luna (medium) | 9.4 | 9.9 | 8.8 | — | 10.0 | 14.7 | 28.8k | 4.2M | 9/9 | [View](../gallery/runs/lobby__gpt-6-luna-medium/), [sheet 1](submissions/lobby__gpt-6-luna-medium/preview/lobby_sheet_1.png) | — |
-| 14 | lobby__gpt-6-luna-max | GPT-6-Luna (max) | 9.0 | 8.8 | 8.9 | — | 10.0 | 41.0 | 100k | 14.0M | 9/9 | [View](../gallery/runs/lobby__gpt-6-luna-max/), [sheet 1](submissions/lobby__gpt-6-luna-max/preview/lobby_sheet_1.png) | — |
-| 15 | lobby__claude-sonnet-5.5-high | Claude Sonnet 5.5 (high) | 8.9 | 8.8 | 8.9 | — | 8.8 | 14.6 | 57.4k | 5.7M | 9/9 | [View](../gallery/runs/lobby__claude-sonnet-5.5-high/), [sheet 1](submissions/lobby__claude-sonnet-5.5-high/preview/lobby_sheet_1.png) | — |
-| 16 | lobby__claude-sonnet-5.5-medium | Claude Sonnet 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 6.4 | 24.3k | 3.4M | 9/9 | [View](../gallery/runs/lobby__claude-sonnet-5.5-medium/), [sheet 1](submissions/lobby__claude-sonnet-5.5-medium/preview/lobby_sheet_1.png) | — |
-| 17 | lobby__claude-haiku-5.5-medium | Claude Haiku 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 10.2 | 68.1k | 6.7M | 9/9 | [View](../gallery/runs/lobby__claude-haiku-5.5-medium/), [sheet 1](submissions/lobby__claude-haiku-5.5-medium/preview/lobby_sheet_1.png) | — |
+| 14 | lobby__gemini-4-hydrogen-medium | Gemini 4 Hydrogen (Medium) | 9.1 | 10.0 | 8.7 | — | 8.0 | 9.8 | 36.5k | 253k | 9/9 | [View](../gallery/runs/lobby__gemini-4-hydrogen-medium/), [sheet 1](submissions/lobby__gemini-4-hydrogen-medium/preview/lobby_sheet_1.png) | — |
+| 15 | lobby__gpt-6-luna-max | GPT-6-Luna (max) | 9.0 | 8.8 | 8.9 | — | 10.0 | 41.0 | 100k | 14.0M | 9/9 | [View](../gallery/runs/lobby__gpt-6-luna-max/), [sheet 1](submissions/lobby__gpt-6-luna-max/preview/lobby_sheet_1.png) | — |
+| 16 | lobby__claude-sonnet-5.5-high | Claude Sonnet 5.5 (high) | 8.9 | 8.8 | 8.9 | — | 8.8 | 14.6 | 57.4k | 5.7M | 9/9 | [View](../gallery/runs/lobby__claude-sonnet-5.5-high/), [sheet 1](submissions/lobby__claude-sonnet-5.5-high/preview/lobby_sheet_1.png) | — |
+| 17 | lobby__claude-sonnet-5.5-medium | Claude Sonnet 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 6.4 | 24.3k | 3.4M | 9/9 | [View](../gallery/runs/lobby__claude-sonnet-5.5-medium/), [sheet 1](submissions/lobby__claude-sonnet-5.5-medium/preview/lobby_sheet_1.png) | — |
+| 18 | lobby__claude-haiku-5.5-medium | Claude Haiku 5.5 (medium) | 8.6 | 8.8 | 8.1 | — | 10.0 | 10.2 | 68.1k | 6.7M | 9/9 | [View](../gallery/runs/lobby__claude-haiku-5.5-medium/), [sheet 1](submissions/lobby__claude-haiku-5.5-medium/preview/lobby_sheet_1.png) | — |
 
 ### lobby/r1 (renovation)
 

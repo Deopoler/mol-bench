@@ -1,0 +1,10 @@
+{
+  "run_id": "lobby__gemini-4-hydrogen-medium",
+  "room": "lobby",
+  "track": "build",
+  "seed": null,
+  "created_at": "2026-11-21T04:11:48.884Z",
+  "ended_at": "2026-11-21T04:21:37.422Z",
+  "wall_min": 9.809,
+  "model": "Gemini 4 Hydrogen (Medium)"
+}
