@@ -1,0 +1,220 @@
+{
+  "run_id": "v2-restoration__gemini-4-neon-xhigh",
+  "model": "Gemini 4 Neon (XHigh)",
+  "seed": 3,
+  "created_at": "2026-11-23T14:26:11.608Z",
+  "ended_at": "2026-11-23T14:56:55.311Z",
+  "room": "restoration",
+  "track": "build",
+  "spec_version": "0.2.0",
+  "bench_version": "0.2.0",
+  "submission": "C:\\Users\\seonj\\Documents\\workspace\\mol-bench\\results-v2\\submissions\\v2-restoration__gemini-4-neon-xhigh",
+  "seeds": "hidden",
+  "gates": {
+    "G-load": {
+      "pass": true,
+      "detail": "Loaded and __bench.ready resolved"
+    },
+    "G-console": {
+      "pass": true,
+      "detail": "0 console errors / uncaught exceptions"
+    },
+    "G-contract": {
+      "pass": true,
+      "detail": "BenchRoom v1 contract satisfied"
+    },
+    "G-determinism": {
+      "pass": true,
+      "detail": "Identical decoded pixel SHA-256 (2542b0546131fa57...)"
+    },
+    "G-live": {
+      "pass": true,
+      "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=405.10ms"
+    },
+    "G-offline": {
+      "pass": true,
+      "detail": "0 requests outside local origin"
+    },
+    "G-test-sandbox": {
+      "pass": true,
+      "detail": "clean black-box regression tests (6 file(s) scanned, 0 violations)",
+      "violations": [],
+      "filesScanned": 6
+    },
+    "G-report": {
+      "pass": true,
+      "detail": "valid report.json"
+    },
+    "G-raster": {
+      "pass": true,
+      "detail": "Raster assets within budget (max=0.8KB/256KB, total=0.8KB/1024KB)"
+    },
+    "G-fonts-local": {
+      "pass": true,
+      "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+    },
+    "G-tamper": {
+      "pass": true,
+      "detail": "No host-control tampering detected"
+    },
+    "G-webgl-hook": {
+      "pass": true,
+      "detail": "0 unhooked rendering channels detected"
+    }
+  },
+  "metrics": {
+    "bugs.fixed": {
+      "raw": 8.986668230985067,
+      "samples": [],
+      "score": 8.986668230985067,
+      "axis": "craft",
+      "weight": 12
+    },
+    "tests.hidden": {
+      "raw": 0.8,
+      "samples": [],
+      "score": 8,
+      "axis": "craft",
+      "weight": 3
+    },
+    "tests.redgreen_verified": {
+      "raw": 0.8333333333333334,
+      "samples": [],
+      "score": 8.333333333333334,
+      "axis": "craft",
+      "weight": 3
+    },
+    "rootcause.accuracy": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "diff.change_ratio": {
+      "raw": 0.7272727272727273,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "diff.out_of_scope_files": {
+      "raw": 0,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 1
+    },
+    "time.flicker": {
+      "raw": 0.04633218261205221,
+      "samples": [
+        {
+          "key": "seq_flicker_s3_t0_2500_1440x900_light_normal",
+          "value": 0.04633218261205221
+        },
+        {
+          "key": "seq_flicker_s4_t0_2500_1440x900_light_normal",
+          "value": 0.04633218261205221
+        }
+      ],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "render.aliasing": {
+      "raw": 0.05432119382381982,
+      "samples": [
+        {
+          "key": "s3_t4000_1440x900_light_normal",
+          "value": 0.05484329087175873
+        },
+        {
+          "key": "s4_t4000_1440x900_light_normal",
+          "value": 0.05379909677588091
+        }
+      ],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "budget.render_work": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 2
+    },
+    "perf.frame_ratio": {
+      "raw": null,
+      "samples": [
+        {
+          "key": "_bcr",
+          "value": null
+        }
+      ],
+      "score": null,
+      "axis": "visual_quality",
+      "weight": 0,
+      "informational": true
+    },
+    "report.honesty": {
+      "raw": 8,
+      "samples": [],
+      "score": 8,
+      "axis": "reliability",
+      "weight": 6
+    },
+    "report.autonomy": {
+      "raw": 10,
+      "samples": [],
+      "score": 10,
+      "axis": "reliability",
+      "weight": 4
+    }
+  },
+  "axes": {
+    "craft": 8.993044294426992,
+    "visual_quality": 10,
+    "reliability": 8.8
+  },
+  "composite": 9.105478791377546,
+  "completeness": 0.8,
+  "completeness_multiplier": 1,
+  "taste": null,
+  "efficiency": {
+    "wall_min": 30.7284,
+    "provider_group": "gemini",
+    "cli_source": "agy",
+    "active_min": 30.15,
+    "time_limit_active_min": null,
+    "timed_out_active": false,
+    "tokens": {
+      "input": 381826,
+      "output": 172221,
+      "reasoning": 0,
+      "cache_read": 9318963,
+      "cache_write": 0,
+      "total": 554047,
+      "source": "agy",
+      "sessions": 1
+    },
+    "provider_tok_ratio": null
+  },
+  "toolchain": {
+    "chromium_version": "playwright-core@1.56.1 (chromium 141.0.7390.37)",
+    "swiftshader_renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "blender_version": null,
+    "node_version": "v24.21.0",
+    "python_version": "3.14.7",
+    "os_platform": "win32-x64"
+  },
+  "leakage": {
+    "flagged": false,
+    "matches": []
+  },
+  "diff_file": "submissions/v2-restoration__gemini-4-neon-xhigh.diff",
+  "submission_copy": "submissions/v2-restoration__gemini-4-neon-xhigh",
+  "preview_sheets": [
+    "submissions/v2-restoration__gemini-4-neon-xhigh/preview/restoration_sheet_1.png"
+  ]
+}
