@@ -168,7 +168,7 @@ function enrichManifestWithHiddenAssets(manifestPath, repoRoot) {
   return changed;
 }
 
-async function runBrowserLifecycleAndClockProbes(page, seeds = [1]) {
+async function runBrowserLifecycleAndClockProbes(page, seeds = [1], controlSecret = null) {
   const probeOut = {};
   const seed = seeds[0] ?? 1;
 
@@ -310,7 +310,7 @@ async function runBrowserLifecycleAndClockProbes(page, seeds = [1]) {
       await window.__bench.renderFrame();
       const rawDiff = Math.abs(a30 - a144) % 360;
       return Math.min(rawDiff, 360 - rawDiff);
-    }, [seed, ctx?.controlSecret ?? null]);
+    }, [seed, controlSecret]);
 
     probeOut[`raf_clock_s${seed}`] = {
       metrics: {
@@ -360,8 +360,8 @@ export async function extraCapture(ctx) {
       page = ownedHandle.page;
     }
 
+    const pageControlSecret = ownedHandle?.controlSecret ?? ctx?.controlSecret ?? null;
     if (page && ctx.manifest && Array.isArray(ctx.manifest.samples)) {
-      const pageControlSecret = ownedHandle?.controlSecret ?? ctx?.controlSecret ?? null;
       // 1. Populate sample.state (chartPatches, focusedCenter, focusedMaskColor) for existing samples
       for (const s of ctx.manifest.samples) {
         if (!s.state && s.viewport === "1440x900" && (s.dpr ?? 1) === 1) {
@@ -427,7 +427,7 @@ export async function extraCapture(ctx) {
           (p) => p?.metrics?.["mem.resource_baseline"] !== undefined || p?.["mem.resource_baseline"] !== undefined
         );
       if (!hasLifecycle) {
-        const extraProbes = await runBrowserLifecycleAndClockProbes(page, ctx.seeds || [1]);
+        const extraProbes = await runBrowserLifecycleAndClockProbes(page, ctx.seeds || [1], pageControlSecret);
         if (ctx.probes && typeof ctx.probes === "object") {
           Object.assign(ctx.probes, extraProbes);
         }

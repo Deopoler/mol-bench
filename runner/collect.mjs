@@ -1145,9 +1145,13 @@ export function collectRun({
     }
   }
 
+  const ceilingDirs = [
+    path.dirname(path.resolve(subCopyDir)),
+    path.dirname(path.resolve(resolvedResultsDir)),
+  ].join(path.delimiter);
   const stdout = execFileSync(process.execPath, gradeArgs, {
     cwd: resolvedRepoRoot,
-    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: "0" },
+    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: "0", GIT_CEILING_DIRECTORIES: ceilingDirs },
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"]

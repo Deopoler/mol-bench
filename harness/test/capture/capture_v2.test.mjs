@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { executePlan } from '../../src/capture/plan.mjs';
 import { startServer } from '../../src/capture/server.mjs';
 import { launchBrowser } from '../../src/capture/browser.mjs';
+import { extraCapture as restorationExtraCapture } from '../../src/rooms/restoration.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../..');
@@ -533,4 +534,83 @@ test('host.js blocks unauthorized __benchHostControl mutations, fails G-tamper, 
   assert.equal(extRes.gates['G-webgl-hook'].pass, true);
   // 4096 (copy_read) + 4096 (copy_write) + 4096 (copyBufferSubData) + 2048 (texImage3D) + 24 (vb) = 14360 bytes ~ 14.02 KB
   assert.ok(extManifest.webgl.tex_upload_kb >= 14.0, `expected >=14.0 KB uploads, got ${extManifest.webgl.tex_upload_kb}`);
+});
+
+test('restoration.mjs extraCapture remains behavior-neutral with controlSecret protection for v0.1 compatibility', { timeout: TEST_TIMEOUT_MS }, async () => {
+  const restDir = path.join(WORK_BASE, 'restoration-neutral-fixture');
+  const restWork = path.join(WORK_BASE, 'restoration-neutral-work');
+  await fs.rm(restDir, { recursive: true, force: true });
+  await fs.rm(restWork, { recursive: true, force: true });
+  await fs.mkdir(restDir, { recursive: true });
+  await fs.mkdir(path.join(restWork, 'frames'), { recursive: true });
+
+  await fs.writeFile(
+    path.join(restDir, 'index.html'),
+    `<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;width:100%;height:100%}</style></head>
+<body>
+  <div id="orrery-stage"><canvas id="c" width="200" height="150"></canvas></div>
+  <button data-bench="next-planet" type="button">Next</button>
+<script>
+  let seed = 1, focused = 0, tNow = 0, rafs = [], running = false;
+  document.querySelector('[data-bench="next-planet"]').addEventListener('click', () => { focused = (focused + 1) % 7; });
+  function loop() {
+    if (!running) return;
+    tNow = window.__benchHost.clock.now();
+    requestAnimationFrame(loop);
+  }
+  window.__bench = {
+    version: 1,
+    ready: Promise.resolve(),
+    setSeed(s) { seed = s; },
+    seek(t) { running = false; tNow = t; },
+    resume() { running = true; requestAnimationFrame(loop); },
+    async renderFrame() { tNow = window.__benchHost.clock.now(); },
+    mount(el) { if (el && !el.querySelector('canvas')) { const c = document.createElement('canvas'); c.width = 200; c.height = 150; el.appendChild(c); } },
+    unmount() { const c = document.querySelector('#orrery-stage canvas'); if (c) c.remove(); },
+    state() { return { seed, tNow, focusedIndex: focused, orbitAngleDeg: (tNow / 5000) * 180 }; },
+    stats() { return { drawCalls: 0, triangles: 0, geometries: 1, textures: 0, programs: 1, listeners: 0 }; }
+  };
+</script></body></html>`
+  );
+
+  let server = null;
+  let browserSession = null;
+  try {
+    server = await startServer(restDir);
+    browserSession = await launchBrowser({ mode: 'swiftshader' });
+    const localResolver = server.loopbackReachable ? null : server.resolveFile;
+    const h = await browserSession.newPage({
+      origin: server.origin,
+      url: server.url,
+      localResolver,
+      viewport: '1440x900',
+      seed: 1,
+      params: {},
+    });
+    const manifest = { samples: [{ key: 's1', seed: 1, t: 1000, viewport: '1440x900', dpr: 1 }], sequences: [] };
+    const probes = {};
+    try {
+      await restorationExtraCapture({
+        page: h.page,
+        controlSecret: h.controlSecret,
+        workDir: restWork,
+        manifest,
+        probes,
+        spec: { room: 'restoration', capture: { public_seeds: [1] } },
+        seeds: [1],
+      });
+      const tamper = await h.getTamperStatus();
+      assert.equal(tamper.tampered, false, 'restoration.mjs must pass controlSecret and never trigger G-tamper');
+      assert.equal(manifest.samples[0].state.tNow, 1000, 'freeze(1000) via controlSecret must set clock accurately');
+      assert.ok(manifest.samples.some((s) => s.variant === 'resize_seq'));
+      const clockEntry = Object.values(probes).find((p) => p?.metrics?.['anim.clock_independence'] !== undefined);
+      assert.ok(clockEntry && clockEntry.metrics['anim.clock_independence'] < 0.1, 'setVirtualClock must drive 30Hz vs 144Hz deterministically');
+    } finally {
+      await h.close();
+    }
+  } finally {
+    await browserSession?.close().catch(() => {});
+    await server?.close().catch(() => {});
+  }
 });
