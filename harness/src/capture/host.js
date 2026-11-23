@@ -985,28 +985,90 @@
   let clsTotal = 0;
   let clsEntriesCount = 0;
 
+  let mutationObserver = null;
+  const observedDomRoots = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+  function observeDomRoot(root) {
+    if (!mutationObserver || !root || (observedDomRoots && observedDomRoots.has(root))) return;
+    try {
+      mutationObserver.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true,
+      });
+      if (observedDomRoots) observedDomRoots.add(root);
+    } catch {
+      // ignore unobservable roots
+    }
+  }
+
+  function scanShadowRootsInSubtree(rootNode) {
+    if (!rootNode || !mutationObserver) return;
+    try {
+      if (rootNode.shadowRoot && rootNode.shadowRoot.mode !== 'closed') {
+        observeDomRoot(rootNode.shadowRoot);
+        scanShadowRootsInSubtree(rootNode.shadowRoot);
+      }
+      if (typeof document !== 'undefined' && typeof document.createTreeWalker === 'function' && (rootNode.nodeType === 1 || rootNode.nodeType === 11)) {
+        const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT);
+        let n = walker.nextNode();
+        while (n) {
+          if (n.shadowRoot && n.shadowRoot.mode !== 'closed') {
+            observeDomRoot(n.shadowRoot);
+            scanShadowRootsInSubtree(n.shadowRoot);
+          }
+          n = walker.nextNode();
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   function processMutationRecords(records) {
     if (!records || records.length === 0 || internalDomBypass) return;
     for (let i = 0; i < records.length; i++) {
       const rec = records[i];
       if (rec.type === 'childList') {
-        const added = rec.addedNodes ? rec.addedNodes.length : 0;
+        const addedList = rec.addedNodes;
+        const added = addedList ? addedList.length : 0;
         const removed = rec.removedNodes ? rec.removedNodes.length : 0;
         domAddedNodes += added;
         domRemovedNodes += removed;
         domMutations += added + removed;
+        if (addedList) {
+          for (let j = 0; j < addedList.length; j++) {
+            const node = addedList[j];
+            if (node && node.nodeType === 1) {
+              scanShadowRootsInSubtree(node);
+            }
+          }
+        }
+      } else if (rec.type === 'attributes' || rec.type === 'characterData') {
+        domMutations += 1;
       }
     }
   }
 
-  let mutationObserver = null;
   if (typeof MutationObserver === 'function' && typeof document !== 'undefined') {
     try {
       mutationObserver = new MutationObserver(processMutationRecords);
-      mutationObserver.observe(document, { childList: true, subtree: true });
+      observeDomRoot(document);
     } catch {
       mutationObserver = null;
     }
+  }
+
+  if (typeof Element !== 'undefined' && typeof Element.prototype.attachShadow === 'function') {
+    const origAttachShadow = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = function patchedAttachShadow(init, ...rest) {
+      const sr = origAttachShadow.call(this, init, ...rest);
+      if (sr && (!init || init.mode !== 'closed')) {
+        observeDomRoot(sr);
+      }
+      return sr;
+    };
   }
 
   function wrapLayoutMethod(target, prop) {
@@ -1045,9 +1107,22 @@
     }
   }
   if (typeof HTMLElement !== 'undefined') {
-    for (const p of ['offsetWidth', 'offsetHeight', 'offsetLeft', 'offsetTop', 'offsetParent']) {
+    for (const p of ['offsetWidth', 'offsetHeight', 'offsetLeft', 'offsetTop', 'offsetParent', 'innerText']) {
       wrapLayoutGetter(HTMLElement.prototype, p);
     }
+  }
+  if (typeof Document !== 'undefined') {
+    wrapLayoutMethod(Document.prototype, 'elementFromPoint');
+  }
+  if (typeof ShadowRoot !== 'undefined') {
+    wrapLayoutMethod(ShadowRoot.prototype, 'elementFromPoint');
+  }
+  if (typeof Range !== 'undefined') {
+    wrapLayoutMethod(Range.prototype, 'getBoundingClientRect');
+    wrapLayoutMethod(Range.prototype, 'getClientRects');
+  }
+  if (typeof SVGGraphicsElement !== 'undefined') {
+    wrapLayoutMethod(SVGGraphicsElement.prototype, 'getBBox');
   }
   wrapLayoutMethod(window, 'getComputedStyle');
 
@@ -1101,6 +1176,38 @@
     return domSteps;
   }
 
+  function countDeepDomNodes(rootDoc) {
+    if (!rootDoc || !rootDoc.documentElement || typeof document.createTreeWalker !== 'function') {
+      return typeof document !== 'undefined' && document.documentElement
+        ? document.getElementsByTagName('*').length
+        : 0;
+    }
+    let count = 0;
+    const visitRoot = (root) => {
+      if (!root) return;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+      let node = root.nodeType === 1 ? root : walker.nextNode();
+      while (node) {
+        count += 1;
+        if (node.shadowRoot && node.shadowRoot.mode !== 'closed') {
+          visitRoot(node.shadowRoot);
+        }
+        if (node.tagName === 'IFRAME' || node.tagName === 'FRAME') {
+          try {
+            if (node.contentDocument?.documentElement) {
+              visitRoot(node.contentDocument.documentElement);
+            }
+          } catch {
+            // cross-origin iframe
+          }
+        }
+        node = walker.nextNode();
+      }
+    };
+    visitRoot(rootDoc.documentElement);
+    return count;
+  }
+
   function getDomMetrics() {
     if (mutationObserver) {
       processMutationRecords(mutationObserver.takeRecords());
@@ -1108,9 +1215,7 @@
     if (clsObserver && typeof clsObserver.takeRecords === 'function') {
       processClsEntries(clsObserver.takeRecords());
     }
-    const domNodes = typeof document !== 'undefined' && document.documentElement
-      ? document.getElementsByTagName('*').length
-      : 0;
+    const domNodes = typeof document !== 'undefined' ? countDeepDomNodes(document) : 0;
     return {
       domMutations,
       addedNodes: domAddedNodes,

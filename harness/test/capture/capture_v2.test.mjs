@@ -8,6 +8,7 @@ import { executePlan } from '../../src/capture/plan.mjs';
 import { startServer } from '../../src/capture/server.mjs';
 import { launchBrowser } from '../../src/capture/browser.mjs';
 import { extraCapture as restorationExtraCapture } from '../../src/rooms/restoration.mjs';
+import { createDomHostAdapter } from '../../src/capture/probes/perf_dom.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '../../..');
@@ -606,6 +607,107 @@ test('restoration.mjs extraCapture remains behavior-neutral with controlSecret p
       assert.ok(manifest.samples.some((s) => s.variant === 'resize_seq'));
       const clockEntry = Object.values(probes).find((p) => p?.metrics?.['anim.clock_independence'] !== undefined);
       assert.ok(clockEntry && clockEntry.metrics['anim.clock_independence'] < 0.1, 'setVirtualClock must drive 30Hz vs 144Hz deterministically');
+    } finally {
+      await h.close();
+    }
+  } finally {
+    await browserSession?.close().catch(() => {});
+    await server?.close().catch(() => {});
+  }
+});
+
+test('host.js DOM interceptors track attributes, characterData, open ShadowRoot, deep iframe nodes, extra layout reads, and perf_dom createDomHostAdapter', { timeout: TEST_TIMEOUT_MS }, async () => {
+  const dir = path.join(WORK_BASE, 'dom-extended-fixture');
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.mkdir(dir, { recursive: true });
+
+  await fs.writeFile(
+    path.join(dir, 'index.html'),
+    `<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  html, body { margin: 0; padding: 0; }
+  #text-target { width: 120px; height: 24px; }
+</style></head>
+<body>
+  <div id="text-target" data-state="init">hello</div>
+  <div id="shadow-host"></div>
+  <svg width="100" height="40"><rect id="svg-rect" x="0" y="0" width="50" height="20"></rect></svg>
+  <iframe id="child" srcdoc="<!doctype html><html><body><p>in-iframe</p><span>x</span></body></html>"></iframe>
+<script>
+  const hostEl = document.getElementById('shadow-host');
+  const sr = hostEl.attachShadow({ mode: 'open' });
+  const srChild = document.createElement('div');
+  srChild.textContent = 'shadow-item';
+  sr.appendChild(srChild);
+
+  window.__triggerDomWork = () => {
+    const t = document.getElementById('text-target');
+    // 1. Attribute mutation (+1)
+    t.setAttribute('data-state', 'updated');
+    // 2. characterData mutation (+1)
+    t.firstChild.nodeValue = 'world';
+    // 3. Open ShadowRoot childList + attribute mutation (+2)
+    const span = document.createElement('span');
+    sr.appendChild(span);
+    srChild.setAttribute('data-active', '1');
+
+    // Extended layout reads (5 total):
+    void t.innerText;
+    void document.elementFromPoint(10, 10);
+    void sr.elementFromPoint(10, 10);
+    const range = document.createRange();
+    range.selectNodeContents(t);
+    void range.getBoundingClientRect();
+    void document.getElementById('svg-rect').getBBox();
+  };
+
+  window.__bench = {
+    version: 1,
+    ready: new Promise((resolve) => {
+      document.getElementById('child').addEventListener('load', () => resolve(), { once: true });
+      setTimeout(resolve, 300);
+    }),
+    setSeed() {}, seek() {}, resume() {},
+    async renderFrame() {},
+    state() { return { ok: true }; },
+    stats() { return { drawCalls: 0, triangles: 0 }; }
+  };
+</script></body></html>`
+  );
+
+  let server = null;
+  let browserSession = null;
+  try {
+    server = await startServer(dir);
+    browserSession = await launchBrowser({ mode: 'swiftshader' });
+    const localResolver = server.loopbackReachable ? null : server.resolveFile;
+    const h = await browserSession.newPage({
+      origin: server.origin,
+      url: server.url,
+      localResolver,
+      viewport: '800x600',
+      seed: 1,
+      params: {},
+    });
+    try {
+      const adapter = createDomHostAdapter(h);
+      assert.equal(await adapter.isAvailable(), true, 'createDomHostAdapter must detect host.js readiness');
+      await adapter.beginMeasurement();
+      await h.page.evaluate(() => window.__triggerDomWork());
+      await adapter.markStep(2);
+
+      const stats = await adapter.readStats();
+      assert.equal(stats.ready, true);
+      assert.equal(stats.steps, 2, 'markDomStep via pageHandle.markDomStep must update secret-gated steps');
+      assert.equal(stats.dom_mutations, 4, `expected 4 mutations (attr + charData + shadow childList + shadow attr), got ${stats.dom_mutations}`);
+      assert.equal(stats.layout_reads, 5, `expected 5 layout reads (innerText + doc/sr elementFromPoint + Range.getBoundingClientRect + SVG.getBBox), got ${stats.layout_reads}`);
+
+      // Deep node count must include shadowRoot children (div + span = 2) AND same-origin iframe nodes (html,head,body,p,span = 5)
+      const shallowCount = await h.page.evaluate(() => document.getElementsByTagName('*').length);
+      assert.ok(stats.dom_nodes >= shallowCount + 7, `expected deep dom_nodes (${stats.dom_nodes}) >= shallow (${shallowCount}) + 7`);
+
+      const tamper = await h.getTamperStatus();
+      assert.equal(tamper.tampered, false, 'createDomHostAdapter through browser.mjs handle must not trigger G-tamper');
     } finally {
       await h.close();
     }

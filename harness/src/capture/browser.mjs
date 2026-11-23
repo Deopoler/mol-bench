@@ -477,6 +477,10 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
         await page.evaluate(([o, sec]) => window.__benchHostControl?.resetDomMetrics?.(o, sec), [opts, controlSecret]);
       },
 
+      async markDomStep(count = 1) {
+        return page.evaluate(([c, sec]) => window.__benchHostControl?.markDomStep?.(c, sec), [count, controlSecret]);
+      },
+
       async setDomBypass(flag) {
         await page.evaluate(([f, sec]) => window.__benchHostControl?.setDomBypass?.(Boolean(f), sec), [flag, controlSecret]);
       },
