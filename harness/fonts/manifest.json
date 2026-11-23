@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "status": "placeholder",
+  "status": "vendored",
   "license": "OFL-1.1",
-  "notes": "No OFL font binaries were available offline during WP-0a. Drop the pinned OFL-1.1 font files and license texts into harness/fonts/ and populate sha256 hashes before freezing v0.2 web rooms.",
+  "notes": "Pinned OFL-1.1 fonts vendored by the coordinator; sha256 per file.",
   "fonts": [
     {
       "family": "Pretendard",
@@ -12,7 +12,8 @@
       "style": "normal",
       "license_file": "OFL-Pretendard.txt",
       "source": "https://github.com/orioncactus/pretendard (SIL Open Font License 1.1)",
-      "sha256": null
+      "sha256": "9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4",
+      "vendored_from": "npm pretendard@1.3.9 dist/web/variable/woff2"
     },
     {
       "family": "Noto Sans JP",
@@ -22,7 +23,8 @@
       "style": "normal",
       "license_file": "OFL-Noto.txt",
       "source": "https://github.com/notofonts/noto-cjk (SIL Open Font License 1.1)",
-      "sha256": null
+      "sha256": "5c8d06bd391e79d03c1fdedd86075e021e0e6c65403eb370175c83525825a806",
+      "vendored_from": "google/fonts ofl/notosansjp NotoSansJP[wght].ttf -> woff2 (fontTools 4.68)"
     },
     {
       "family": "Inter",
@@ -32,7 +34,8 @@
       "style": "normal",
       "license_file": "OFL-Inter.txt",
       "source": "https://github.com/rsms/inter (SIL Open Font License 1.1)",
-      "sha256": null
+      "sha256": "8689c9e24c6cc22cb846db66647befbfc72b6482dca5f5d5d4efa47a4f983964",
+      "vendored_from": "google/fonts ofl/inter Inter[opsz,wght].ttf -> woff2 (fontTools 4.68)"
     },
     {
       "family": "Noto Serif",
@@ -40,9 +43,10 @@
       "file": "NotoSerif-Variable.woff2",
       "weight": "100 900",
       "style": "normal",
-      "license_file": "OFL-Noto.txt",
+      "license_file": "OFL-NotoSerif.txt",
       "source": "https://github.com/notofonts/latin-greek-cyrillic (SIL Open Font License 1.1)",
-      "sha256": null
+      "sha256": "8e0460b2ecb57f7090e98c262fdf264fa3b406bc07fb64f5c9ee1c40acf79333",
+      "vendored_from": "google/fonts ofl/notoserif NotoSerif[wdth,wght].ttf -> woff2 (fontTools 4.68)"
     }
   ]
 }
