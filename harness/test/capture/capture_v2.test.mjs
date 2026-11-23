@@ -716,3 +716,193 @@ test('host.js DOM interceptors track attributes, characterData, open ShadowRoot,
     await server?.close().catch(() => {});
   }
 });
+
+test('review-2 hardening: primitive evaluate packets resist Array/String/JSON tampering, Worker/transient-iframe/CSP bypasses, missing init fail-closed, steps=0, and uncapped tamperCount', { timeout: TEST_TIMEOUT_MS }, async () => {
+  const secDir = path.join(WORK_BASE, 'sec-hardening-fixture');
+  const secWork = path.join(WORK_BASE, 'sec-hardening-work');
+  const domWork = path.join(WORK_BASE, 'sec-dom-ok-work');
+  for (const d of [secDir, secWork, domWork]) {
+    await fs.rm(d, { recursive: true, force: true });
+  }
+  await fs.mkdir(secDir, { recursive: true });
+
+  // 1. Page attempts Array.prototype.push/map/String.prototype.slice/JSON.parse interception,
+  //    calls Worker.prototype.constructor, creates & removes transient iframe, floods >100 bad mutator calls,
+  //    and leaves domSteps === 0.
+  await fs.writeFile(
+    path.join(secDir, 'index.html'),
+    `<!doctype html>
+<html><head><meta charset="utf-8"></head>
+<body>
+  <canvas id="c" width="80" height="80"></canvas>
+  <script>
+    window.__stolen = [];
+    const origPush = Array.prototype.push;
+    Array.prototype.push = function(...args) {
+      for (const a of args) if (typeof a === 'string' && a.length >= 24) origPush.call(window.__stolen, 'push:' + a);
+      return origPush.apply(this, args);
+    };
+    const origMap = Array.prototype.map;
+    Array.prototype.map = function(fn, thisArg) {
+      return origMap.call(this, function(x, i, arr) {
+        if (typeof x === 'string' && x.length >= 24) origPush.call(window.__stolen, 'map:' + x);
+        return fn.call(thisArg, x, i, arr);
+      });
+    };
+    const origSlice = String.prototype.slice;
+    String.prototype.slice = function(...args) {
+      if (this.length >= 40) origPush.call(window.__stolen, 'slice:' + String(this));
+      return origSlice.apply(this, args);
+    };
+    const origParse = JSON.parse;
+    JSON.parse = function(text, ...rest) {
+      if (typeof text === 'string' && text.includes('"')) origPush.call(window.__stolen, 'json:' + text);
+      return origParse.call(this, text, ...rest);
+    };
+
+    // Bypass attempt 1: Worker.prototype.constructor (with CSP worker-src 'none' active on GL plan)
+    window.__workerMsgs = [];
+    window.__workerBlockedErr = '';
+    window.addEventListener('securitypolicyviolation', (ev) => {
+      if (ev.violatedDirective === 'worker-src') {
+        window.__workerBlockedErr = 'csp:' + ev.violatedDirective;
+      }
+    });
+    try {
+      const Ctor = Worker.prototype.constructor;
+      const w = new Ctor('data:application/javascript,postMessage("RAN")');
+      w.onmessage = (m) => origPush.call(window.__workerMsgs, m.data);
+      w.onerror = () => { if (!window.__workerBlockedErr) window.__workerBlockedErr = 'worker-error'; };
+    } catch (e) {
+      window.__workerBlockedErr = String(e?.message || e);
+    }
+    // Bypass attempt 2: transient iframe removed immediately
+    const ifr = document.createElement('iframe');
+    ifr.srcdoc = '<!doctype html><canvas></canvas>';
+    document.body.appendChild(ifr);
+    ifr.remove();
+
+    // Flood > 105 unauthorized mutator calls to verify tamperCount is uncapped
+    for (let i = 0; i < 105; i++) {
+      window.__benchHostControl.markDomStep(100);
+    }
+
+    const c = document.getElementById('c');
+    const gl = c.getContext('webgl2', { preserveDrawingBuffer: true });
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed() {}, seek() {}, resume() {},
+      async renderFrame() {},
+      state() {
+        Array.prototype.push = origPush;
+        Array.prototype.map = origMap;
+        String.prototype.slice = origSlice;
+        JSON.parse = origParse;
+        return {
+          stolen: [...window.__stolen],
+          workerBlocked: Boolean(window.__workerBlockedErr),
+          workerBlockedErr: window.__workerBlockedErr,
+          workerMsgs: [...window.__workerMsgs],
+        };
+      },
+      stats() { return { drawCalls: 0, triangles: 0 }; }
+    };
+  </script>
+</body></html>`
+  );
+
+  // Run against a WebGL spec (expectsWebGL=true) -> CSP worker-src 'none' + G-webgl-hook fail + G-tamper fail
+  const glRes = await executePlan(
+    { room: 'aurora', mode: 'swiftshader', frames: [{ key: 'f1', seed: 1, t: 0, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 }] },
+    {
+      submissionDir: secDir,
+      workDir: secWork,
+      spec: { room: 'aurora', spec_version: '0.2.0', load_timeout_ms: 15000, metrics: [{ id: 'budget.draw_calls', axis: 'craft', weight: 1, score: { type: 'lower', full: 2, zero: 10 } }] },
+      noPython: true,
+      planTimeoutMs: 60_000,
+    },
+  );
+
+  // Verify DOM room (expectsWebGL=false) does NOT fail G-webgl-hook due to iframe or worker
+  const domRes = await executePlan(
+    { room: 'lobby', mode: 'swiftshader', frames: [{ key: 'f1', seed: 1, t: 0, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 }] },
+    {
+      submissionDir: secDir,
+      workDir: domWork,
+      spec: { room: 'lobby', spec_version: '0.2.0', load_timeout_ms: 15000, metrics: [{ id: 'report.honesty', axis: 'reliability', weight: 1, score: { type: 'higher', full: 10, zero: 0 } }] },
+      noPython: true,
+      planTimeoutMs: 60_000,
+    },
+  );
+
+  const glManifest = JSON.parse(await fs.readFile(glRes.manifestPath, 'utf8'));
+  assert.equal(glRes.gates['G-tamper'].pass, false);
+  assert.ok(glManifest.tamper.count >= 105, `expected uncapped tamper.count >= 105, got ${glManifest.tamper.count}`);
+  assert.ok(glManifest.tamper.first_event && glManifest.tamper.first_event.method === 'markDomStep');
+  assert.equal(glRes.gates['G-webgl-hook'].pass, false, 'GL room must fail G-webgl-hook on Worker.prototype.constructor & transient iframe');
+  assert.ok(glManifest.unhooked_rendering.reasons.includes('worker_created'));
+  assert.ok(glManifest.unhooked_rendering.reasons.includes('iframe_detected'));
+  assert.ok(glManifest.unhooked_rendering.iframe_count >= 1);
+  assert.equal(domRes.gates['G-webgl-hook'].pass, true, 'DOM room without GL requirements must NOT fail G-webgl-hook on iframe/worker');
+
+  // Verify direct browser session with Array.prototype overridden leaks 0 secrets, steps defaults to 0, and missing __BENCH_HOST_INIT__ fails closed
+  let srv = null;
+  let browserSession = null;
+  try {
+    srv = await startServer(secDir);
+    browserSession = await launchBrowser({ mode: 'swiftshader' });
+    const h = await browserSession.newPage({
+      origin: srv.origin,
+      url: srv.url,
+      localResolver: srv.loopbackReachable ? null : srv.resolveFile,
+      viewport: '320x240',
+      seed: 1,
+      params: {},
+      blockWorkers: true,
+    });
+    try {
+      await h.resetDomMetrics({ steps: 0 });
+      await h.setDomBypass(true);
+      await h.setDomBypass(false);
+      await h.setSeed(7, { a: 1 });
+      await h.seek(123);
+      const stats0 = await h.getDomBudgetStats();
+      assert.equal(stats0.steps, 0, 'getDomBudgetStats().steps must return 0 when no steps ran');
+      const st = await h.state();
+      assert.equal(st.stolen.some((s) => s.includes(h.controlSecret)), false, `secret must never leak: ${JSON.stringify(st.stolen)}`);
+      assert.equal(st.stolen.some((s) => s.startsWith('map:') || s.startsWith('slice:') || s.startsWith('json:')), false, `unexpected serializer intercept: ${JSON.stringify(st.stolen)}`);
+      assert.equal(st.workerBlocked, true, `CSP worker-src none must block Worker instantiation (err=${st.workerBlockedErr})`);
+      assert.equal(st.workerMsgs.length, 0, 'blocked worker must never execute postMessage');
+      assert.ok(h.consoleLogs.some((c) => c.text.includes("worker-src 'none'")), 'CSP console violation must be emitted');
+    } finally {
+      await h.close();
+    }
+
+    // Missing __BENCH_HOST_INIT__ (injected without init config) must fail closed on verifySecret
+    const ctx = await browserSession.browser.newContext();
+    const rawPage = await ctx.newPage();
+    const hostCode = await fs.readFile(path.join(REPO_ROOT, 'harness', 'src', 'capture', 'host.js'), 'utf8');
+    await rawPage.addInitScript({ content: hostCode });
+    if (!srv.loopbackReachable) {
+      await rawPage.route('**/*', async (route) => {
+        const r = await srv.resolveFile(route.request().url());
+        await route.fulfill({ status: r.status, contentType: r.contentType, body: r.body });
+      });
+    }
+    await rawPage.goto(srv.url);
+    await rawPage.evaluate(() => {
+      window.__benchHostControl.setSeed(99, {});
+      window.__benchHostControl.markDomStep(50);
+    });
+    const rawTamper = await rawPage.evaluate(() => window.__benchHostControl.getTamperStatus());
+    const rawSeed = await rawPage.evaluate(() => window.__benchHost.seed);
+    assert.equal(rawTamper.tampered, true, 'missing __BENCH_HOST_INIT__ must fail closed and record tamper');
+    assert.equal(rawTamper.firstEvent.reason, 'missing_host_init');
+    assert.equal(rawSeed, 1, 'unauthorized setSeed when __BENCH_HOST_INIT__ is missing must not mutate seed');
+    await ctx.close();
+  } finally {
+    await browserSession?.close().catch(() => {});
+    await srv?.close().catch(() => {});
+  }
+});

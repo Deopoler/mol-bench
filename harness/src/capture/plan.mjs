@@ -584,6 +584,13 @@ export async function executePlan(plan, {
     ...(Array.isArray(spec?.metrics) ? spec.metrics.map((m) => m?.id).filter(Boolean) : []),
     ...((spec?.requests || []).flatMap((r) => (r?.metrics || []).map((m) => m?.id)).filter(Boolean)),
   ]);
+  const expectsWebGL =
+    specMetricIds.has('budget.gpu_work_profile') ||
+    specMetricIds.has('budget.shader_ops') ||
+    specMetricIds.has('budget.render_work') ||
+    specMetricIds.has('budget.render_passes') ||
+    specMetricIds.has('budget.draw_calls') ||
+    Boolean(spec?.webgl_required);
 
   // Restoration's functional suite drives multiple seeded mounts and resize,
   // lifecycle, and animation captures. Allow that full plan to finish on
@@ -610,6 +617,8 @@ export async function executePlan(plan, {
   const networkAll = [];
   const fontResponsesAll = [];
   const tamperAll = [];
+  let tamperCountTotal = 0;
+  let tamperFirstEvent = null;
   const unhookedReasons = new Set();
   const unhookedCounts = {
     worker_count: 0,
@@ -639,8 +648,10 @@ export async function executePlan(plan, {
     collectLogs(handle);
     try {
       const tamper = await handle.getTamperStatus?.().catch(() => null);
-      if (tamper?.events?.length) {
-        tamperAll.push(...tamper.events);
+      if (tamper) {
+        tamperCountTotal += Number(tamper.count || tamper.events?.length || 0);
+        if (!tamperFirstEvent && tamper.firstEvent) tamperFirstEvent = tamper.firstEvent;
+        if (tamper.events?.length) tamperAll.push(...tamper.events);
       }
     } catch {
       // ignore if page already closed
@@ -739,6 +750,7 @@ export async function executePlan(plan, {
       url: entryUrl,
       localResolver,
       loadTimeoutMs,
+      blockWorkers: isV2 && expectsWebGL,
       ...opts,
     });
 
@@ -1610,29 +1622,23 @@ export async function executePlan(plan, {
       : null;
 
     if (isV2) {
-      const tamperDetected = tamperAll.length > 0;
+      const tamperDetected = tamperCountTotal > 0;
       const unhookedList = Array.from(unhookedReasons);
       const unhookedObj = {
         detected: unhookedList.length > 0,
         reasons: unhookedList,
         ...unhookedCounts,
       };
-      const expectsWebGL =
-        specMetricIds.has('budget.gpu_work_profile') ||
-        specMetricIds.has('budget.shader_ops') ||
-        specMetricIds.has('budget.render_work') ||
-        specMetricIds.has('budget.render_passes') ||
-        specMetricIds.has('budget.draw_calls') ||
-        Boolean(spec?.webgl_required);
-      const hardBypassReasons = ['worker_created', 'offscreen_canvas_transferred', 'iframe_detected', 'webgpu_context', 'unhooked_canvas'];
-      const hasHardBypass = hardBypassReasons.some((r) => unhookedReasons.has(r));
+      const glBypassReasons = ['worker_created', 'offscreen_canvas_transferred', 'iframe_detected', 'unhooked_canvas', 'canvas_2d', 'canvas_bitmaprenderer'];
       const webglMissingWhenExpected = expectsWebGL && canRender && !webglManifest;
-      const webglHookPass = !hasHardBypass && !(expectsWebGL && (unhookedObj.detected || webglMissingWhenExpected));
+      const hasWebGpuAttempt = unhookedReasons.has('webgpu_context');
+      const hasGlBypass = expectsWebGL && (glBypassReasons.some((r) => unhookedReasons.has(r)) || unhookedObj.detected);
+      const webglHookPass = !hasWebGpuAttempt && !hasGlBypass && !webglMissingWhenExpected;
 
       gates['G-tamper'] = {
         pass: !tamperDetected,
         detail: tamperDetected
-          ? `Tampering detected (${tamperAll.length} call(s)): ${tamperAll.slice(0, 3).map((e) => e.method).join(', ')}`
+          ? `Tampering detected (${tamperCountTotal} call(s)): ${tamperAll.slice(0, 3).map((e) => e.method).join(', ')}`
           : 'No host-control tampering detected',
       };
       gates['G-webgl-hook'] = {
@@ -1644,7 +1650,8 @@ export async function executePlan(plan, {
 
       manifest.tamper = {
         detected: tamperDetected,
-        count: tamperAll.length,
+        count: tamperCountTotal,
+        ...(tamperFirstEvent ? { first_event: tamperFirstEvent } : {}),
         events: tamperAll.slice(0, 50),
       };
       manifest.unhooked_rendering = unhookedObj;

@@ -6,39 +6,92 @@
 (function initBenchHostScript() {
   if (window.__benchHostControl) return;
 
-  const initConfig = window.__BENCH_HOST_INIT__ || {};
+  // Capture builtins before any page script can mutate prototypes (Array.prototype.push, JSON, String, etc.)
+  const BuiltinObjectDefineProperty = Object.defineProperty;
+  const BuiltinObjectFreeze = Object.freeze;
+  const BuiltinJSONParse = JSON.parse;
+  const BuiltinStringIndexOf = String.prototype.indexOf;
+  const BuiltinStringSlice = String.prototype.slice;
+  const BuiltinStringToLowerCase = String.prototype.toLowerCase;
+  const BuiltinDateNow = Date.now;
+  const BuiltinProxy = Proxy;
+  const BuiltinReflectConstruct = Reflect.construct;
+
+  const rawInit = window.__BENCH_HOST_INIT__;
+  const hasInitConfig = Boolean(rawInit && typeof rawInit === 'object');
+  const initConfig = hasInitConfig ? rawInit : {};
   try {
     delete window.__BENCH_HOST_INIT__;
   } catch {
     window.__BENCH_HOST_INIT__ = undefined;
   }
 
+  const hasControlSecretKey = hasInitConfig && ('controlSecret' in initConfig);
+  const requiresSecret = Boolean(initConfig.requireSecret) || hasControlSecretKey || !hasInitConfig;
   const controlSecret =
     typeof initConfig.controlSecret === 'string' && initConfig.controlSecret.length > 0
       ? initConfig.controlSecret
       : null;
 
   const tamperEvents = [];
+  let tamperCount = 0;
+  let firstTamperEvent = null;
   function recordTamper(method, reason = 'unauthorized_call') {
+    tamperCount += 1;
+    const ev = {
+      method: String(method || 'unknown'),
+      reason: String(reason || 'unauthorized_call'),
+      t: BuiltinDateNow(),
+    };
+    if (!firstTamperEvent) firstTamperEvent = ev;
     if (tamperEvents.length < 100) {
-      tamperEvents.push({
-        method: String(method || 'unknown'),
-        reason: String(reason || 'unauthorized_call'),
-        t: Date.now(),
-      });
+      tamperEvents.push(ev);
     }
   }
   function verifySecret(provided, method) {
-    if (controlSecret === null) return true;
+    if (!hasInitConfig) {
+      recordTamper(method, 'missing_host_init');
+      return false;
+    }
+    if (controlSecret === null) {
+      if (requiresSecret) {
+        recordTamper(method, 'missing_control_secret');
+        return false;
+      }
+      // Only WP-0a frozen room-harness.mjs omits controlSecret & requireSecret on initConfig object
+      return true;
+    }
     if (provided === controlSecret) return true;
     recordTamper(method, 'unauthorized_mutator_call');
     return false;
+  }
+
+  function decodeControlPacket(arg0, method, extraArgsLen = 0) {
+    if (typeof arg0 === 'string' && extraArgsLen === 0) {
+      const nl = BuiltinStringIndexOf.call(arg0, '\n');
+      if (nl !== -1) {
+        const sec = BuiltinStringSlice.call(arg0, 0, nl);
+        if (!verifySecret(sec, method)) return { ok: false, packet: true, value: null };
+        const jsonPart = BuiltinStringSlice.call(arg0, nl + 1);
+        try {
+          return { ok: true, packet: true, value: BuiltinJSONParse(jsonPart) };
+        } catch {
+          recordTamper(method, 'malformed_packet');
+          return { ok: false, packet: true, value: null };
+        }
+      }
+      if (!verifySecret(arg0, method)) return { ok: false, packet: false, value: null };
+      return { ok: true, packet: false, value: null };
+    }
+    if (!verifySecret(undefined, method)) return { ok: false, packet: false, value: null };
+    return { ok: true, packet: false, value: null };
   }
 
   // ---- Stub navigator.gpu & track unhooked rendering channels ----
   const unhookedState = {
     workerCount: 0,
     offscreenTransfers: 0,
+    iframeCount: 0,
     canvas2dCount: 0,
     bitmapRendererCount: 0,
     webgpuAttempts: 0,
@@ -53,21 +106,21 @@
   if (initConfig.disableWebGpu !== false) {
     try {
       if (typeof Navigator !== 'undefined') {
-        Object.defineProperty(Navigator.prototype, 'gpu', {
+        BuiltinObjectDefineProperty(Navigator.prototype, 'gpu', {
           get() { return undefined; },
           configurable: false,
         });
       }
     } catch {
       try {
-        Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: false });
+        BuiltinObjectDefineProperty(navigator, 'gpu', { value: undefined, configurable: false });
       } catch {
         // ignore if already non-configurable
       }
     }
     try {
       if (typeof WorkerNavigator !== 'undefined') {
-        Object.defineProperty(WorkerNavigator.prototype, 'gpu', {
+        BuiltinObjectDefineProperty(WorkerNavigator.prototype, 'gpu', {
           get() { return undefined; },
           configurable: false,
         });
@@ -77,24 +130,45 @@
     }
   }
 
-  if (typeof window.Worker === 'function') {
-    const OrigWorker = window.Worker;
-    window.Worker = function PatchedWorker(...args) {
-      unhookedState.workerCount += 1;
-      addUnhookedReason('worker_created');
-      return new OrigWorker(...args);
-    };
-    window.Worker.prototype = OrigWorker.prototype;
+  function wrapWorkerGlobal(globalName) {
+    const Orig = window[globalName];
+    if (typeof Orig !== 'function') return;
+    const Wrapped = new BuiltinProxy(Orig, {
+      construct(target, argArray, newTarget) {
+        unhookedState.workerCount += 1;
+        addUnhookedReason('worker_created');
+        return BuiltinReflectConstruct(target, argArray, target);
+      },
+      apply(target, thisArg, argArray) {
+        unhookedState.workerCount += 1;
+        addUnhookedReason('worker_created');
+        return target.apply(thisArg, argArray);
+      },
+    });
+    try {
+      if (Orig.prototype) {
+        BuiltinObjectDefineProperty(Orig.prototype, 'constructor', {
+          value: Wrapped,
+          writable: true,
+          configurable: true,
+        });
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      BuiltinObjectDefineProperty(window, globalName, {
+        value: Wrapped,
+        writable: true,
+        configurable: true,
+      });
+    } catch {
+      window[globalName] = Wrapped;
+    }
   }
-  if (typeof window.SharedWorker === 'function') {
-    const OrigSharedWorker = window.SharedWorker;
-    window.SharedWorker = function PatchedSharedWorker(...args) {
-      unhookedState.workerCount += 1;
-      addUnhookedReason('worker_created');
-      return new OrigSharedWorker(...args);
-    };
-    window.SharedWorker.prototype = OrigSharedWorker.prototype;
-  }
+  wrapWorkerGlobal('Worker');
+  wrapWorkerGlobal('SharedWorker');
+
   if (typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function') {
     const origTransfer = HTMLCanvasElement.prototype.transferControlToOffscreen;
     HTMLCanvasElement.prototype.transferControlToOffscreen = function patchedTransferControlToOffscreen(...args) {
@@ -103,6 +177,39 @@
       hookedCanvases.add(this);
       return origTransfer.apply(this, args);
     };
+  }
+
+  if (typeof Document !== 'undefined') {
+    if (typeof Document.prototype.createElement === 'function') {
+      const origCreateElement = Document.prototype.createElement;
+      Document.prototype.createElement = function patchedCreateElement(tagName, ...rest) {
+        try {
+          const lower = BuiltinStringToLowerCase.call(String(tagName || ''));
+          if (lower === 'iframe' || lower === 'frame') {
+            unhookedState.iframeCount += 1;
+            addUnhookedReason('iframe_detected');
+          }
+        } catch {
+          // ignore
+        }
+        return origCreateElement.call(this, tagName, ...rest);
+      };
+    }
+    if (typeof Document.prototype.createElementNS === 'function') {
+      const origCreateElementNS = Document.prototype.createElementNS;
+      Document.prototype.createElementNS = function patchedCreateElementNS(ns, qualifiedName, ...rest) {
+        try {
+          const lower = BuiltinStringToLowerCase.call(String(qualifiedName || ''));
+          if (lower === 'iframe' || lower === 'frame' || lower.endsWith(':iframe')) {
+            unhookedState.iframeCount += 1;
+            addUnhookedReason('iframe_detected');
+          }
+        } catch {
+          // ignore
+        }
+        return origCreateElementNS.call(this, ns, qualifiedName, ...rest);
+      };
+    }
   }
 
   // ---- Deterministic PRNG (mulberry32) ----
@@ -1006,6 +1113,10 @@
   function scanShadowRootsInSubtree(rootNode) {
     if (!rootNode || !mutationObserver) return;
     try {
+      if (rootNode.tagName === 'IFRAME' || rootNode.tagName === 'FRAME') {
+        unhookedState.iframeCount += 1;
+        addUnhookedReason('iframe_detected');
+      }
       if (rootNode.shadowRoot && rootNode.shadowRoot.mode !== 'closed') {
         observeDomRoot(rootNode.shadowRoot);
         scanShadowRootsInSubtree(rootNode.shadowRoot);
@@ -1014,6 +1125,10 @@
         const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT);
         let n = walker.nextNode();
         while (n) {
+          if (n.tagName === 'IFRAME' || n.tagName === 'FRAME') {
+            unhookedState.iframeCount += 1;
+            addUnhookedReason('iframe_detected');
+          }
           if (n.shadowRoot && n.shadowRoot.mode !== 'closed') {
             observeDomRoot(n.shadowRoot);
             scanShadowRootsInSubtree(n.shadowRoot);
@@ -1152,8 +1267,16 @@
     }
   }
 
-  function resetDomMetrics(opts = {}, secret) {
-    if (!verifySecret(secret, 'resetDomMetrics')) return;
+  function resetDomMetrics(optsOrPkt = {}, secret) {
+    let opts = optsOrPkt;
+    const nl = typeof optsOrPkt === 'string' ? BuiltinStringIndexOf.call(optsOrPkt, '\n') : -1;
+    if (nl !== -1 && secret === undefined) {
+      const dec = decodeControlPacket(optsOrPkt, 'resetDomMetrics', 0);
+      if (!dec.ok) return;
+      opts = dec.value || {};
+    } else if (!verifySecret(secret, 'resetDomMetrics')) {
+      return;
+    }
     if (mutationObserver) mutationObserver.takeRecords();
     domSteps = typeof opts?.steps === 'number' && opts.steps >= 0 ? opts.steps : 0;
     domMutations = 0;
@@ -1170,8 +1293,16 @@
     }
   }
 
-  function markDomStep(count = 1, secret) {
-    if (!verifySecret(secret, 'markDomStep')) return domSteps;
+  function markDomStep(countOrPkt = 1, secret) {
+    let count = countOrPkt;
+    const nl = typeof countOrPkt === 'string' ? BuiltinStringIndexOf.call(countOrPkt, '\n') : -1;
+    if (nl !== -1 && secret === undefined) {
+      const dec = decodeControlPacket(countOrPkt, 'markDomStep', 0);
+      if (!dec.ok) return domSteps;
+      count = dec.value;
+    } else if (!verifySecret(secret, 'markDomStep')) {
+      return domSteps;
+    }
     domSteps += Math.max(0, Number(count) || 0);
     return domSteps;
   }
@@ -1232,7 +1363,7 @@
     const m = getDomMetrics();
     return {
       ready: true,
-      steps: domSteps > 0 ? domSteps : 1,
+      steps: domSteps,
       dom_mutations: m.domMutations,
       layout_reads: m.layoutReads,
       dom_nodes: m.domNodes,
@@ -1242,20 +1373,21 @@
 
   function getTamperStatus() {
     return {
-      tampered: tamperEvents.length > 0,
-      count: tamperEvents.length,
+      tampered: tamperCount > 0,
+      count: tamperCount,
+      firstEvent: firstTamperEvent,
       events: tamperEvents.slice(0, 50),
     };
   }
 
   function getUnhookedRenderingStatus() {
     const reasons = new Set(unhookedState.reasons);
-    let iframeCount = 0;
+    let currentIframes = 0;
     let unhookedCanvasCount = 0;
     if (typeof document !== 'undefined') {
       try {
-        iframeCount = document.querySelectorAll('iframe, frame').length;
-        if (iframeCount > 0) reasons.add('iframe_detected');
+        currentIframes = document.querySelectorAll('iframe, frame').length;
+        if (currentIframes > 0) reasons.add('iframe_detected');
         const canvases = document.querySelectorAll('canvas');
         for (let i = 0; i < canvases.length; i++) {
           const c = canvases[i];
@@ -1263,13 +1395,14 @@
             unhookedCanvasCount += 1;
           }
         }
-        if (unhookedCanvasCount > 0 && iframeCount > 0) {
+        if (unhookedCanvasCount > 0 && (currentIframes > 0 || unhookedState.iframeCount > 0)) {
           reasons.add('unhooked_canvas');
         }
       } catch {
         // ignore
       }
     }
+    const iframeCount = Math.max(unhookedState.iframeCount, currentIframes);
     const reasonList = Array.from(reasons);
     return {
       detected: reasonList.length > 0,
@@ -1284,24 +1417,48 @@
     };
   }
 
-  // ---- Internal harness control API (non-enumerable, mutators secret-gated) ----
-  const control = Object.freeze({
-    setSeed(seed, params, secret) {
-      if (!verifySecret(secret, 'setSeed')) return;
-      currentSeed = Number(seed) >>> 0;
+  // ---- Internal harness control API (non-enumerable, mutators secret-gated & packet-safe) ----
+  const control = BuiltinObjectFreeze({
+    setSeed(seedOrPkt, params, secret) {
+      let s = seedOrPkt;
+      let p = params;
+      if (typeof seedOrPkt === 'string' && params === undefined && secret === undefined) {
+        const dec = decodeControlPacket(seedOrPkt, 'setSeed', 0);
+        if (!dec.ok) return;
+        s = dec.value?.s;
+        p = dec.value?.p;
+      } else if (!verifySecret(secret, 'setSeed')) {
+        return;
+      }
+      currentSeed = Number(s) >>> 0;
       currentRng = createRng(currentSeed);
-      if (params !== undefined) {
-        currentParams = deepCloneAndFreeze(params || {});
+      if (p !== undefined) {
+        currentParams = deepCloneAndFreeze(p || {});
       }
     },
-    setParams(params, secret) {
-      if (!verifySecret(secret, 'setParams')) return;
-      currentParams = deepCloneAndFreeze(params || {});
+    setParams(paramsOrPkt, secret) {
+      let p = paramsOrPkt;
+      if (typeof paramsOrPkt === 'string' && secret === undefined) {
+        const dec = decodeControlPacket(paramsOrPkt, 'setParams', 0);
+        if (!dec.ok) return;
+        p = dec.value;
+      } else if (!verifySecret(secret, 'setParams')) {
+        return;
+      }
+      currentParams = deepCloneAndFreeze(p || {});
     },
-    freeze(tMs, secret) {
-      if (!verifySecret(secret, 'freeze')) return;
+    freeze(tMsOrPkt, secret) {
+      let tVal = tMsOrPkt;
+      if (typeof tMsOrPkt === 'string' && secret === undefined) {
+        const dec = decodeControlPacket(tMsOrPkt, 'freeze', 0);
+        if (!dec.ok) return null;
+        tVal = dec.value;
+      } else if (!verifySecret(secret, 'freeze')) {
+        return null;
+      }
       clockMode = 'frozen';
-      frozenMs = Number(tMs);
+      frozenMs = Number(tVal);
+      return frozenMs;
     },
     resume(secret) {
       if (!verifySecret(secret, 'resume')) return;
@@ -1310,26 +1467,51 @@
       liveStartPerfMs = perfNow();
       clockMode = 'live';
     },
-    resetClock(tMs = 0, secret) {
-      if (!verifySecret(secret, 'resetClock')) return;
-      liveBaseMs = Number(tMs);
+    resetClock(tMsOrPkt = 0, secret) {
+      let tVal = tMsOrPkt;
+      if (typeof tMsOrPkt === 'string' && secret === undefined) {
+        const dec = decodeControlPacket(tMsOrPkt, 'resetClock', 0);
+        if (!dec.ok) return;
+        tVal = dec.value ?? 0;
+      } else if (!verifySecret(secret, 'resetClock')) {
+        return;
+      }
+      liveBaseMs = Number(tVal);
       liveStartPerfMs = perfNow();
-      frozenMs = Number(tMs);
-      virtualMs = Number(tMs);
+      frozenMs = Number(tVal);
+      virtualMs = Number(tVal);
       clockMode = 'live';
     },
-    setVirtualClock(tMs, secret) {
-      if (!verifySecret(secret, 'setVirtualClock')) return;
+    setVirtualClock(tMsOrPkt, secret) {
+      let tVal = tMsOrPkt;
+      if (typeof tMsOrPkt === 'string' && secret === undefined) {
+        const dec = decodeControlPacket(tMsOrPkt, 'setVirtualClock', 0);
+        if (!dec.ok) return;
+        tVal = dec.value;
+      } else if (typeof tMsOrPkt === 'string' && typeof secret === 'number') {
+        // Legacy/internal fast loop form: (secret, numericT) — verify arg0 directly so Array/JSON not needed
+        if (!verifySecret(tMsOrPkt, 'setVirtualClock')) return;
+        tVal = secret;
+      } else if (!verifySecret(secret, 'setVirtualClock')) {
+        return;
+      }
       clockMode = 'virtual';
-      virtualMs = Number(tMs);
+      virtualMs = Number(tVal);
     },
-    advanceVirtualClock(dtMs, secret) {
-      if (!verifySecret(secret, 'advanceVirtualClock')) return clockNow();
+    advanceVirtualClock(dtMsOrPkt, secret) {
+      let dtVal = dtMsOrPkt;
+      if (typeof dtMsOrPkt === 'string' && secret === undefined) {
+        const dec = decodeControlPacket(dtMsOrPkt, 'advanceVirtualClock', 0);
+        if (!dec.ok) return clockNow();
+        dtVal = dec.value;
+      } else if (!verifySecret(secret, 'advanceVirtualClock')) {
+        return clockNow();
+      }
       if (clockMode !== 'virtual') {
         virtualMs = clockNow();
         clockMode = 'virtual';
       }
-      virtualMs += Number(dtMs);
+      virtualMs += Number(dtVal);
       return virtualMs;
     },
     getClockMode() {
@@ -1346,9 +1528,20 @@
       if (!verifySecret(secret, 'uninstallRafOverride')) return;
       uninstallRafOverride();
     },
-    stepRafVirtual(durationMs, hz, startClockMs, secret) {
-      if (!verifySecret(secret, 'stepRafVirtual')) return { steps: 0, invoked: 0, finalClockMs: clockNow() };
-      return stepRafVirtual(durationMs, hz, startClockMs);
+    stepRafVirtual(durOrPkt, hz, startClockMs, secret) {
+      let d = durOrPkt;
+      let rate = hz;
+      let start = startClockMs;
+      if (typeof durOrPkt === 'string' && hz === undefined) {
+        const dec = decodeControlPacket(durOrPkt, 'stepRafVirtual', 0);
+        if (!dec.ok) return { steps: 0, invoked: 0, finalClockMs: clockNow() };
+        d = dec.value?.dur;
+        rate = dec.value?.rate;
+        start = dec.value?.start;
+      } else if (!verifySecret(secret, 'stepRafVirtual')) {
+        return { steps: 0, invoked: 0, finalClockMs: clockNow() };
+      }
+      return stepRafVirtual(d, rate, start);
     },
     isRafOverrideActive() {
       return rafOverrideActive;
@@ -1356,14 +1549,28 @@
     getQueuedRafCount() {
       return rafQueue.size;
     },
-    setInternalBypass(flag, secret) {
-      if (!verifySecret(secret, 'setInternalBypass')) return;
-      internalListenerBypass = Boolean(flag);
-      internalDomBypass = Boolean(flag);
+    setInternalBypass(flagOrPkt, secret) {
+      let f = flagOrPkt;
+      if (typeof flagOrPkt === 'string' && secret === undefined) {
+        const dec = decodeControlPacket(flagOrPkt, 'setInternalBypass', 0);
+        if (!dec.ok) return;
+        f = dec.value;
+      } else if (!verifySecret(secret, 'setInternalBypass')) {
+        return;
+      }
+      internalListenerBypass = Boolean(f);
+      internalDomBypass = Boolean(f);
     },
-    setDomBypass(flag, secret) {
-      if (!verifySecret(secret, 'setDomBypass')) return;
-      internalDomBypass = Boolean(flag);
+    setDomBypass(flagOrPkt, secret) {
+      let f = flagOrPkt;
+      if (typeof flagOrPkt === 'string' && secret === undefined) {
+        const dec = decodeControlPacket(flagOrPkt, 'setDomBypass', 0);
+        if (!dec.ok) return;
+        f = dec.value;
+      } else if (!verifySecret(secret, 'setDomBypass')) {
+        return;
+      }
+      internalDomBypass = Boolean(f);
     },
     getWebGLMetrics,
     resetWebGLFrameMetrics,

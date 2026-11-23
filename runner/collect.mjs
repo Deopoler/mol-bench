@@ -167,7 +167,7 @@ export function scanForLeakage({ runDir, subCopyDir, diffText, changedFiles, rep
   const normRepoBack = path.resolve(repoRoot).replace(/\//g, "\\");
   const repoLowerSlash = normRepoSlash.toLowerCase();
   const repoLowerBack = normRepoBack.toLowerCase();
-  const hiddenPattern = /(?:^|[\s"'`(\[/\\=:])(?:hidden-v2\b|hidden[\/\\])|[\/\\]hidden\b/i;
+  const hiddenPattern = /(?:^|[\s"'`(\[/\\=])hidden-v2\b|(?:\.\.|[\\/]mol-bench|[\\/]bench|[a-z]:)[\/\\]hidden(?:[\/\\]|['"`\s)\]]|$)|(?:^|[\s"'`(=])hidden[\/\\](?!\*)[a-z0-9_.-]+/i;
 
   function normalizeStringConcat(text) {
     return String(text || "").replace(/(['"`])\s*\+\s*\1/g, "");
@@ -233,10 +233,12 @@ export function scanForLeakage({ runDir, subCopyDir, diffText, changedFiles, rep
     scanContentString(currentDiffFile, line.slice(1), "Added diff line");
   }
 
-  // 3. Scan ALL files in submission copy (catches gitignored & binary files as well) + changedFiles
+  // 3. Scan ALL files in submission copy (catches gitignored & binary files, skipping .git & node_modules) + changedFiles
   const filesToScan = new Set(changedFiles || []);
+  const walkSkipDirs = new Set([".git", "node_modules", ".venv", "__pycache__", ".pytest_cache"]);
   function walkSubCopy(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (walkSkipDirs.has(entry.name)) continue;
       const full = path.join(dir, entry.name);
       const st = fs.lstatSync(full);
       if (st.isSymbolicLink()) {

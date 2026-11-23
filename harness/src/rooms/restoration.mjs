@@ -245,7 +245,8 @@ async function runBrowserLifecycleAndClockProbes(page, seeds = [1], controlSecre
 
   // 2. anim.clock_independence (30 Hz vs 144 Hz over 5000 ms clock)
   try {
-    const clockDiff = await page.evaluate(async ([s, controlSecret]) => {
+    const clockDiff = await page.evaluate(async (controlSecret) => {
+      const s = window.__benchHost.seed;
       async function measureLiveAngleAtHz(hz) {
         const totalMs = 5000;
         const steps = Math.round((totalMs / 1000) * hz);
@@ -310,7 +311,7 @@ async function runBrowserLifecycleAndClockProbes(page, seeds = [1], controlSecre
       await window.__bench.renderFrame();
       const rawDiff = Math.abs(a30 - a144) % 360;
       return Math.min(rawDiff, 360 - rawDiff);
-    }, [seed, controlSecret]);
+    }, controlSecret);
 
     probeOut[`raf_clock_s${seed}`] = {
       metrics: {
@@ -365,17 +366,27 @@ export async function extraCapture(ctx) {
       // 1. Populate sample.state (chartPatches, focusedCenter, focusedMaskColor) for existing samples
       for (const s of ctx.manifest.samples) {
         if (!s.state && s.viewport === "1440x900" && (s.dpr ?? 1) === 1) {
+          const freezePkt = pageControlSecret ? `${pageControlSecret}\n${JSON.stringify(s.t ?? 1000)}` : null;
+          const seedPkt = pageControlSecret ? `${pageControlSecret}\n${JSON.stringify({ s: s.seed ?? 1 })}` : null;
+          if (freezePkt) {
+            await page.evaluate((pkt) => {
+              window.__benchHostControl?.freeze?.(pkt);
+            }, freezePkt);
+            await page.evaluate((pkt) => {
+              window.__benchHostControl.setSeed(pkt);
+            }, seedPkt);
+          }
           const st = await page.evaluate(
-            async ({ seedVal, tVal, sec }) => {
-              if (typeof window.__benchHostControl?.freeze === "function") {
-                window.__benchHostControl.freeze(tVal, sec);
+            async ({ seedVal, tVal, hasSec }) => {
+              if (!hasSec && typeof window.__benchHostControl?.freeze === "function") {
+                window.__benchHostControl.freeze(tVal);
               }
               window.__bench.setSeed(seedVal);
               window.__bench.seek(tVal);
               await window.__bench.renderFrame();
               return window.__bench.state();
             },
-            { seedVal: s.seed ?? 1, tVal: s.t ?? 1000, sec: pageControlSecret }
+            { seedVal: s.seed ?? 1, tVal: s.t ?? 1000, hasSec: Boolean(freezePkt) }
           );
           s.state = st;
         }
@@ -390,16 +401,32 @@ export async function extraCapture(ctx) {
         await page.setViewportSize({ width: 768, height: 1024 });
         await page.evaluate(() => window.dispatchEvent(new Event("resize")));
         await page.setViewportSize({ width: 1200, height: 700 });
-        const resizeState = await page.evaluate(async ([sVal, sec]) => {
-          if (typeof window.__benchHostControl?.freeze === "function") {
-            window.__benchHostControl.freeze(1000, sec);
-          }
-          window.__bench.setSeed(sVal);
-          window.dispatchEvent(new Event("resize"));
-          window.__bench.seek(1000);
-          await window.__bench.renderFrame();
-          return window.__bench.state();
-        }, [seed0, pageControlSecret]);
+        const fPkt = pageControlSecret ? `${pageControlSecret}\n1000` : null;
+        const resizeState = await page.evaluate(
+          fPkt
+            ? async (pkt) => {
+                if (typeof window.__benchHostControl?.freeze === "function") {
+                  window.__benchHostControl.freeze(pkt);
+                }
+                const sVal = window.__benchHost.seed;
+                window.__bench.setSeed(sVal);
+                window.dispatchEvent(new Event("resize"));
+                window.__bench.seek(1000);
+                await window.__bench.renderFrame();
+                return window.__bench.state();
+              }
+            : async (sVal) => {
+                if (typeof window.__benchHostControl?.freeze === "function") {
+                  window.__benchHostControl.freeze(1000);
+                }
+                window.__bench.setSeed(sVal);
+                window.dispatchEvent(new Event("resize"));
+                window.__bench.seek(1000);
+                await window.__bench.renderFrame();
+                return window.__bench.state();
+              },
+          fPkt || seed0
+        );
         const relFile = `frames/resize_seq_s${seed0}_1200x700.png`;
         const absFile = path.join(ctx.workDir, relFile);
         await page.screenshot({ path: absFile });

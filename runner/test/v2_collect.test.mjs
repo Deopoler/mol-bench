@@ -409,6 +409,36 @@ test("review fixes: symlink refusal, root-only start exclusions, gitignored/conc
     assert.equal(leaked.result.invalid_reason, "leakage_detected");
     assert.equal(leaked.result.composite, null);
 
+    // 3b. Legitimate overflow:hidden/*...*/ CSS and files under .git/ or node_modules/ must NOT false-positive G-leakage
+    const cleanCssPrep = prepareRun({
+      room: "aurora",
+      runId: "aurora__css-not-leak",
+      version: 2,
+      root: runsRoot,
+      repoRoot: repo,
+    });
+    fs.writeFileSync(
+      path.join(cleanCssPrep.runDir, "room", "index.html"),
+      "<!doctype html><style>body{overflow:hidden/*vendor*/;visibility:hidden;}</style><h1>Clean</h1>\n",
+    );
+    fs.writeFileSync(
+      path.join(cleanCssPrep.runDir, "report.json"),
+      JSON.stringify({ schema_version: 1, summary: "Done", deliverables: ["room/index.html", "report.json"], claims: [], blocked: false }),
+    );
+    const cleanCss = collectRun({
+      runId: "aurora__css-not-leak",
+      model: "Clean CSS",
+      version: 2,
+      hidden: false,
+      noCapture: true,
+      noPython: true,
+      root: runsRoot,
+      resultsDir: resultsV2,
+      repoRoot: repo,
+    });
+    assert.equal(cleanCss.result.leakage.flagged, false, `overflow:hidden/*vendor*/ must not false-positive leakage: ${JSON.stringify(cleanCss.result.leakage)}`);
+    assert.equal(cleanCss.result.invalid ?? false, false);
+
     // 4. Transitive v2 leaderboard comparator (permutation invariant even across A-B=0.04, B-C=0.04, A-C=0.08 & mixed providers)
     const lbDir = path.join(tmpBase, "lb-transitivity");
     const makeRun = (runId, comp, provider, outTok) => ({
