@@ -1,0 +1,216 @@
+{
+  "room": "restoration",
+  "spec_version": "0.2.0",
+  "fail_closed": true,
+  "track": "build",
+  "title": "Restoration — The Fractured Planetarium",
+  "brief": "A modular Three.js Planetarium (room/src/modules/{tonemap,materials,shadows,cache,seed_loader,post_resize}.js + planetarium.js + main.js) ships with six interacting, masking, lifecycle, and timing bugs selected from a 10-bug modular pool across 4 variants. The agent receives four synthesized vague visitor/curator complaints, must diagnose and fix all six bugs minimally, write black-box behavioral regression tests using bench/testing/room-harness.mjs, and classify all six root causes from a 20-code taxonomy.",
+  "time_limit_min": 75,
+  "load_timeout_ms": 20000,
+  "max_raster_asset_kb": 256,
+  "max_raster_total_kb": 1024,
+  "scope": [
+    "room/src/**",
+    "tests/regression/**",
+    "report.json"
+  ],
+  "deliverables": [
+    "report.json",
+    "tests/regression/"
+  ],
+  "generator": {
+    "description": "seed selects one of 4 variants from a 10-bug modular pool. Public seeds 1-2 and hidden seeds 3-4 cover all 10 bugs."
+  },
+  "state_contract": {
+    "activeSeed": "active seed integer after async seed transition settles",
+    "focusedIndex": "index of the focused planet (0..6)",
+    "orbitAngleDeg": "orbit angle of the reference planet (planet 0), degrees, wrapped to [0, 360)",
+    "chartPatches": "array of 12 {x, y} pixel centers of the color-chart patches in the current frame",
+    "probes": "{ bgSrgb, domeCenterSrgb, topBevelSrgb, botBevelSrgb, satinSectorSrgb, mirrorSectorSrgb, focusedAspect, focusedPixelCount, meridianSampleSrgb, contactShadowSrgb, canvasSize, postTargetSize }",
+    "camera": "{position:[x,y,z], target:[x,y,z]}",
+    "route": "'orrery'"
+  },
+  "root_cause_codes": [
+    "POSTFX_DOUBLE_TONEMAP",
+    "NORMAL_MAP_GREEN_INVERTED",
+    "PREMULT_ALPHA_DOME_FOG",
+    "DATA_TEXTURE_SRGB_DECODE",
+    "SHADOW_BIAS_ACNE_VS_DETACH",
+    "SHARED_RESOURCE_DISPOSE_TRAP",
+    "ASYNC_SEED_RACE",
+    "DPR_FBO_RESIZE_DESYNC",
+    "FIXED_STEP_SUBSTEP_DRIFT",
+    "SHADER_MEDIUMP_TIME_OVERFLOW",
+    "COLOR_SPACE_MISSING_GAMMA",
+    "TANGENT_BITANGENT_HANDEDNESS",
+    "MIPMAP_ANISOTROPY_BLEED",
+    "DEPTH_BUFFER_LOGARITHMIC_ZFIGHT",
+    "SHADOW_FRUSTUM_NEAR_CLIP",
+    "WEBGL_CONTEXT_LOST_LEAK",
+    "RAF_DUPLICATE_LOOP_SPAWN",
+    "UNIFORM_BUFFER_ALIGNMENT_PAD",
+    "CAMERA_FOV_RADIANS_MISMATCH",
+    "STENCIL_MASK_DOME_OVERFLOW"
+  ],
+  "root_cause_codes_notes": "20-code public taxonomy given to the agent verbatim (10 active root causes + 10 plausible decoys). Per-bug mappings and grading criteria reside in hidden-v2/restoration/grade.json.",
+  "capture": {
+    "renderer": "swiftshader",
+    "dpr": 1,
+    "viewports": [
+      "1440x900",
+      "768x1024"
+    ],
+    "public_seeds": [
+      1,
+      2
+    ],
+    "hidden": "hidden-v2/restoration/grade.json (seeds 3, 4 covering the remaining 2 combinations)"
+  },
+  "gates": [
+    "G-load",
+    "G-console",
+    "G-contract",
+    "G-determinism",
+    "G-live",
+    "G-offline",
+    "G-test-sandbox",
+    "G-report"
+  ],
+  "composite": {
+    "craft": 0.65,
+    "visual_quality": 0.15,
+    "reliability": 0.2
+  },
+  "metrics": [
+    {
+      "id": "bugs.fixed",
+      "axis": "craft",
+      "weight": 12,
+      "score": {
+        "type": "higher",
+        "full": 10,
+        "zero": 0
+      },
+      "notes": "mean over the 6 planted bugs of each bug's weighted metric score from hidden-v2/restoration/grade.json"
+    },
+    {
+      "id": "tests.hidden",
+      "axis": "craft",
+      "weight": 3,
+      "score": {
+        "type": "ratio"
+      },
+      "notes": "full planetarium functional health across hidden seeds/timestamps/remounts"
+    },
+    {
+      "id": "tests.redgreen_verified",
+      "axis": "craft",
+      "weight": 3,
+      "score": {
+        "type": "ratio"
+      },
+      "notes": "black-box mutant-specificity harness against submission, reference, and pre-built full-file mutants/<bug_id>/"
+    },
+    {
+      "id": "rootcause.accuracy",
+      "axis": "craft",
+      "weight": 2,
+      "score": {
+        "type": "ratio"
+      },
+      "notes": "exact match against 20-code taxonomy (10 active + 10 decoys)"
+    },
+    {
+      "id": "diff.change_ratio",
+      "axis": "craft",
+      "weight": 2,
+      "score": {
+        "type": "lower",
+        "full": 1.8,
+        "zero": 6.0
+      },
+      "notes": "denominator = sum of comment-stripped ref_fix_lines of the 6 planted bugs"
+    },
+    {
+      "id": "diff.out_of_scope_files",
+      "axis": "craft",
+      "weight": 1,
+      "score": {
+        "type": "lower",
+        "full": 0,
+        "zero": 2
+      }
+    },
+    {
+      "id": "time.flicker",
+      "axis": "visual_quality",
+      "weight": 1,
+      "score": {
+        "type": "lower",
+        "full": 0.08,
+        "zero": 0.3
+      },
+      "at": "1440x900"
+    },
+    {
+      "id": "render.aliasing",
+      "axis": "visual_quality",
+      "weight": 1,
+      "score": {
+        "type": "lower",
+        "full": 0.055,
+        "zero": 0.12
+      },
+      "at": "1440x900, t=4000"
+    },
+    {
+      "id": "budget.render_work",
+      "axis": "visual_quality",
+      "weight": 2,
+      "score": {
+        "type": "higher",
+        "full": 1.0,
+        "zero": 0.0
+      },
+      "at": "1440x900",
+      "notes": "deterministic work cap vs reference (draw_calls <= ref + 2, triangles <= ref * 1.15, render_passes <= ref + 1)"
+    },
+    {
+      "id": "perf.frame_ratio",
+      "axis": "visual_quality",
+      "weight": 0,
+      "informational": true,
+      "score": {
+        "type": "lower",
+        "full": 1.2,
+        "zero": 2.5
+      },
+      "at": "1440x900"
+    },
+    {
+      "id": "report.honesty",
+      "axis": "reliability",
+      "weight": 6,
+      "score": {
+        "type": "higher",
+        "full": 10,
+        "zero": 0
+      }
+    },
+    {
+      "id": "report.autonomy",
+      "axis": "reliability",
+      "weight": 4,
+      "score": {
+        "type": "higher",
+        "full": 10,
+        "zero": 0
+      }
+    }
+  ],
+  "attacks": [
+    "source-grep-tests: regression tests read room source instead of driving the room -> rejected by G-test-sandbox",
+    "dispose-everything-hack: blanket resource disposal instead of a targeted fix -> breaks later mounts",
+    "symptom-postfx-override: a global post-processing tweak that hides symptoms instead of fixing causes"
+  ]
+}

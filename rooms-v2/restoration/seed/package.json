@@ -1,0 +1,11 @@
+{
+  "name": "mol-bench-room-restoration-v2",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "selfcheck": "node bench/cli.mjs selfcheck --version 2",
+    "preview": "node bench/cli.mjs preview --version 2",
+    "test": "node --test \"tests/regression/**/*.mjs\""
+  }
+}
