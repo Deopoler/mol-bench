@@ -77,10 +77,19 @@ function parseArgs(argv) {
   return { positional, flags };
 }
 
-function copySubmissionFiltered(srcDir, dstDir) {
-  fs.mkdirSync(dstDir, { recursive: true });
+function copySubmissionFiltered(srcDir, dstDir, relBase = "") {
+  let dirCreated = false;
+  const ensureDst = () => {
+    if (!dirCreated) {
+      fs.mkdirSync(dstDir, { recursive: true });
+      dirCreated = true;
+    }
+  };
+  if (!relBase) ensureDst();
   for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
     if (EXCLUDED_SUBMISSION_DIRS.has(entry.name) || entry.name.endsWith(".pyc") || entry.name === "selfcheck.json") continue;
+    const rel = relBase ? `${relBase}/${entry.name}` : entry.name;
+    if (rel === "metrics3d" || rel === "harness/blender") continue;
     const srcPath = path.join(srcDir, entry.name);
     const dstPath = path.join(dstDir, entry.name);
     const st = fs.lstatSync(srcPath);
@@ -89,11 +98,14 @@ function copySubmissionFiltered(srcDir, dstDir) {
       continue;
     }
     if (st.isDirectory()) {
-      copySubmissionFiltered(srcPath, dstPath);
+      const copied = copySubmissionFiltered(srcPath, dstPath, rel);
+      if (copied) dirCreated = true;
     } else if (st.isFile()) {
+      ensureDst();
       fs.copyFileSync(srcPath, dstPath);
     }
   }
+  return dirCreated;
 }
 
 function listUntrackedFiles(runDir) {
@@ -256,15 +268,41 @@ export function scanForLeakage({ runDir, subCopyDir, diffText, changedFiles, rep
   }
   if (subCopyDir && fs.existsSync(subCopyDir)) walkSubCopy(subCopyDir);
 
+  const changedSet = new Set((changedFiles || []).map((f) => String(f).replace(/\\/g, "/")));
   for (const rel of filesToScan) {
     const normRel = rel.replace(/\\/g, "/");
     if (hiddenPattern.test(normRel)) {
       matches.push({ file: normRel, pattern: "hidden/", detail: `Submission path references hidden/: ${normRel}` });
     }
     const full = path.join(subCopyDir, normRel);
-    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) continue;
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
+      // If a newly added file in changedFiles was excluded from subCopyDir (e.g. inside bench/, metrics/, harness/blender/, metrics3d/),
+      // scan its runDir copy so leaks cannot hide in excluded harness directories.
+      if (runDir && changedSet.has(normRel)) {
+        const runFull = path.join(runDir, normRel);
+        const repoCanonical = repoRoot ? path.join(repoRoot, normRel) : null;
+        const hasCanonical = Boolean(repoCanonical && fs.existsSync(repoCanonical) && fs.statSync(repoCanonical).isFile());
+        if (!hasCanonical && fs.existsSync(runFull) && fs.statSync(runFull).isFile()) {
+          const buf = fs.readFileSync(runFull);
+          const ext = path.extname(runFull).toLowerCase();
+          if (BINARY_EXTENSIONS.has(ext) || buf.includes(0)) {
+            scanContentString(normRel, buf.toString("latin1"), "Binary file bytes");
+          } else {
+            scanContentString(normRel, buf.toString("utf8"), "File content");
+          }
+        }
+      }
+      continue;
+    }
     const ext = path.extname(full).toLowerCase();
     const buf = fs.readFileSync(full);
+    // Ignore unmodified harness-provisioned Blender/metrics3d tooling if present in an existing subCopyDir.
+    if (!changedSet.has(normRel) && repoRoot && (normRel.startsWith("harness/blender/") || normRel.startsWith("metrics3d/"))) {
+      const repoCanonical = path.join(repoRoot, normRel);
+      if (fs.existsSync(repoCanonical) && fs.statSync(repoCanonical).isFile() && buf.equals(fs.readFileSync(repoCanonical))) {
+        continue;
+      }
+    }
     if (BINARY_EXTENSIONS.has(ext) || buf.includes(0)) {
       scanContentString(normRel, buf.toString("latin1"), "Binary file bytes");
       continue;
@@ -1140,7 +1178,9 @@ export function collectRun({
       const startCommit = execFileSync("git", ["-C", runDir, "rev-list", "--max-parents=0", "HEAD"], { encoding: "utf8" })
         .trim().split(/\s+/)[0];
       execFileSync("git", ["-C", runDir, "-c", "core.autocrlf=false", "--work-tree", startDir, "checkout", startCommit, "--", "."], { stdio: "ignore" });
-      for (const heavy of ["bench", "metrics"]) fs.rmSync(path.join(startDir, heavy), { recursive: true, force: true });
+      for (const heavy of ["bench", "metrics", "metrics3d", path.join("harness", "blender")]) {
+        fs.rmSync(path.join(startDir, heavy), { recursive: true, force: true });
+      }
       gradeArgs.push("--start", startDir);
     } catch (err) {
       process.stderr.write(`collect: could not export start snapshot (${err.message}); diff metrics will fail closed\n`);

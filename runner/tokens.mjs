@@ -308,7 +308,18 @@ function scanAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt = null, e
 
     const content = fs.readFileSync(fullLog, "utf8");
     const normRunDirEscaped = normRunDirBack.replace(/\\/g, "\\\\");
-    if (!content.includes(normRunDirBack) && !content.includes(normRunDirSlash) && !content.includes(normRunDirEscaped)) {
+    const matchesRunDir =
+      process.platform === "win32"
+        ? (() => {
+            const lc = content.toLowerCase();
+            return (
+              lc.includes(normRunDirBack.toLowerCase()) ||
+              lc.includes(normRunDirSlash.toLowerCase()) ||
+              lc.includes(normRunDirEscaped.toLowerCase())
+            );
+          })()
+        : content.includes(normRunDirBack) || content.includes(normRunDirSlash) || content.includes(normRunDirEscaped);
+    if (!matchesRunDir) {
       continue;
     }
 
@@ -329,12 +340,24 @@ function scanAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt = null, e
         if (!node || typeof node !== "object") return;
         if (typeof node.input_tokens === "number" || typeof node.output_tokens === "number") {
           fileHasUsage = true;
+          const reas =
+            typeof node.reasoning_tokens === "number"
+              ? node.reasoning_tokens
+              : typeof node.reasoning_output_tokens === "number"
+                ? node.reasoning_output_tokens
+                : typeof node.thinking_tokens === "number"
+                  ? node.thinking_tokens
+                  : typeof node.thought_tokens === "number"
+                    ? node.thought_tokens
+                    : typeof node.thoughts_token_count === "number"
+                      ? node.thoughts_token_count
+                      : 0;
           input += node.input_tokens || 0;
           output += node.output_tokens || 0;
-          cache_read += node.cached_tokens || node.cache_read_input_tokens || 0;
-          cache_write += node.cache_write_input_tokens || 0;
-          reasoning += node.reasoning_tokens || 0;
-          total += node.total_tokens ?? ((node.input_tokens || 0) + (node.output_tokens || 0));
+          cache_read += node.cached_tokens ?? node.cache_read_tokens ?? node.cache_read_input_tokens ?? 0;
+          cache_write += node.cache_write_input_tokens ?? node.cache_write_tokens ?? 0;
+          reasoning += reas;
+          total += node.total_tokens ?? ((node.input_tokens || 0) + (node.output_tokens || 0) + reas);
           return;
         }
         for (const k of Object.keys(node)) {
@@ -559,12 +582,24 @@ function scanOrchestraTokens({
           if (!node || typeof node !== "object") return;
           if (typeof node.input_tokens === "number" || typeof node.output_tokens === "number") {
             fileHasUsage = true;
+            const reas =
+              typeof node.reasoning_tokens === "number"
+                ? node.reasoning_tokens
+                : typeof node.reasoning_output_tokens === "number"
+                  ? node.reasoning_output_tokens
+                  : typeof node.thinking_tokens === "number"
+                    ? node.thinking_tokens
+                    : typeof node.thought_tokens === "number"
+                      ? node.thought_tokens
+                      : typeof node.thoughts_token_count === "number"
+                        ? node.thoughts_token_count
+                        : 0;
             sessionInput += node.input_tokens || 0;
             sessionOutput += node.output_tokens || 0;
-            sessionCacheRead += node.cached_tokens || node.cache_read_input_tokens || 0;
-            sessionCacheWrite += node.cache_write_input_tokens || 0;
-            sessionReasoning += node.reasoning_tokens || 0;
-            sessionTotal += node.total_tokens ?? ((node.input_tokens || 0) + (node.output_tokens || 0));
+            sessionCacheRead += node.cached_tokens ?? node.cache_read_tokens ?? node.cache_read_input_tokens ?? 0;
+            sessionCacheWrite += node.cache_write_input_tokens ?? node.cache_write_tokens ?? 0;
+            sessionReasoning += reas;
+            sessionTotal += node.total_tokens ?? ((node.input_tokens || 0) + (node.output_tokens || 0) + reas);
             return;
           }
           for (const k of Object.keys(node)) {
@@ -681,7 +716,7 @@ export function resolveAgent({
         if (m.includes("orchestra")) return "orchestra";
         if (m.includes("claude") || m.includes("haiku") || m.includes("sonnet")) return "claude";
         if (m.includes("codex") || m.includes("gpt")) return "codex";
-        if (m.includes("agy") || m.includes("gemini")) return "agy";
+        if (m.includes("agy") || m.includes("gemini") || m.includes("neon") || m.includes("hydrogen") || m.includes("flash")) return "agy";
       }
     } catch {
       // ignore
@@ -693,7 +728,7 @@ export function resolveAgent({
   if (lowerId.includes("orchestra")) return "orchestra";
   if (lowerId.includes("claude") || lowerId.includes("haiku") || lowerId.includes("sonnet")) return "claude";
   if (lowerId.includes("codex") || lowerId.includes("gpt")) return "codex";
-  if (lowerId.includes("agy") || lowerId.includes("gemini")) return "agy";
+  if (lowerId.includes("agy") || lowerId.includes("gemini") || lowerId.includes("neon") || lowerId.includes("hydrogen") || lowerId.includes("flash")) return "agy";
 
   return "claude";
 }

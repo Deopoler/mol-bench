@@ -906,3 +906,90 @@ test('review-2 hardening: primitive evaluate packets resist Array/String/JSON ta
     await srv?.close().catch(() => {});
   }
 });
+
+test('G-webgl-hook allows offscreen/detached 2D CanvasTexture while failing visible DOM-attached painted 2D canvas bypass', { timeout: TEST_TIMEOUT_MS }, async () => {
+  const legitDir = path.join(WORK_BASE, 'c2d-legit-fixture');
+  const legitWork = path.join(WORK_BASE, 'c2d-legit-work');
+  const bypassDir = path.join(WORK_BASE, 'c2d-bypass-fixture');
+  const bypassWork = path.join(WORK_BASE, 'c2d-bypass-work');
+  for (const d of [legitDir, legitWork, bypassDir, bypassWork]) {
+    await fs.rm(d, { recursive: true, force: true });
+  }
+  await fs.mkdir(legitDir, { recursive: true });
+  await fs.mkdir(bypassDir, { recursive: true });
+
+  const makePageHtml = (mode) => `<!doctype html>
+<html><head><meta charset="utf-8"></head>
+<body>
+  <canvas id="gl" width="160" height="120"></canvas>
+  ${mode === 'legit' ? '<canvas id="hidden2d" width="64" height="64" style="display:none"></canvas>' : ''}
+  ${mode === 'bypass' ? '<canvas id="bypass2d" width="160" height="120"></canvas>' : ''}
+  <script>
+    const glCanvas = document.getElementById('gl');
+    const gl = glCanvas.getContext('webgl2', { preserveDrawingBuffer: true });
+    // Legitimate OffscreenCanvas 2D probe (as used by Three.js WebGLTextures)
+    if (typeof OffscreenCanvas !== 'undefined') {
+      void new OffscreenCanvas(1, 1).getContext('2d');
+    }
+    // Legitimate detached 2D canvas for texture generation (CanvasTexture)
+    const texCanvas = document.createElement('canvas');
+    texCanvas.width = 64; texCanvas.height = 64;
+    const texCtx = texCanvas.getContext('2d');
+    texCtx.fillStyle = '#34d4c4';
+    texCtx.fillRect(0, 0, 64, 64);
+
+    ${mode === 'legit' ? `
+    const hidCtx = document.getElementById('hidden2d').getContext('2d');
+    hidCtx.fillRect(0, 0, 64, 64);
+    ` : ''}
+
+    ${mode === 'bypass' ? `
+    const b2d = document.getElementById('bypass2d').getContext('2d');
+    b2d.fillStyle = '#ff0044';
+    b2d.fillRect(0, 0, 160, 120);
+    ` : ''}
+
+    const vs = '#version 300 es\\nin vec2 p; void main(){ gl_Position=vec4(p,0.0,1.0); }';
+    const fsS = '#version 300 es\\nprecision mediump float; out vec4 o; void main(){ o=vec4(0.2,0.5,0.8,1.0); }';
+    function sh(t,s){ const x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x); return x; }
+    const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fsS)); gl.linkProgram(pr);
+    const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+    function draw() {
+      gl.useProgram(pr);
+      const loc = gl.getAttribLocation(pr, 'p');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    draw();
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed() {}, seek() {}, resume() {},
+      async renderFrame() { draw(); },
+      state() { return { ok: true }; },
+      stats() { return { drawCalls: 1, triangles: 1 }; }
+    };
+  </script>
+</body></html>`;
+
+  await fs.writeFile(path.join(legitDir, 'index.html'), makePageHtml('legit'));
+  await fs.writeFile(path.join(bypassDir, 'index.html'), makePageHtml('bypass'));
+
+  const spec = {
+    room: 'restoration',
+    spec_version: '0.2.0',
+    load_timeout_ms: 15000,
+    metrics: [{ id: 'budget.render_work', axis: 'visual_quality', weight: 1, score: { type: 'higher', full: 1, zero: 0 } }],
+  };
+  const plan = { room: 'restoration', mode: 'swiftshader', frames: [{ key: 'f1', seed: 1, t: 0, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 }] };
+
+  const legitRes = await executePlan(plan, { submissionDir: legitDir, workDir: legitWork, spec, noPython: true, planTimeoutMs: 60_000 });
+  assert.equal(legitRes.gates['G-webgl-hook'].pass, true, `offscreen/detached/hidden 2d canvases must not fail G-webgl-hook: ${legitRes.gates['G-webgl-hook'].detail}`);
+
+  const bypassRes = await executePlan(plan, { submissionDir: bypassDir, workDir: bypassWork, spec, noPython: true, planTimeoutMs: 60_000 });
+  const bypassManifest = JSON.parse(await fs.readFile(bypassRes.manifestPath, 'utf8'));
+  assert.equal(bypassRes.gates['G-webgl-hook'].pass, false, 'visible DOM-attached painted 2D canvas must fail G-webgl-hook');
+  assert.ok(bypassManifest.unhooked_rendering.reasons.includes('canvas_2d'));
+  assert.ok(bypassManifest.unhooked_rendering.canvas_2d_count >= 1);
+});

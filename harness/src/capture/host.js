@@ -16,6 +16,14 @@
   const BuiltinDateNow = Date.now;
   const BuiltinProxy = Proxy;
   const BuiltinReflectConstruct = Reflect.construct;
+  const BuiltinSet = Set;
+  const BuiltinWeakSet = WeakSet;
+  const BuiltinWeakRef = typeof WeakRef === 'function' ? WeakRef : null;
+  const BuiltinGetComputedStyle = typeof window.getComputedStyle === 'function' ? window.getComputedStyle.bind(window) : null;
+  const BuiltinGetBoundingClientRect =
+    typeof Element !== 'undefined' && typeof Element.prototype.getBoundingClientRect === 'function'
+      ? Element.prototype.getBoundingClientRect
+      : null;
 
   const rawInit = window.__BENCH_HOST_INIT__;
   const hasInitConfig = Boolean(rawInit && typeof rawInit === 'object');
@@ -95,12 +103,66 @@
     canvas2dCount: 0,
     bitmapRendererCount: 0,
     webgpuAttempts: 0,
-    reasons: new Set(),
+    reasons: new BuiltinSet(),
   };
-  const hookedCanvases = new WeakSet();
+  const hookedCanvases = new BuiltinWeakSet();
+  const canvas2dElements = new BuiltinSet();
+  const painted2dCanvases = new BuiltinWeakSet();
+  const flagged2dCanvases = new BuiltinWeakSet();
 
   function addUnhookedReason(reason) {
     if (reason) unhookedState.reasons.add(reason);
+  }
+
+  function isCanvasVisible(c) {
+    if (!c || !c.isConnected) return false;
+    if (!(c.width > 0 && c.height > 0)) return false;
+    try {
+      if (BuiltinGetComputedStyle) {
+        const cs = BuiltinGetComputedStyle(c);
+        if (!cs) return false;
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.visibility === 'collapse') return false;
+        const op = Number(cs.opacity);
+        if (Number.isFinite(op) && op <= 0) return false;
+      }
+      if (BuiltinGetBoundingClientRect) {
+        const r = BuiltinGetBoundingClientRect.call(c);
+        if (!r || !(r.width > 0 && r.height > 0)) return false;
+      }
+    } catch {
+      return true;
+    }
+    return true;
+  }
+
+  function mark2dBypassIfVisible(c) {
+    if (!c || (typeof HTMLCanvasElement !== 'undefined' && !(c instanceof HTMLCanvasElement))) return;
+    painted2dCanvases.add(c);
+    if (isCanvasVisible(c)) {
+      if (!flagged2dCanvases.has(c)) {
+        flagged2dCanvases.add(c);
+        unhookedState.canvas2dCount += 1;
+      }
+      addUnhookedReason('canvas_2d');
+    }
+  }
+
+  if (typeof CanvasRenderingContext2D !== 'undefined' && CanvasRenderingContext2D.prototype) {
+    const paintMethods = ['fillRect', 'strokeRect', 'fillText', 'strokeText', 'drawImage', 'putImageData', 'fill', 'stroke'];
+    for (const m of paintMethods) {
+      const orig = CanvasRenderingContext2D.prototype[m];
+      if (typeof orig !== 'function') continue;
+      CanvasRenderingContext2D.prototype[m] = function patched2dPaint(...args) {
+        try {
+          if (this && this.canvas) {
+            mark2dBypassIfVisible(this.canvas);
+          }
+        } catch {
+          // never interfere with 2d drawing
+        }
+        return orig.apply(this, args);
+      };
+    }
   }
 
   if (initConfig.disableWebGpu !== false) {
@@ -988,8 +1050,9 @@
       if (ctx) {
         hookedCanvases.add(this);
         if (lowerType === '2d') {
-          unhookedState.canvas2dCount += 1;
-          addUnhookedReason('canvas_2d');
+          if (typeof HTMLCanvasElement !== 'undefined' && this instanceof HTMLCanvasElement) {
+            canvas2dElements.add(BuiltinWeakRef ? new BuiltinWeakRef(this) : this);
+          }
         } else if (lowerType === 'bitmaprenderer') {
           unhookedState.bitmapRendererCount += 1;
           addUnhookedReason('canvas_bitmaprenderer');
@@ -1381,9 +1444,23 @@
   }
 
   function getUnhookedRenderingStatus() {
-    const reasons = new Set(unhookedState.reasons);
+    const reasons = new BuiltinSet(unhookedState.reasons);
     let currentIframes = 0;
     let unhookedCanvasCount = 0;
+    for (const ref of canvas2dElements) {
+      const c = BuiltinWeakRef ? ref.deref() : ref;
+      if (!c) {
+        canvas2dElements.delete(ref);
+        continue;
+      }
+      if (painted2dCanvases.has(c) && isCanvasVisible(c)) {
+        if (!flagged2dCanvases.has(c)) {
+          flagged2dCanvases.add(c);
+          unhookedState.canvas2dCount += 1;
+        }
+        reasons.add('canvas_2d');
+      }
+    }
     if (typeof document !== 'undefined') {
       try {
         currentIframes = document.querySelectorAll('iframe, frame').length;

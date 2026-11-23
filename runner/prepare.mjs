@@ -314,13 +314,16 @@ export function prepareRun({
     copyRoomSpecIntoBench(resolvedRepoRoot, runDir, room, renovation, versionPaths);
 
     // 3b. Blender tooling used by `bench selfcheck` in Blender rooms (no hidden data inside).
-    for (const rel of [path.join("harness", "blender"), "metrics3d"]) {
-      const src = path.join(resolvedRepoRoot, rel);
-      if (!fs.existsSync(src)) continue;
-      copyTreeFiltered(src, path.join(runDir, rel), (_srcPath, entry) => {
-        const lower = entry.name.toLowerCase();
-        return !(lower === "hidden" || lower === "hidden-v2" || entry.name === "__pycache__" || entry.name.endsWith(".pyc"));
-      });
+    const isBlenderRoom = String(spec.contract || spec._baseSpec?.contract || "").includes("blender");
+    if (isBlenderRoom) {
+      for (const rel of [path.join("harness", "blender"), "metrics3d"]) {
+        const src = path.join(resolvedRepoRoot, rel);
+        if (!fs.existsSync(src)) continue;
+        copyTreeFiltered(src, path.join(runDir, rel), (_srcPath, entry) => {
+          const lower = entry.name.toLowerCase();
+          return !(lower === "hidden" || lower === "hidden-v2" || entry.name === "__pycache__" || entry.name.endsWith(".pyc"));
+        });
+      }
     }
 
     // 4. metrics/, contract/, schemas/

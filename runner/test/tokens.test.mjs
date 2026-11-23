@@ -374,3 +374,42 @@ test("collectActiveTime parses session log timestamps with gap capping and falls
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }
 });
+
+test("collectAgyTokens parses cache_read_tokens, reasoning tokens, and neon/hydrogen/flash model names", () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "mol-agy-tokens-test-"));
+  try {
+    const geminiDir = path.join(tmpBase, ".gemini");
+    const brainLogDir = path.join(geminiDir, "antigravity-cli", "brain", "sess-1", ".system_generated", "logs");
+    fs.mkdirSync(brainLogDir, { recursive: true });
+    const runDir = path.join(tmpBase, "runs", "restoration__v2-neon");
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, ".run.json"), JSON.stringify({ model: "Gemini 4 Neon (XHigh)" }));
+
+    const runDirForLog = process.platform === "win32" ? runDir.toLowerCase() : runDir;
+    fs.writeFileSync(
+      path.join(brainLogDir, "transcript_full.jsonl"),
+      [
+        JSON.stringify({ step_index: 0, type: "USER_INPUT", content: `Workspace is ${runDirForLog}` }),
+        JSON.stringify({ step_index: 1, type: "PLANNER_RESPONSE", input_tokens: 1000, cache_read_tokens: 4000, output_tokens: 250, thinking_tokens: 50 }),
+        JSON.stringify({ step_index: 2, type: "PLANNER_RESPONSE", input_tokens: 500, cache_read_tokens: 1000, output_tokens: 100 })
+      ].join("\n")
+    );
+
+    assert.equal(resolveAgent({ runDir: path.join(tmpBase, "runs", "x") }), "claude");
+    const neonRun = path.join(tmpBase, "runs", "v2__neon-xhigh");
+    fs.mkdirSync(neonRun, { recursive: true });
+    fs.writeFileSync(path.join(neonRun, ".run.json"), JSON.stringify({ model: "Neon XHigh" }));
+    assert.equal(resolveAgent({ runDir: neonRun }), "agy");
+
+    const tokens = collectAgyTokens({ runDir, geminiDir });
+    assert.ok(tokens);
+    assert.equal(tokens.source, "agy");
+    assert.equal(tokens.input, 1500);
+    assert.equal(tokens.output, 350);
+    assert.equal(tokens.cache_read, 5000);
+    assert.equal(tokens.reasoning, 50);
+    assert.equal(tokens.total, 1900);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});

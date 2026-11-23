@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -128,6 +131,55 @@ def _find_repo_root(start: Path) -> Path | None:
     return None
 
 
+_HARNESS_IMPORT_RE = re.compile(
+    r"""((?:from|import)\s*\(?\s*)(['"])(?:\.\.?[/\\])+(?:bench|harness[/\\]src)[/\\]testing[/\\]room-harness\.mjs\2"""
+)
+_SANDBOX_STAGE_EXTS = {".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"}
+
+
+def _stage_test_dir_for_sandbox(
+    test_file: Path,
+    test_dir: Path,
+    harness_url: str,
+    stage_root: Path,
+) -> tuple[Path, Path] | None:
+    """Copy `test_dir` into `stage_root` (rejecting symlinks) and rewrite relative room-harness imports."""
+    abs_test_dir = test_dir.resolve()
+    abs_test_file = test_file.resolve()
+    try:
+        rel_test_file = abs_test_file.relative_to(abs_test_dir)
+    except ValueError:
+        return None
+
+    staged_dir = stage_root / "regression"
+    staged_dir.mkdir(parents=True, exist_ok=True)
+
+    for root_s, dirnames, filenames in os.walk(abs_test_dir, followlinks=False):
+        root_p = Path(root_s)
+        rel_dir = root_p.relative_to(abs_test_dir)
+        dst_dir = staged_dir / rel_dir
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for dname in dirnames:
+            if (root_p / dname).is_symlink():
+                return None
+        for fname in filenames:
+            src_p = root_p / fname
+            if src_p.is_symlink():
+                return None
+            dst_p = dst_dir / fname
+            if src_p.suffix.lower() in _SANDBOX_STAGE_EXTS:
+                txt = src_p.read_text(encoding="utf-8")
+                rewritten = _HARNESS_IMPORT_RE.sub(lambda m: m.group(1) + json.dumps(harness_url), txt)
+                dst_p.write_text(rewritten, encoding="utf-8")
+            else:
+                shutil.copy2(src_p, dst_p)
+
+    staged_test_file = staged_dir / rel_test_file
+    if not staged_test_file.is_file():
+        return None
+    return staged_test_file, staged_dir
+
+
 def _run_node_test_via_harness(
     test_file: Path,
     target_dir: Path,
@@ -144,26 +196,31 @@ def _run_node_test_via_harness(
         if root is None:
             return False
         harness_url = (root / "harness" / "src" / "testing" / "room-harness.mjs").as_uri()
-        script = (
-            f"import {{ runSandboxedTest }} from {json.dumps(harness_url)};"
-            f"const res = await runSandboxedTest({{"
-            f"testFile: {json.dumps(str(test_file))},"
-            f"targetDir: {json.dumps(str(target_dir))},"
-            f"testDir: {json.dumps(str(test_dir))},"
-            f"testNamePattern: {json.dumps(report_id)},"
-            f"timeoutMs: {int(timeout_ms)}"
-            f"}});"
-            f"process.stdout.write(JSON.stringify({{ pass: res.pass }}));"
-            f"process.exit(res.pass ? 0 : 1);"
-        )
-        proc = subprocess.run(
-            ["node", "--input-type=module", "-e", script],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            timeout=max(10.0, timeout_ms / 1000.0 + 10.0),
-        )
-        return proc.returncode == 0
+        with tempfile.TemporaryDirectory(prefix="mol-redgreen-") as tmp_dir:
+            staged = _stage_test_dir_for_sandbox(test_file, test_dir, harness_url, Path(tmp_dir))
+            if staged is None:
+                return False
+            staged_test_file, staged_test_dir = staged
+            script = (
+                f"import {{ runSandboxedTest }} from {json.dumps(harness_url)};"
+                f"const res = await runSandboxedTest({{"
+                f"testFile: {json.dumps(str(staged_test_file))},"
+                f"targetDir: {json.dumps(str(target_dir))},"
+                f"testDir: {json.dumps(str(staged_test_dir))},"
+                f"testNamePattern: {json.dumps(report_id)},"
+                f"timeoutMs: {int(timeout_ms)}"
+                f"}});"
+                f"process.stdout.write(JSON.stringify({{ pass: res.pass }}));"
+                f"process.exit(res.pass ? 0 : 1);"
+            )
+            proc = subprocess.run(
+                ["node", "--input-type=module", "-e", script],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=max(10.0, timeout_ms / 1000.0 + 10.0),
+            )
+            return proc.returncode == 0
 
     proc = subprocess.run(
         ["node", "--test", f"--test-name-pattern={report_id}", str(test_file)],
