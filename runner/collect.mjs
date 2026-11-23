@@ -56,6 +56,7 @@ function parseArgs(argv) {
     "help",
     "h",
     "awake-tick",
+    "awake-heartbeat",
     "status-rows",
     "print-since-launch"
   ]);
@@ -426,27 +427,72 @@ export function markRunTerminalInTsv(runsTsvPath, runId, state = "collected") {
   return updated;
 }
 
+function getLatestRunMtimeMs(runDir) {
+  if (!runDir || !fs.existsSync(runDir)) return 0;
+  let latest = 0;
+  const skip = new Set(["node_modules", ".venv", "bench", "metrics", ".git", "work", "preview", "__pycache__"]);
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (skip.has(e.name) || e.name === "selfcheck.json" || e.name === ".run.json") continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else latest = Math.max(latest, fs.statSync(p).mtimeMs);
+    }
+  };
+  try {
+    walk(runDir);
+  } catch {
+    /* ignore */
+  }
+  return Math.floor(latest);
+}
+
 export function loadAwakeState(awakePath) {
   const runs = new Map();
+  const streaks = new Map();
+  const retries = new Map();
   let lastTick = null;
   let sinceLaunch = 0;
   if (!awakePath || !fs.existsSync(awakePath)) {
-    return { lastTick, sinceLaunch, runs };
+    return { lastTick, sinceLaunch, runs, streaks, retries };
   }
   const raw = fs.readFileSync(awakePath, "utf8");
   for (const line of raw.split(/\r?\n/)) {
     if (!line.trim()) continue;
-    const [key, valStr] = line.split("\t");
+    const [key, valStr = ""] = line.split("\t");
+    if (!key) continue;
+    if (key.startsWith("_streak_")) {
+      const rid = key.slice("_streak_".length);
+      const [st, countStr, mtimeStr] = valStr.split(":");
+      const count = Number(countStr);
+      const mtimeMs = Number(mtimeStr || 0);
+      if (rid && st && Number.isFinite(count)) {
+        streaks.set(rid, {
+          state: st,
+          count: Math.max(0, Math.floor(count)),
+          mtimeMs: Number.isFinite(mtimeMs) ? mtimeMs : 0
+        });
+      }
+      continue;
+    }
+    if (key.startsWith("_retries_")) {
+      const rid = key.slice("_retries_".length);
+      const count = Number(valStr);
+      if (rid && Number.isFinite(count) && count > 0) {
+        retries.set(rid, Math.floor(count));
+      }
+      continue;
+    }
     const val = Number(valStr);
     if (!Number.isFinite(val)) continue;
     if (key === "_last_tick") lastTick = val;
-    else if (key === "_since_launch") sinceLaunch = val;
-    else if (key) runs.set(key, Math.max(0, val));
+    else if (key === "_since_launch") sinceLaunch = Math.max(0, val);
+    else runs.set(key, Math.max(0, val));
   }
-  return { lastTick, sinceLaunch, runs };
+  return { lastTick, sinceLaunch, runs, streaks, retries };
 }
 
-export function saveAwakeState(awakePath, { lastTick, sinceLaunch, runs }) {
+export function saveAwakeState(awakePath, { lastTick, sinceLaunch, runs, streaks = new Map(), retries = new Map() }) {
   const lines = [];
   if (lastTick !== null && Number.isFinite(lastTick)) {
     lines.push(`_last_tick\t${Math.floor(lastTick)}`);
@@ -455,11 +501,44 @@ export function saveAwakeState(awakePath, { lastTick, sinceLaunch, runs }) {
   for (const rid of [...runs.keys()].sort()) {
     lines.push(`${rid}\t${Math.max(0, Math.floor(runs.get(rid) || 0))}`);
   }
+  for (const rid of [...streaks.keys()].sort()) {
+    const s = streaks.get(rid);
+    if (s && s.count > 0) {
+      lines.push(`_streak_${rid}\t${s.state}:${Math.floor(s.count)}:${Math.floor(s.mtimeMs || 0)}`);
+    }
+  }
+  for (const rid of [...retries.keys()].sort()) {
+    const c = retries.get(rid);
+    if (c > 0) {
+      lines.push(`_retries_${rid}\t${Math.floor(c)}`);
+    }
+  }
   writeAtomicFile(awakePath, lines.join("\n") + "\n");
 }
 
+function advanceActiveRunsAwake(state, { runsTsvPath, resultsDir, nowSec, add, sleepThreshold, prevTick }) {
+  const rows = parseRunsTsv(runsTsvPath);
+  for (const row of rows) {
+    if (!row.rid) continue;
+    if (TERMINAL_RUN_STATES.has(row.status)) continue;
+    if (resultsDir && fs.existsSync(path.join(resultsDir, `${row.rid}.json`))) continue;
+
+    if (state.runs.has(row.rid)) {
+      state.runs.set(row.rid, state.runs.get(row.rid) + add);
+    } else {
+      const sinceStart = Number.isFinite(row.start) && row.start > 0 ? Math.max(0, nowSec - row.start) : 0;
+      if (prevTick !== null && Number.isFinite(row.start) && row.start > prevTick) {
+        state.runs.set(row.rid, Math.min(add, sinceStart));
+      } else {
+        // Migrated or pre-existing active run: seed bounded by sleepThreshold and own start time.
+        state.runs.set(row.rid, Math.min(sleepThreshold, sinceStart));
+      }
+    }
+  }
+}
+
 /**
- * Advance per-run and since-launch awake seconds on a loop tick.
+ * Advance per-run and since-launch awake seconds on a loop tick (after sleep).
  * If delta > 2*intervalSec + 60, treat the gap as machine sleep and add only intervalSec.
  */
 export function updateAwakeState({
@@ -476,28 +555,41 @@ export function updateAwakeState({
   const add = delta > sleepThreshold ? intervalSec : delta;
   const sinceLaunch = state.sinceLaunch + add;
 
-  const rows = parseRunsTsv(runsTsvPath);
-  for (const row of rows) {
-    if (!row.rid) continue;
-    if (TERMINAL_RUN_STATES.has(row.status)) continue;
-    if (resultsDir && fs.existsSync(path.join(resultsDir, `${row.rid}.json`))) continue;
-
-    if (state.runs.has(row.rid)) {
-      state.runs.set(row.rid, state.runs.get(row.rid) + add);
-    } else if (prevTick !== null && Number.isFinite(row.start) && row.start > prevTick) {
-      const sinceStart = Math.max(0, nowSec - row.start);
-      state.runs.set(row.rid, Math.min(add, sinceStart));
-    } else {
-      state.runs.set(row.rid, add);
-    }
-  }
-
-  saveAwakeState(awakePath, { lastTick: nowSec, sinceLaunch, runs: state.runs });
+  advanceActiveRunsAwake(state, { runsTsvPath, resultsDir, nowSec, add, sleepThreshold, prevTick });
+  saveAwakeState(awakePath, { ...state, lastTick: nowSec, sinceLaunch });
   return {
     now_sec: nowSec,
     delta,
     add,
     slept: delta > sleepThreshold,
+    since_launch: sinceLaunch,
+    runs: Object.fromEntries(state.runs)
+  };
+}
+
+/**
+ * Record an end-of-iteration heartbeat (before sleep) so long active loop iterations
+ * (e.g. multi-run collect or Blender grading) are counted in full as awake time.
+ */
+export function heartbeatAwakeState({
+  runsTsvPath,
+  awakePath,
+  resultsDir = path.join(DEFAULT_REPO_ROOT, "results"),
+  nowSec = Math.floor(Date.now() / 1000),
+  intervalSec = 300
+}) {
+  const state = loadAwakeState(awakePath);
+  const prevTick = state.lastTick;
+  const delta = prevTick === null ? 0 : Math.max(0, nowSec - prevTick);
+  const sleepThreshold = 2 * intervalSec + 60;
+  const sinceLaunch = state.sinceLaunch + delta;
+
+  advanceActiveRunsAwake(state, { runsTsvPath, resultsDir, nowSec, add: delta, sleepThreshold, prevTick });
+  saveAwakeState(awakePath, { ...state, lastTick: nowSec, sinceLaunch });
+  return {
+    now_sec: nowSec,
+    delta,
+    add: delta,
     since_launch: sinceLaunch,
     runs: Object.fromEntries(state.runs)
   };
@@ -513,8 +605,78 @@ export function registerAwakeLaunch({
   if (runId && !state.runs.has(runId)) {
     state.runs.set(runId, 0);
   }
-  saveAwakeState(awakePath, { lastTick, sinceLaunch: 0, runs: state.runs });
+  saveAwakeState(awakePath, { ...state, lastTick, sinceLaunch: 0 });
   return { lastTick, sinceLaunch: 0 };
+}
+
+/**
+ * Gate collection for transient states:
+ * - `idle` requires `idleTicks` (default 2) consecutive ticks with unchanged run-dir mtime.
+ * - `gone` requires `goneTicks` (default 3) consecutive ticks unless a prior collection retry is pending.
+ */
+export function evaluateCollectReadiness({
+  runId,
+  state,
+  over = "",
+  runDir = null,
+  awakePath,
+  idleTicks = 2,
+  goneTicks = 3
+}) {
+  const awake = loadAwakeState(awakePath);
+  const prev = awake.streaks.get(runId);
+  const retryCount = awake.retries.get(runId) || 0;
+  const isOver = over === "OVER";
+
+  const save = (nextStreak) => {
+    if (nextStreak) awake.streaks.set(runId, nextStreak);
+    else awake.streaks.delete(runId);
+    if (awakePath) saveAwakeState(awakePath, awake);
+  };
+
+  if (state === "done" || state === "error") {
+    save(null);
+    return { collect: true, mode: "normal", reason: state };
+  }
+
+  if (state === "idle") {
+    const mtimeMs = getLatestRunMtimeMs(runDir);
+    const count = prev?.state === "idle" && prev.mtimeMs === mtimeMs ? prev.count + 1 : 1;
+    if (count >= idleTicks) {
+      save(null);
+      return { collect: true, mode: "normal", reason: `idle (${count}/${idleTicks})` };
+    }
+    if (isOver) {
+      save(null);
+      return { collect: true, mode: "timeout", reason: "OVER" };
+    }
+    save({ state: "idle", count, mtimeMs });
+    return { collect: false, mode: "wait", count, reason: `idle (${count}/${idleTicks})` };
+  }
+
+  if (state === "gone") {
+    if (retryCount > 0) {
+      save(null);
+      return { collect: true, mode: "normal", reason: `gone (retry ${retryCount})` };
+    }
+    const count = prev?.state === "gone" ? prev.count + 1 : 1;
+    if (count >= goneTicks) {
+      save(null);
+      return { collect: true, mode: "normal", reason: `gone (${count}/${goneTicks})` };
+    }
+    if (isOver) {
+      save(null);
+      return { collect: true, mode: "timeout", reason: "OVER" };
+    }
+    save({ state: "gone", count, mtimeMs: 0 });
+    return { collect: false, mode: "wait", count, reason: `gone (${count}/${goneTicks})` };
+  }
+
+  save(null);
+  if (isOver) {
+    return { collect: true, mode: "timeout", reason: "OVER" };
+  }
+  return { collect: false, mode: "skip", reason: state };
 }
 
 export function getRunStatusRows({
@@ -557,14 +719,17 @@ export function ensureTerminalResult({
   runId,
   label = null,
   runsTsvPath = null,
+  awakePath = null,
   resultsDir = path.join(DEFAULT_REPO_ROOT, "results"),
   state = "collected",
+  maxRetries = 3,
   reason = "Collection yielded no result"
 }) {
   if (!runId) throw new Error("Missing required runId for ensureTerminalResult.");
   const resolvedResultsDir = path.resolve(resultsDir);
   const resultPath = path.join(resolvedResultsDir, `${runId}.json`);
   let finalState = state;
+  let attempts = 0;
 
   if (fs.existsSync(resultPath)) {
     try {
@@ -576,6 +741,16 @@ export function ensureTerminalResult({
       // keep provided state
     }
   } else {
+    if (awakePath && maxRetries > 1) {
+      const awake = loadAwakeState(awakePath);
+      attempts = (awake.retries.get(runId) || 0) + 1;
+      if (attempts < maxRetries) {
+        awake.retries.set(runId, attempts);
+        saveAwakeState(awakePath, awake);
+        return { resultPath: null, state: "retry", finalized: false, attempts, maxRetries };
+      }
+    }
+
     let resolvedLabel = label;
     if (!resolvedLabel && runsTsvPath) {
       const match = parseRunsTsv(runsTsvPath).find((r) => r.rid === runId);
@@ -597,7 +772,20 @@ export function ensureTerminalResult({
   if (runsTsvPath) {
     markRunTerminalInTsv(runsTsvPath, runId, finalState);
   }
-  return { resultPath, state: finalState };
+  if (awakePath) {
+    const awake = loadAwakeState(awakePath);
+    awake.runs.delete(runId);
+    awake.retries.delete(runId);
+    awake.streaks.delete(runId);
+    if (runsTsvPath) {
+      const remaining = getRunStatusRows({ runsTsvPath, awakePath, resultsDir: resolvedResultsDir });
+      if (remaining.length === 0) {
+        awake.sinceLaunch = 0;
+      }
+    }
+    saveAwakeState(awakePath, awake);
+  }
+  return { resultPath, state: finalState, finalized: true, attempts, maxRetries };
 }
 
 export function collectRun({
@@ -637,19 +825,7 @@ export function collectRun({
   const effectiveRenovation = renovation ?? runMeta.renovation ?? null;
 
   // End time = last modification of a submission file (the agent's last write), not the moment we collect.
-  const lastWrite = (() => {
-    let latest = 0;
-    const skip = new Set(["node_modules", ".venv", "bench", "metrics", ".git", "work", "preview", "__pycache__"]);
-    const walk = (dir) => {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (skip.has(e.name) || e.name === "selfcheck.json") continue;
-        const p = path.join(dir, e.name);
-        if (e.isDirectory()) walk(p); else latest = Math.max(latest, fs.statSync(p).mtimeMs);
-      }
-    };
-    try { walk(runDir); } catch { /* ignore */ }
-    return latest;
-  })();
+  const lastWrite = getLatestRunMtimeMs(runDir);
   const endedAt = new Date(lastWrite > 0 ? Math.min(lastWrite, Date.now()) : Date.now()).toISOString();
   const createdMs = Date.parse(runMeta.created_at);
   const endedMs = Date.parse(endedAt);
@@ -788,46 +964,14 @@ export function collectRun({
     process.stderr.write(`collect: could not export start snapshot (${err.message}); diff metrics will fail closed\n`);
   }
 
-  let graded;
-  try {
-    const stdout = execFileSync(process.execPath, gradeArgs, {
-      cwd: resolvedRepoRoot,
-      env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: "0" },
-      encoding: "utf8",
-      maxBuffer: 32 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"]
-    });
-    graded = JSON.parse(stdout);
-  } catch (err) {
-    const detail = err.stderr ? String(err.stderr).trim() : err.message;
-    const finalResult = buildFailedResultPayload({
-      runId,
-      model,
-      room,
-      renovation: effectiveRenovation,
-      track: runMeta.track || (effectiveRenovation ? "renovation" : "build"),
-      seed: runMeta.seed ?? null,
-      createdAt: runMeta.created_at,
-      endedAt,
-      status: "collect-error",
-      reason: detail || "Grading failed",
-      wallMin,
-      activeMin,
-      tokens,
-      leakage,
-      diffFile: path.relative(resolvedResultsDir, diffPath).replace(/\\/g, "/"),
-      submissionCopy: path.relative(resolvedResultsDir, subCopyDir).replace(/\\/g, "/"),
-      warnings: extraWarnings
-    });
-    fs.writeFileSync(resultPath, JSON.stringify(finalResult, null, 2) + "\n", "utf8");
-    cleanupHeavyRunDirs(runDir);
-    return {
-      resultPath,
-      diffPath,
-      subCopyDir,
-      result: finalResult
-    };
-  }
+  const stdout = execFileSync(process.execPath, gradeArgs, {
+    cwd: resolvedRepoRoot,
+    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: "0" },
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  const graded = JSON.parse(stdout);
 
   // 6. Collect or generate preview contact sheets if available
   const previewSheets = collectPreviewSheets({
@@ -884,8 +1028,9 @@ function main() {
   const awakePath = flags["awake-file"] || path.join(repoRoot, ".orchestra", "awake.tsv");
   const nowSec = flags.now !== undefined ? Number(flags.now) : Math.floor(Date.now() / 1000);
 
-  if (flags["awake-tick"]) {
-    const out = updateAwakeState({
+  if (flags["awake-tick"] || flags["awake-heartbeat"]) {
+    const fn = flags["awake-heartbeat"] ? heartbeatAwakeState : updateAwakeState;
+    const out = fn({
       runsTsvPath,
       awakePath,
       resultsDir,
@@ -897,6 +1042,21 @@ function main() {
     } else {
       console.log(JSON.stringify(out));
     }
+    return;
+  }
+
+  if (flags["check-collect"]) {
+    const runId = flags["check-collect"] === true ? positional[0] : flags["check-collect"];
+    const out = evaluateCollectReadiness({
+      runId,
+      state: flags.state || "",
+      over: flags.over || "",
+      runDir: flags["run-dir"] || null,
+      awakePath,
+      idleTicks: flags["idle-ticks"] !== undefined ? Number(flags["idle-ticks"]) : 2,
+      goneTicks: flags["gone-ticks"] !== undefined ? Number(flags["gone-ticks"]) : 3
+    });
+    console.log(out.mode);
     return;
   }
 
@@ -928,8 +1088,10 @@ function main() {
       runId,
       label: flags.label || null,
       runsTsvPath,
+      awakePath: flags["awake-file"] ? awakePath : null,
       resultsDir,
       state: flags.state || "collected",
+      maxRetries: flags["max-retries"] !== undefined ? Number(flags["max-retries"]) : 3,
       reason: flags.reason || "Collection yielded no result"
     });
     console.log(JSON.stringify(out));

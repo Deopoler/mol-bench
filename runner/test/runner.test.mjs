@@ -9,7 +9,9 @@ import { prepareRun } from "../../runner/prepare.mjs";
 import {
   collectRun,
   updateAwakeState,
+  heartbeatAwakeState,
   registerAwakeLaunch,
+  evaluateCollectReadiness,
   getRunStatusRows,
   ensureTerminalResult,
   parseRunsTsv
@@ -455,6 +457,97 @@ test("awake-time accounting handles simulated sleep gaps and drives OVER and STU
     registerAwakeLaunch({ awakePath, runId: "aurora__next", nowSec: cur });
     const tAfterLaunch = updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: cur + 300, intervalSec: 300 });
     assert.equal(tAfterLaunch.since_launch, 300);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test("review fixes: gone/idle gating, retry cap, heartbeat, last-run _since_launch reset, and migration seeding", () => {
+  const tmpBase = makeTmpWorkBase("test-review-fixes-");
+  try {
+    const orchestraDir = path.join(tmpBase, "orchestra");
+    const resultsDir = path.join(tmpBase, "results");
+    const runDirA = path.join(tmpBase, "runs", "aurora__a");
+    const runDirB = path.join(tmpBase, "runs", "aurora__b");
+    fs.mkdirSync(orchestraDir, { recursive: true });
+    fs.mkdirSync(resultsDir, { recursive: true });
+    fs.mkdirSync(runDirA, { recursive: true });
+    fs.mkdirSync(runDirB, { recursive: true });
+    fs.writeFileSync(path.join(runDirA, "index.html"), "v1");
+    fs.writeFileSync(path.join(runDirB, "index.html"), "v1");
+
+    const runsTsvPath = path.join(orchestraDir, "runs.tsv");
+    const awakePath = path.join(orchestraDir, "awake.tsv");
+
+    // Finding 8: Run A started 10m ago (start=1000) before awake.tsv exists (now=1600) -> seeded with 600s, not 0
+    // Run B started at t=1500 -> seeded with 100s
+    fs.writeFileSync(
+      runsTsvPath,
+      [
+        `aurora__a\tModel A\tclaude\ttA\t${runDirA}\t1000\t60`,
+        `aurora__b\tModel B\tclaude\ttB\t${runDirB}\t1500\t60`
+      ].join("\n") + "\n",
+      "utf8"
+    );
+    const tSeed = updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 1600, intervalSec: 300 });
+    assert.equal(tSeed.runs["aurora__a"], 600);
+    assert.equal(tSeed.runs["aurora__b"], 100);
+
+    // Finding 4: End-of-iteration heartbeat counts long (>11m) active work in full (not capped to INTERVAL)
+    const tHb = heartbeatAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 2500, intervalSec: 300 });
+    assert.equal(tHb.add, 900);
+    assert.equal(tHb.runs["aurora__a"], 1500);
+    assert.equal(tHb.since_launch, 900);
+
+    // Finding 1: `gone` requires 3 consecutive ticks; transient blip resets streak
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__a", state: "gone", runDir: runDirA, awakePath, goneTicks: 3 }).collect, false);
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__a", state: "gone", runDir: runDirA, awakePath, goneTicks: 3 }).collect, false);
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__a", state: "working", runDir: runDirA, awakePath, goneTicks: 3 }).collect, false);
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__a", state: "gone", runDir: runDirA, awakePath, goneTicks: 3 }).collect, false);
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__a", state: "gone", runDir: runDirA, awakePath, goneTicks: 3 }).collect, false);
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__a", state: "gone", runDir: runDirA, awakePath, goneTicks: 3 }).collect, true);
+
+    // Finding 2: `idle` requires 2 consecutive ticks with unchanged runDir mtime
+    const mtime1 = new Date("2026-11-21T10:00:00Z");
+    const mtime2 = new Date("2026-11-21T10:05:00Z");
+    fs.utimesSync(path.join(runDirB, "index.html"), mtime1, mtime1);
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__b", state: "idle", runDir: runDirB, awakePath, idleTicks: 2 }).collect, false);
+    // File changed between ticks -> streak resets to 1
+    fs.utimesSync(path.join(runDirB, "index.html"), mtime2, mtime2);
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__b", state: "idle", runDir: runDirB, awakePath, idleTicks: 2 }).collect, false);
+    // Unchanged on next tick -> ready to collect
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__b", state: "idle", runDir: runDirB, awakePath, idleTicks: 2 }).collect, true);
+
+    // Finding 3: Transient collect failure retries up to maxRetries=3 before writing collect-error
+    const r1 = ensureTerminalResult({ runId: "aurora__a", runsTsvPath, awakePath, resultsDir, maxRetries: 3, reason: "blender busy" });
+    assert.equal(r1.finalized, false);
+    assert.equal(r1.attempts, 1);
+    assert.equal(fs.existsSync(path.join(resultsDir, "aurora__a.json")), false);
+    // Pending retry bypasses 3-tick gone wait so next tick retries immediately
+    assert.equal(evaluateCollectReadiness({ runId: "aurora__a", state: "gone", runDir: runDirA, awakePath, goneTicks: 3 }).collect, true);
+
+    const r2 = ensureTerminalResult({ runId: "aurora__a", runsTsvPath, awakePath, resultsDir, maxRetries: 3, reason: "blender busy" });
+    assert.equal(r2.finalized, false);
+    assert.equal(r2.attempts, 2);
+
+    const r3 = ensureTerminalResult({ runId: "aurora__a", runsTsvPath, awakePath, resultsDir, maxRetries: 3, reason: "blender busy" });
+    assert.equal(r3.finalized, true);
+    assert.equal(r3.state, "collect-error");
+    assert.equal(fs.existsSync(path.join(resultsDir, "aurora__a.json")), true);
+    assert.equal(parseRunsTsv(runsTsvPath)[0].status, "collect-error");
+
+    // Finding 6: `_since_launch` is NOT reset while aurora__b is still active, and resets when last run finishes
+    updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 2800, intervalSec: 300 });
+    let rows = getRunStatusRows({ runsTsvPath, awakePath, resultsDir, nowSec: 2800 });
+    assert.equal(rows.length, 1);
+
+    fs.writeFileSync(path.join(resultsDir, "aurora__b.json"), JSON.stringify({ run_id: "aurora__b", room: "aurora", composite: 9.0 }));
+    const rB = ensureTerminalResult({ runId: "aurora__b", runsTsvPath, awakePath, resultsDir, state: "collected" });
+    assert.equal(rB.finalized, true);
+    rows = getRunStatusRows({ runsTsvPath, awakePath, resultsDir, nowSec: 2800 });
+    assert.equal(rows.length, 0);
+    const tAfterLast = updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 2800, intervalSec: 300 });
+    assert.equal(tAfterLast.since_launch, 0);
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }
