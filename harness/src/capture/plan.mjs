@@ -1393,7 +1393,8 @@ export async function executePlan(plan, {
               stepsB: r2.info.steps,
             },
           };
-        } else if (kind === 'nav_transition') {
+        } else if (kind === 'nav_transition' && isV2) {
+          // v0.1 is frozen: its nav transition metrics were never measured, so keep them unmeasured there.
           const variant = step.variant || 'normal';
           const cfg = pageConfig(variant, step);
           const params = getParams(seed, variant);
