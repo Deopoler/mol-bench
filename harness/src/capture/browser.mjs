@@ -466,6 +466,10 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
         return page.evaluate(() => window.__benchHostControl?.getDomMetrics?.() ?? null);
       },
 
+      async getDomBudgetStats() {
+        return page.evaluate(() => window.__benchHostControl?.getDomBudgetStats?.() ?? null);
+      },
+
       async resetDomMetrics(opts = {}) {
         await page.evaluate((o) => window.__benchHostControl?.resetDomMetrics?.(o), opts);
       },

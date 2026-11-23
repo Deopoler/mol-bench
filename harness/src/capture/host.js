@@ -287,6 +287,7 @@
   const glState = {
     drawCalls: 0,
     verticesDrawn: 0,
+    trianglesDrawn: 0,
     glCalls: 0,
     fboSwitches: 0,
     bindFramebufferCalls: 0,
@@ -310,6 +311,17 @@
   let nextProgramId = 1;
   let lastViewport = null;
 
+  function computeTriangles(gl, mode, vertCountPerInstance, instances = 1) {
+    const v = Math.max(0, Number(vertCountPerInstance) || 0);
+    const inst = Math.max(1, Number(instances) || 1);
+    const tri = gl?.TRIANGLES ?? 4;
+    const strip = gl?.TRIANGLE_STRIP ?? 5;
+    const fan = gl?.TRIANGLE_FAN ?? 6;
+    if (mode === tri) return Math.floor(v / 3) * inst;
+    if (mode === strip || mode === fan) return (v >= 3 ? v - 2 : 0) * inst;
+    return 0;
+  }
+
   function getBoundFbo(gl) {
     return glState.boundFbo;
   }
@@ -330,14 +342,20 @@
     };
   }
 
-  function recordDrawCall(gl, vertexCount) {
+  function recordDrawCall(gl, mode, vertCountPerInstance, instances = 1) {
+    const verts = Math.max(0, Number(vertCountPerInstance) || 0) * Math.max(1, Number(instances) || 1);
+    const tris = computeTriangles(gl, mode, vertCountPerInstance, instances);
     glState.drawCalls += 1;
-    glState.verticesDrawn += Math.max(0, Number(vertexCount) || 0);
+    glState.verticesDrawn += verts;
+    glState.trianglesDrawn += tris;
     if (glState.currentProgram) {
       const pInfo = programInfo.get(glState.currentProgram);
       if (pInfo) {
         glState.usedProgramIds.add(pInfo.programId);
         pInfo.usedInFrame = true;
+        pInfo.frameDrawCalls += 1;
+        pInfo.frameVerticesDrawn += verts;
+        pInfo.frameTrianglesDrawn += tris;
       }
     }
     const fbo = getBoundFbo(gl);
@@ -425,15 +443,15 @@
         glState.glCalls += 1;
         try {
           if (key === 'drawArrays') {
-            recordDrawCall(this, args[2]);
+            recordDrawCall(this, args[0], args[2], 1);
           } else if (key === 'drawElements') {
-            recordDrawCall(this, args[1]);
+            recordDrawCall(this, args[0], args[1], 1);
           } else if (key === 'drawArraysInstanced') {
-            recordDrawCall(this, (Number(args[2]) || 0) * (Number(args[3]) || 0));
+            recordDrawCall(this, args[0], args[2], args[3]);
           } else if (key === 'drawElementsInstanced') {
-            recordDrawCall(this, (Number(args[1]) || 0) * (Number(args[4]) || 0));
+            recordDrawCall(this, args[0], args[1], args[4]);
           } else if (key === 'drawRangeElements') {
-            recordDrawCall(this, args[3]);
+            recordDrawCall(this, args[0], args[3], 1);
           } else if (key === 'bindFramebuffer') {
             const target = args[0];
             const fb = args[1] || null;
@@ -511,7 +529,17 @@
             const shader = args[1];
             let p = programInfo.get(prog);
             if (!p) {
-              p = { programId: nextProgramId++, shaders: new Set(), linked: false, usedInFrame: false, vertexSource: null, fragmentSource: null };
+              p = {
+                programId: nextProgramId++,
+                shaders: new Set(),
+                linked: false,
+                usedInFrame: false,
+                frameDrawCalls: 0,
+                frameVerticesDrawn: 0,
+                frameTrianglesDrawn: 0,
+                vertexSource: null,
+                fragmentSource: null,
+              };
               programInfo.set(prog, p);
             }
             p.shaders.add(shader);
@@ -536,6 +564,9 @@
               shaders: new Set(),
               linked: false,
               usedInFrame: false,
+              frameDrawCalls: 0,
+              frameVerticesDrawn: 0,
+              frameTrianglesDrawn: 0,
               vertexSource: null,
               fragmentSource: null,
             });
@@ -543,7 +574,17 @@
             const prog = args[0];
             let p = programInfo.get(prog);
             if (!p) {
-              p = { programId: nextProgramId++, shaders: new Set(), linked: false, usedInFrame: false, vertexSource: null, fragmentSource: null };
+              p = {
+                programId: nextProgramId++,
+                shaders: new Set(),
+                linked: false,
+                usedInFrame: false,
+                frameDrawCalls: 0,
+                frameVerticesDrawn: 0,
+                frameTrianglesDrawn: 0,
+                vertexSource: null,
+                fragmentSource: null,
+              };
               programInfo.set(prog, p);
             }
             p.linked = true;
@@ -559,6 +600,7 @@
             p.fragmentSource = fs;
             const entry = {
               programId: p.programId,
+              ref: p,
               linked: true,
               vertexSource: vs,
               fragmentSource: fs,
@@ -616,6 +658,7 @@
   function resetWebGLFrameMetrics() {
     glState.drawCalls = 0;
     glState.verticesDrawn = 0;
+    glState.trianglesDrawn = 0;
     glState.glCalls = 0;
     glState.fboSwitches = 0;
     glState.bindFramebufferCalls = 0;
@@ -625,13 +668,36 @@
     glState.lastDrawnFbo = undefined;
     glState.hasDrawnInFrame = false;
     glState.usedProgramIds.clear();
+    for (const lp of linkedPrograms) {
+      if (lp.ref) {
+        lp.ref.usedInFrame = false;
+        lp.ref.frameDrawCalls = 0;
+        lp.ref.frameVerticesDrawn = 0;
+        lp.ref.frameTrianglesDrawn = 0;
+      }
+    }
+  }
+
+  function serializeProgramEntry(lp) {
+    return {
+      programId: lp.programId,
+      linked: lp.linked,
+      vertexSource: lp.vertexSource,
+      fragmentSource: lp.fragmentSource,
+      drawCalls: lp.ref?.frameDrawCalls ?? 0,
+      verticesDrawn: lp.ref?.frameVerticesDrawn ?? 0,
+      trianglesDrawn: lp.ref?.frameTrianglesDrawn ?? 0,
+    };
   }
 
   function getWebGLMetrics() {
-    const activeShaders = linkedPrograms.filter((p) => glState.usedProgramIds.has(p.programId));
+    const activeShaders = linkedPrograms
+      .filter((p) => glState.usedProgramIds.has(p.programId))
+      .map(serializeProgramEntry);
     return {
       drawCalls: glState.drawCalls,
       verticesDrawn: glState.verticesDrawn,
+      trianglesDrawn: glState.trianglesDrawn,
       glCalls: glState.glCalls,
       fboSwitches: glState.fboSwitches,
       bindFramebufferCalls: glState.bindFramebufferCalls,
@@ -643,13 +709,14 @@
       texUploadKb: Number((glState.totalUploadBytes / 1024).toFixed(4)),
       frameUploadKb: Number((glState.frameUploadBytes / 1024).toFixed(4)),
       activeShaders,
-      linkedPrograms: [...linkedPrograms],
+      linkedPrograms: linkedPrograms.map(serializeProgramEntry),
       renderers: [...glState.renderers],
     };
   }
 
   // ---- DOM Interceptors (MutationObserver, Forced Layout Reads, CLS) ----
   let internalDomBypass = false;
+  let domSteps = 0;
   let domMutations = 0;
   let domAddedNodes = 0;
   let domRemovedNodes = 0;
@@ -752,6 +819,7 @@
 
   function resetDomMetrics(opts = {}) {
     if (mutationObserver) mutationObserver.takeRecords();
+    domSteps = typeof opts?.steps === 'number' && opts.steps >= 0 ? opts.steps : 0;
     domMutations = 0;
     domAddedNodes = 0;
     domRemovedNodes = 0;
@@ -764,6 +832,11 @@
       clsTotal = 0;
       clsEntriesCount = 0;
     }
+  }
+
+  function markDomStep(count = 1) {
+    domSteps += Math.max(0, Number(count) || 0);
+    return domSteps;
   }
 
   function getDomMetrics() {
@@ -785,6 +858,18 @@
       cls: Number(clsValue.toFixed(6)),
       clsTotal: Number(clsTotal.toFixed(6)),
       clsEntriesCount,
+    };
+  }
+
+  function getDomBudgetStats() {
+    const m = getDomMetrics();
+    return {
+      ready: true,
+      steps: domSteps > 0 ? domSteps : 1,
+      dom_mutations: m.domMutations,
+      layout_reads: m.layoutReads,
+      dom_nodes: m.domNodes,
+      cls: m.cls,
     };
   }
 
@@ -854,7 +939,9 @@
     getWebGLMetrics,
     resetWebGLFrameMetrics,
     getDomMetrics,
+    getDomBudgetStats,
     resetDomMetrics,
+    markDomStep,
   });
 
   Object.defineProperty(window, '__benchHostControl', {

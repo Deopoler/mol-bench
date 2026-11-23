@@ -119,6 +119,7 @@ test('host.js WebGL2 interceptors capture drawCalls, vertices, FBO renderPasses,
     captureBudgets: true,
     frames: [
       { key: 'f1', seed: 1, t: 0, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 },
+      { key: 'f2', seed: 1, t: 500, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 },
     ],
   };
 
@@ -141,8 +142,8 @@ test('host.js WebGL2 interceptors capture drawCalls, vertices, FBO renderPasses,
     planTimeoutMs: 60_000,
   });
 
-  // Intercepted drawCalls must be 2 (not fake self-reported 99)
-  assert.ok(res.drawCalls.length > 0);
+  // Intercepted drawCalls must be 2 per frame (not fake self-reported 99)
+  assert.ok(res.drawCalls.length >= 2);
   assert.equal(res.drawCalls[res.drawCalls.length - 1], 2);
 
   assert.ok(res.webglBudget, 'webglBudget summary must be returned');
@@ -167,6 +168,38 @@ test('host.js WebGL2 interceptors capture drawCalls, vertices, FBO renderPasses,
   assert.equal(manifest.webgl_budget.draw_calls, 2);
   assert.equal(manifest.webgl_budget.vertices_drawn, 9);
   assert.ok(manifest.transfer_kb > 0);
+
+  // Validate exact WP-1 budget_glsl.py manifest.webgl & samples[i].webgl snake_case schema (.metrics-v2-from-wp1.md §1.3)
+  assert.equal(typeof manifest.bundle_gz_kb, 'number');
+  assert.ok(manifest.bundle_gz_kb > 0);
+  const wgl = manifest.webgl;
+  assert.ok(wgl && typeof wgl === 'object', 'manifest.webgl must exist for WebGL submissions');
+  assert.equal(Array.isArray(wgl.programs), true);
+  assert.equal(wgl.programs.length, 1, 'identical linked program must be deduped across multi-frame capture');
+  assert.equal(typeof wgl.programs[0].vertex, 'string');
+  assert.equal(typeof wgl.programs[0].fragment, 'string');
+  assert.match(wgl.programs[0].vertex, /gl_Position/);
+  assert.match(wgl.programs[0].fragment, /0\.6/);
+  assert.equal(wgl.programs[0].draw_calls, 2, 'per-frame program draw_calls must equal 2');
+  assert.equal(wgl.programs[0].vertices_drawn, 9, 'per-frame program vertices_drawn must equal 9');
+  assert.equal(wgl.draw_calls_per_frame, 2);
+  assert.equal(wgl.fbo_switches, 2);
+  assert.ok(Math.abs(wgl.pixel_fill_ratio - 5.0) < 0.01, `expected pixel_fill_ratio ~5.0, got ${wgl.pixel_fill_ratio}`);
+  assert.equal(wgl.vertices_drawn_per_frame, 9);
+  assert.equal(wgl.triangles_per_frame, 3);
+  assert.ok(Math.abs(wgl.tex_upload_kb - 8.0) < 0.01);
+  assert.ok(typeof wgl.gl_calls_per_frame === 'number' && wgl.gl_calls_per_frame >= 10);
+  assert.equal(wgl.bundle_gz_kb, manifest.bundle_gz_kb);
+
+  assert.equal(manifest.samples.length, 2);
+  for (const s of manifest.samples) {
+    assert.ok(s.webgl && typeof s.webgl === 'object');
+    assert.equal(s.webgl.programs.length, 1);
+    assert.equal(s.webgl.draw_calls_per_frame, 2);
+    assert.equal(s.webgl.vertices_drawn_per_frame, 9);
+    assert.equal(s.webgl.triangles_per_frame, 3);
+    assert.equal(s.webgl.bundle_gz_kb, manifest.bundle_gz_kb);
+  }
 });
 
 test('host.js DOM interceptors, 200% root font zoom, prefers-contrast: more, and lang_ja work accurately', { timeout: TEST_TIMEOUT_MS }, async () => {
@@ -254,6 +287,16 @@ test('host.js DOM interceptors, 200% root font zoom, prefers-contrast: more, and
       assert.equal(domMetrics.addedNodes, 2);
       assert.equal(domMetrics.layoutReads, 3, `expected 3 layout reads, got ${domMetrics.layoutReads}`);
       assert.ok(domMetrics.domNodes >= 8);
+
+      // Verify WP-1 perf_dom.js snake_case shape via getDomBudgetStats() (.metrics-v2-from-wp1.md §2.1)
+      const domStats = await h.getDomBudgetStats();
+      assert.deepEqual(Object.keys(domStats).sort(), ['cls', 'dom_mutations', 'dom_nodes', 'layout_reads', 'ready', 'steps']);
+      assert.equal(domStats.ready, true);
+      assert.equal(typeof domStats.steps, 'number');
+      assert.equal(domStats.dom_mutations, 2);
+      assert.equal(domStats.layout_reads, 3);
+      assert.ok(domStats.dom_nodes >= 8);
+      assert.equal(typeof domStats.cls, 'number');
 
       // Verify setDomBypass prevents probe reads from incrementing layoutReads
       await h.setDomBypass(true);

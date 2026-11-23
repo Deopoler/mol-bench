@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { startServer } from './server.mjs';
@@ -340,6 +341,110 @@ function wrappedAngleDiffDeg(a, b) {
   return diff;
 }
 
+const BUNDLE_EXTS = new Set(['.html', '.htm', '.js', '.mjs', '.cjs', '.css', '.glsl', '.vert', '.frag']);
+const BUNDLE_IGNORE_DIRS = new Set(['node_modules', '.git', 'preview', 'bench', 'contract', 'tests', 'public-tests']);
+const BUNDLE_IGNORE_FILES = new Set(['report.json', 'decisions.json', 'selfcheck.json', '.bench-room', 'package.json', 'package-lock.json']);
+
+async function computeBundleGzKb(submissionDir) {
+  let totalGz = 0;
+  async function walk(dir) {
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (BUNDLE_IGNORE_DIRS.has(e.name)) continue;
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        await walk(full);
+      } else if (e.isFile()) {
+        if (BUNDLE_IGNORE_FILES.has(e.name)) continue;
+        if (!BUNDLE_EXTS.has(path.extname(e.name).toLowerCase())) continue;
+        const buf = await fs.readFile(full);
+        totalGz += zlib.gzipSync(buf, { level: 9 }).length;
+      }
+    }
+  }
+  await walk(submissionDir);
+  return Number((totalGz / 1024).toFixed(4));
+}
+
+function normalizeWebglPrograms(programLists = [], { averageOver = 1 } = {}) {
+  const bySourceKey = new Map();
+  const denom = averageOver > 0 ? averageOver : 1;
+  for (const list of programLists) {
+    if (!Array.isArray(list)) continue;
+    for (const p of list) {
+      if (!p) continue;
+      const vertex = typeof p.vertexSource === 'string' ? p.vertexSource : (typeof p.vertex === 'string' ? p.vertex : '');
+      const fragment = typeof p.fragmentSource === 'string' ? p.fragmentSource : (typeof p.fragment === 'string' ? p.fragment : '');
+      const key = `${vertex}\0${fragment}`;
+      const existing = bySourceKey.get(key) || { vertex, fragment, draw_calls: 0, vertices_drawn: 0 };
+      existing.draw_calls += Number(p.drawCalls ?? p.draw_calls ?? 0);
+      existing.vertices_drawn += Number(p.verticesDrawn ?? p.vertices_drawn ?? 0);
+      bySourceKey.set(key, existing);
+    }
+  }
+  return Array.from(bySourceKey.values()).map((p) => ({
+    vertex: p.vertex,
+    fragment: p.fragment,
+    draw_calls: Number((p.draw_calls / denom).toFixed(4)),
+    vertices_drawn: Number((p.vertices_drawn / denom).toFixed(4)),
+  }));
+}
+
+function buildWebglManifestBlock(frameBudgets, initMetrics, bundleGzKb) {
+  const activeFrames = (frameBudgets || []).filter(
+    (x) => x && (x.drawCalls > 0 || (x.activeShaders?.length ?? 0) > 0 || (x.linkedPrograms?.length ?? 0) > 0),
+  );
+  const initActive = Boolean(
+    initMetrics && (initMetrics.drawCalls > 0 || (initMetrics.activeShaders?.length ?? 0) > 0 || (initMetrics.linkedPrograms?.length ?? 0) > 0),
+  );
+  if (activeFrames.length === 0 && !initActive) return null;
+
+  const drawCallsPerFrame = activeFrames.length > 0
+    ? median(activeFrames.map((x) => x.drawCalls ?? 0))
+    : (initMetrics?.drawCalls ?? 0);
+  const fboSwitches = activeFrames.length > 0
+    ? median(activeFrames.map((x) => x.fboSwitches ?? 0))
+    : (initMetrics?.fboSwitches ?? 0);
+  const pixelFillRatio = activeFrames.length > 0
+    ? median(activeFrames.map((x) => x.pixelFillRatio ?? 0))
+    : (initMetrics?.pixelFillRatio ?? 0);
+  const verticesDrawnPerFrame = activeFrames.length > 0
+    ? median(activeFrames.map((x) => x.verticesDrawn ?? 0))
+    : (initMetrics?.verticesDrawn ?? 0);
+  const trianglesPerFrame = activeFrames.length > 0
+    ? median(activeFrames.map((x) => x.trianglesDrawn ?? Math.floor((x.verticesDrawn ?? 0) / 3)))
+    : (initMetrics?.trianglesDrawn ?? Math.floor((initMetrics?.verticesDrawn ?? 0) / 3));
+  const texUploadKb = Number(Math.max(
+    initMetrics?.texUploadKb ?? 0,
+    ...activeFrames.map((x) => x.texUploadKb ?? 0),
+  ).toFixed(4));
+  const glCallsPerFrame = activeFrames.length > 0
+    ? median(activeFrames.map((x) => x.glCalls ?? 0))
+    : (initMetrics?.glCalls ?? 0);
+
+  const progLists = activeFrames.length > 0
+    ? activeFrames.map((f) => (f.activeShaders?.length ? f.activeShaders : (f.linkedPrograms || [])))
+    : [(initMetrics?.activeShaders?.length ? initMetrics.activeShaders : (initMetrics?.linkedPrograms || []))];
+  const programs = normalizeWebglPrograms(progLists, { averageOver: activeFrames.length || 1 });
+
+  return {
+    programs,
+    draw_calls_per_frame: Number(Number(drawCallsPerFrame).toFixed(4)),
+    fbo_switches: Number(Number(fboSwitches).toFixed(4)),
+    pixel_fill_ratio: Number(Number(pixelFillRatio).toFixed(6)),
+    vertices_drawn_per_frame: Number(Number(verticesDrawnPerFrame).toFixed(4)),
+    triangles_per_frame: Number(Number(trianglesPerFrame).toFixed(4)),
+    tex_upload_kb: texUploadKb,
+    gl_calls_per_frame: Number(Number(glCallsPerFrame).toFixed(4)),
+    bundle_gz_kb: bundleGzKb,
+  };
+}
+
 async function measureRafP95(pageHandle, { warmupMs = 2000, measureMs = 10000 } = {}) {
   await pageHandle.resume().catch(() => {});
   const result = await pageHandle.page.evaluate(async ([warm, dur]) => {
@@ -597,6 +702,7 @@ export async function executePlan(plan, {
       ...opts,
     });
 
+    const bundleGzKb = isV2 ? await computeBundleGzKb(submissionDir) : 0;
     const manifest = {
       room: plan?.room || spec?.room || 'unknown',
       viewport_default: defaultViewport,
@@ -879,10 +985,12 @@ export async function executePlan(plan, {
             }
             await handle.renderFrame();
 
+            let glMetricsForSample = null;
             if (isV2) {
               const glMetrics = await handle.getWebGLMetrics().catch(() => null);
               if (glMetrics) {
                 webglFrameBudgets.push({ key: frame.key, seed, viewport: cfg.viewport, variant, ...glMetrics });
+                glMetricsForSample = glMetrics;
                 if (specMetricIds.has('budget.draw_calls') && glMetrics.drawCalls > 0) {
                   drawCalls.push(glMetrics.drawCalls);
                 }
@@ -901,6 +1009,9 @@ export async function executePlan(plan, {
             const outPath = path.join(absWorkDir, relFile);
             await handle.screenshot(outPath);
 
+            const sampleWebgl = isV2 && glMetricsForSample
+              ? buildWebglManifestBlock([glMetricsForSample], null, bundleGzKb)
+              : null;
             const sampleEntry = {
               key: frame.key,
               seed,
@@ -910,6 +1021,7 @@ export async function executePlan(plan, {
               variant,
               dpr: cfg.dpr,
               file: relFile,
+              ...(sampleWebgl ? { webgl: sampleWebgl } : {}),
             };
             if (frame.mask) sampleEntry.mask = frame.mask;
 
@@ -1306,11 +1418,16 @@ export async function executePlan(plan, {
           await handle.setSeed(seed, params);
           await handle.seek(Number(p.t ?? 0));
           await handle.renderFrame();
-          await handle.setDomBypass(true).catch(() => {});
+          const isDomBudgetProbe = p.probe === 'perf_dom' || p.probe === 'budget.dom_work_profile' || p.probe === 'perf.cls';
+          if (!isDomBudgetProbe) {
+            await handle.setDomBypass(true).catch(() => {});
+          }
           try {
             probes[p.key] = await runProbe(p.probe, handle, p.args || {});
           } finally {
-            await handle.setDomBypass(false).catch(() => {});
+            if (!isDomBudgetProbe) {
+              await handle.setDomBypass(false).catch(() => {});
+            }
           }
         } finally {
           collectLogs(handle);
@@ -1441,6 +1558,7 @@ export async function executePlan(plan, {
 
     // ---- v0.2 WebGL & DOM budget summaries ----
     const transferKb = Number((transferBytes / 1024).toFixed(4));
+    const webglManifest = isV2 ? buildWebglManifestBlock(webglFrameBudgets, initWebGLMetrics, bundleGzKb) : null;
     const webglBudgetSummary = (webglFrameBudgets.length > 0 || initWebGLMetrics)
       ? {
           frames: webglFrameBudgets,
@@ -1464,6 +1582,10 @@ export async function executePlan(plan, {
 
     if (isV2) {
       manifest.transfer_kb = transferKb;
+      manifest.bundle_gz_kb = bundleGzKb;
+      if (webglManifest) {
+        manifest.webgl = webglManifest;
+      }
       if (webglBudgetSummary) {
         manifest.webgl_budget = webglBudgetSummary;
       }
