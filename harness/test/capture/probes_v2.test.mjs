@@ -1,10 +1,13 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
+import { executePlan } from '../../src/capture/plan.mjs';
 import { launchBrowser } from '../../src/capture/browser.mjs';
 import { startServer } from '../../src/capture/server.mjs';
 import { discoverProbes, listProbes, runProbe, getProbeLoadErrors } from '../../src/capture/probes/index.js';
@@ -34,6 +37,10 @@ function scoreHigher(val, full, zero) {
 before(async () => {
   try {
     await fs.mkdir(PREFERRED_WORK_BASE, { recursive: true });
+    // Verify child directory creation also works under sandboxed Windows
+    const probeSub = path.join(PREFERRED_WORK_BASE, `_probe_${process.pid}`);
+    await fs.mkdir(probeSub, { recursive: true });
+    await fs.rm(probeSub, { recursive: true, force: true });
     WORK_BASE = PREFERRED_WORK_BASE;
   } catch (err) {
     if (err?.code === 'EPERM' || err?.code === 'EACCES') {
@@ -485,4 +492,122 @@ test('theme_tri validates distinct light, dark, and prefers-contrast: more rende
 
   const atkBadHc = await withFixturePage('tri_bad_hc', makeThemeHtml('bad_contrast'), {}, (h) => runProbe('theme_tri', h));
   assert.equal(atkBadHc['theme.tri_valid'], false);
+});
+
+test('end-to-end: plan.mjs captures synthetic WebGL page -> manifest.webgl -> budget_glsl.py computes budget.gpu_work_profile', { timeout: 90_000 }, async () => {
+  const subDir = path.join(WORK_BASE, `e2e_webgl_sub_${Date.now()}`);
+  const workDir = path.join(WORK_BASE, `e2e_webgl_work_${Date.now()}`);
+  await fs.mkdir(subDir, { recursive: true });
+  await fs.mkdir(workDir, { recursive: true });
+
+  try {
+    await fs.writeFile(
+      path.join(subDir, 'index.html'),
+      `<!doctype html><html><head><meta charset="utf-8"></head>
+      <body style="margin:0;overflow:hidden"><canvas id="c" width="320" height="240"></canvas>
+      <script>
+      (function () {
+        const c = document.getElementById('c');
+        const gl = c.getContext('webgl2', { preserveDrawingBuffer: true });
+        const vs = '#version 300 es\\nin vec2 a_pos; out vec2 v_uv; void main() { v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }';
+        const fsSrc = '#version 300 es\\nprecision highp float; in vec2 v_uv; uniform float u_t; out vec4 o; void main() { float g = 0.5 + 0.5 * sin(v_uv.x * 6.28318 + u_t * 0.001); o = vec4(0.1, g * 0.8, 0.5, 1.0); }';
+        function comp(t, s) { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); return sh; }
+        const prog = gl.createProgram();
+        gl.attachShader(prog, comp(gl.VERTEX_SHADER, vs));
+        gl.attachShader(prog, comp(gl.FRAGMENT_SHADER, fsSrc));
+        gl.linkProgram(prog);
+        const vbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+        const locPos = gl.getAttribLocation(prog, 'a_pos');
+        const locT = gl.getUniformLocation(prog, 'u_t');
+        let curT = 0;
+        function renderOne() {
+          gl.viewport(0, 0, c.width, c.height);
+          gl.useProgram(prog);
+          gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+          gl.enableVertexAttribArray(locPos);
+          gl.vertexAttribPointer(locPos, 2, gl.FLOAT, false, 0, 0);
+          gl.uniform1f(locT, curT);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.finish();
+        }
+        renderOne();
+        window.__bench = {
+          version: 1,
+          ready: Promise.resolve(),
+          setSeed() {},
+          seek(t) { curT = Number(t) || 0; },
+          resume() {},
+          async renderFrame() { renderOne(); },
+          state() { return { t: curT }; },
+          stats() { return { drawCalls: 1, triangles: 1 }; }
+        };
+      })();
+      </script></body></html>`,
+      'utf8',
+    );
+
+    const spec = {
+      room: 'aurora',
+      spec_version: '0.2.0',
+      load_timeout_ms: 15000,
+      metrics: [
+        { id: 'budget.gpu_work_profile', axis: 'craft', weight: 4, score: { type: 'higher', full: 1.0, zero: 0.0 } },
+        { id: 'budget.render_passes', axis: 'craft', weight: 2, score: { type: 'lower', full: 2.0, zero: 6.0 } },
+        { id: 'budget.draw_calls', axis: 'craft', weight: 1, score: { type: 'lower', full: 2, zero: 10 } },
+      ],
+    };
+
+    const plan = {
+      room: 'aurora',
+      mode: 'swiftshader',
+      captureBudgets: true,
+      frames: [
+        { key: 's1_t1000', seed: 1, t: 1000, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 },
+      ],
+    };
+
+    const capRes = await executePlan(plan, {
+      submissionDir: subDir,
+      workDir,
+      spec,
+      noPython: true,
+      planTimeoutMs: 60_000,
+    });
+
+    const manifest = JSON.parse(await fs.readFile(capRes.manifestPath, 'utf8'));
+    assert.ok(manifest.webgl && typeof manifest.webgl === 'object', 'plan.mjs must emit manifest.webgl');
+    assert.equal(manifest.webgl.programs.length, 1);
+
+    const specPath = path.join(workDir, 'spec.json');
+    const outPath = path.join(workDir, 'metrics.json');
+    await fs.writeFile(specPath, JSON.stringify(spec), 'utf8');
+
+    const pyWin = path.join(REPO_ROOT, '.venv', 'Scripts', 'python.exe');
+    const pyUnix = path.join(REPO_ROOT, '.venv', 'bin', 'python');
+    const py = existsSync(pyWin) ? pyWin : (existsSync(pyUnix) ? pyUnix : 'python');
+    const metricsDir = path.join(REPO_ROOT, 'metrics');
+
+    execFileSync(
+      py,
+      ['-m', 'molmetrics', 'compute', '--manifest', capRes.manifestPath, '--spec', specPath, '--out', outPath],
+      {
+        cwd: REPO_ROOT,
+        env: { ...process.env, PYTHONPATH: [metricsDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
+        encoding: 'utf8',
+      },
+    );
+
+    const pyMetrics = JSON.parse(await fs.readFile(outPath, 'utf8'));
+    assert.ok(pyMetrics['budget.gpu_work_profile'], 'budget.gpu_work_profile must be computed');
+    assert.equal(pyMetrics._skipped.includes('budget.gpu_work_profile'), false);
+    assert.equal(typeof pyMetrics['budget.gpu_work_profile'].raw, 'number');
+    assert.equal(pyMetrics['budget.gpu_work_profile'].raw, 1.0);
+    assert.equal(pyMetrics['budget.draw_calls'].raw, 1);
+    assert.equal(pyMetrics['budget.render_passes'].raw, 1);
+  } finally {
+    await fs.rm(subDir, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+  }
 });

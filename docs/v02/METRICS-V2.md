@@ -110,7 +110,7 @@ All five plugins export `probeName`, `aliases`, and `runProbe(pageHandle, args, 
 | `theme_tri.js` | `theme_tri` | `theme.tri_valid` | Evaluates `light`, `dark`, and `prefers-contrast: more` via CDP `Emulation.setEmulatedMedia`; passes iff all 3 pixel SHA-256 hashes differ AND both axe `color-contrast` and APCA `a11y.apca_contrast` have 0 failures in all 3 modes. |
 
 ### 2.1 WP-0b DOM Interceptor Input Shape (`perf_dom.js`)
-If `window.__benchHostControl.getDomBudgetStats()` (or `window.__benchDomBudget`) returns an object with `ready: true`:
+When `window.__benchHostControl.getDomBudgetStats()` is present:
 ```json
 {
   "ready": true,
@@ -121,9 +121,10 @@ If `window.__benchHostControl.getDomBudgetStats()` (or `window.__benchDomBudget`
   "cls": 0.002
 }
 ```
-(`dom_mutations_per_step` and `layout_reads_per_step` may also be supplied directly; otherwise `total / max(1, steps)` is used.)
+- If `steps > 1` (or `args.useExistingHostStats === true`), `perf_dom.js` consumes `getDomBudgetStats()` directly.
+- Otherwise (`steps <= 1`), `perf_dom.js` records load-phase `cls`, clears initial HTML-parse mutations via `resetDomMetrics({ steps: 0, resetCls: false })`, drives the filter/sort steps while calling `markDomStep(1)`, and reads the authoritative `host.js` counts via `getDomBudgetStats()`. (`dom_mutations_per_step` and `layout_reads_per_step` may also be supplied directly in `args.domStats`.)
 
 ---
 
-## 3. WP-0b Coordination Note
-- `harness/src/capture/plan.mjs` (WP-0b) handles `stepKind === 'nav_transition'` (emitted by `registry.mjs` for `nav.transition_ms` and `a11y.reduced_motion_transition_ms`), `200%` root zoom (`@zoom200`), and `prefers-contrast: more` (`high_contrast`) in capture plans; `probes/nav.js` already implements `probeNavTransitionMs` using CDP `Animation.setPlaybackRate(0)` and `stepRafVirtual`.
+## 3. WP-0b Integration Status
+- `harness/src/capture/plan.mjs` (WP-0b) executes `stepKind === 'nav_transition'`, `200%` root zoom (`@zoom200`), `prefers-contrast: more` (`high_contrast`), and emits `manifest.webgl` + `samples[i].webgl` in the exact §1.3 schema consumed by `budget_glsl.py`.

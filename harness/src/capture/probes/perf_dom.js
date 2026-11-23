@@ -79,99 +79,126 @@ export async function runProbe(pageHandle, args = {}, invokedName = probeName) {
 
   const { page } = pageHandle;
 
-  // 2. Check if WP-0b host.js already collected DOM interceptor stats
-  const hostStats = await page.evaluate(() => {
-    const fn = window.__benchHostControl?.getDomBudgetStats;
-    if (typeof fn === 'function') return fn();
-    if (window.__benchDomBudget && typeof window.__benchDomBudget === 'object') {
-      return window.__benchDomBudget;
+  // 2. Check if WP-0b host.js already provides authoritative DOM interceptor APIs
+  const hostApi = await page.evaluate(() => {
+    const ctrl = window.__benchHostControl;
+    if (ctrl && typeof ctrl.getDomBudgetStats === 'function') {
+      return {
+        hasControl: true,
+        stats: ctrl.getDomBudgetStats(),
+      };
+    }
+    if (window.__benchDomBudget && typeof window.__benchDomBudget === 'object' && window.__benchDomBudget.ready === true) {
+      return {
+        hasControl: false,
+        stats: window.__benchDomBudget,
+      };
     }
     return null;
   });
 
-  if (hostStats && typeof hostStats === 'object' && hostStats.ready === true) {
-    const profile = computeDomWorkProfile(hostStats, args.thresholds);
-    const cls = Number(hostStats.cls ?? 0);
-    return formatResult(invokedName, profile, cls, { source: 'host.js', rawStats: hostStats });
+  // If WP-0b or an earlier flow probe already executed multi-step interactions on this page,
+  // consume its authoritative stats directly without re-running steps.
+  if (hostApi && hostApi.stats && (hostApi.stats.steps > 1 || args.useExistingHostStats === true || !hostApi.hasControl)) {
+    const profile = computeDomWorkProfile(hostApi.stats, args.thresholds);
+    const cls = Number(hostApi.stats.cls ?? 0);
+    return formatResult(invokedName, profile, cls, { source: 'host.js', rawStats: hostApi.stats });
   }
 
-  // 3. Self-instrument in-page: MutationObserver + forced-layout property hooks + CLS observer
+  // 3. Measure using WP-0b host.js interceptors when available (clearing initial HTML-parse
+  //    mutations first and marking each scripted step via markDomStep), or fallback to
+  //    self-instrumentation when host.js DOM interceptors are absent.
   const measured = await page.evaluate(async (opts) => {
+    const ctrl = window.__benchHostControl;
+    const useHostInterceptors = Boolean(
+      ctrl &&
+      typeof ctrl.getDomBudgetStats === 'function' &&
+      typeof ctrl.resetDomMetrics === 'function' &&
+      typeof ctrl.markDomStep === 'function',
+    );
+
     let clsTotal = 0;
     let clsObs = null;
-    try {
-      clsObs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (!entry.hadRecentInput) {
-            clsTotal += entry.value || 0;
-          }
-        }
-      });
-      clsObs.observe({ type: 'layout-shift', buffered: true });
-    } catch {
-      clsObs = null;
-    }
-
+    let mutObs = null;
     let nodeMutations = 0;
-    const mutObs = new MutationObserver((records) => {
-      for (const rec of records) {
-        nodeMutations += (rec.addedNodes?.length || 0) + (rec.removedNodes?.length || 0);
-      }
-    });
-    if (document.body) {
-      mutObs.observe(document.body, { childList: true, subtree: true });
-    }
-
-    // Wrap forced-layout reads cleanly and restore in finally
     let layoutReads = 0;
     const restores = [];
 
-    const origGetComputedStyle = window.getComputedStyle;
-    window.getComputedStyle = function wrappedGetComputedStyle(...a) {
-      layoutReads += 1;
-      return origGetComputedStyle.apply(this, a);
-    };
-    restores.push(() => {
-      window.getComputedStyle = origGetComputedStyle;
-    });
+    if (!useHostInterceptors) {
+      try {
+        clsObs = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (!entry.hadRecentInput) {
+              clsTotal += entry.value || 0;
+            }
+          }
+        });
+        clsObs.observe({ type: 'layout-shift', buffered: true });
+      } catch {
+        clsObs = null;
+      }
 
-    const origGetBcr = Element.prototype.getBoundingClientRect;
-    Element.prototype.getBoundingClientRect = function wrappedGetBcr() {
-      layoutReads += 1;
-      return origGetBcr.call(this);
-    };
-    restores.push(() => {
-      Element.prototype.getBoundingClientRect = origGetBcr;
-    });
-
-    const wrapGetter = (proto, prop) => {
-      const desc = Object.getOwnPropertyDescriptor(proto, prop);
-      if (!desc || !desc.get || !desc.configurable) return;
-      Object.defineProperty(proto, prop, {
-        configurable: true,
-        enumerable: desc.enumerable,
-        get() {
-          layoutReads += 1;
-          return desc.get.call(this);
-        },
-        set: desc.set,
+      mutObs = new MutationObserver((records) => {
+        for (const rec of records) {
+          nodeMutations += (rec.addedNodes?.length || 0) + (rec.removedNodes?.length || 0);
+        }
       });
-      restores.push(() => Object.defineProperty(proto, prop, desc));
-    };
+      if (document.body) {
+        mutObs.observe(document.body, { childList: true, subtree: true });
+      }
 
-    for (const p of ['offsetWidth', 'offsetHeight', 'offsetTop', 'offsetLeft']) {
-      wrapGetter(HTMLElement.prototype, p);
-    }
-    for (const p of ['clientWidth', 'clientHeight', 'scrollWidth', 'scrollHeight']) {
-      wrapGetter(Element.prototype, p);
+      const origGetComputedStyle = window.getComputedStyle;
+      window.getComputedStyle = function wrappedGetComputedStyle(...a) {
+        layoutReads += 1;
+        return origGetComputedStyle.apply(this, a);
+      };
+      restores.push(() => {
+        window.getComputedStyle = origGetComputedStyle;
+      });
+
+      const origGetBcr = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function wrappedGetBcr() {
+        layoutReads += 1;
+        return origGetBcr.call(this);
+      };
+      restores.push(() => {
+        Element.prototype.getBoundingClientRect = origGetBcr;
+      });
+
+      const wrapGetter = (proto, prop) => {
+        const desc = Object.getOwnPropertyDescriptor(proto, prop);
+        if (!desc || !desc.get || !desc.configurable) return;
+        Object.defineProperty(proto, prop, {
+          configurable: true,
+          enumerable: desc.enumerable,
+          get() {
+            layoutReads += 1;
+            return desc.get.call(this);
+          },
+          set: desc.set,
+        });
+        restores.push(() => Object.defineProperty(proto, prop, desc));
+      };
+
+      for (const p of ['offsetWidth', 'offsetHeight', 'offsetTop', 'offsetLeft']) {
+        wrapGetter(HTMLElement.prototype, p);
+      }
+      for (const p of ['clientWidth', 'clientHeight', 'scrollWidth', 'scrollHeight']) {
+        wrapGetter(Element.prototype, p);
+      }
     }
 
     let stepsExecuted = 0;
+    let loadCls = 0;
     try {
       // Allow initial load / font-ready / async layout shifts to settle and record load-phase CLS
       // before running synthetic dispatchEvent stress steps (synthetic DOM events do not set hadRecentInput).
       await new Promise((r) => setTimeout(r, 40));
-      if (clsObs && typeof clsObs.takeRecords === 'function') {
+      if (useHostInterceptors) {
+        loadCls = Number(ctrl.getDomBudgetStats().cls ?? 0);
+        // Clear initial HTML-parse DOM mutations while preserving load-phase CLS.
+        ctrl.resetDomMetrics({ steps: 0, resetCls: false });
+      } else if (clsObs && typeof clsObs.takeRecords === 'function') {
         for (const entry of clsObs.takeRecords()) {
           if (!entry.hadRecentInput) clsTotal += entry.value || 0;
         }
@@ -194,6 +221,7 @@ export async function runProbe(pageHandle, args = {}, invokedName = probeName) {
           searchInput.dispatchEvent(new Event('input', { bubbles: true }));
           await new Promise((r) => setTimeout(r, 10));
           stepsExecuted += 1;
+          if (useHostInterceptors) ctrl.markDomStep(1);
         }
       }
 
@@ -201,6 +229,7 @@ export async function runProbe(pageHandle, args = {}, invokedName = probeName) {
         btn.click();
         await new Promise((r) => setTimeout(r, 10));
         stepsExecuted += 1;
+        if (useHostInterceptors) ctrl.markDomStep(1);
       }
 
       if (sortSelect && sortSelect.options?.length > 1) {
@@ -210,6 +239,7 @@ export async function runProbe(pageHandle, args = {}, invokedName = probeName) {
           sortSelect.dispatchEvent(new Event('change', { bubbles: true }));
           await new Promise((r) => setTimeout(r, 10));
           stepsExecuted += 1;
+          if (useHostInterceptors) ctrl.markDomStep(1);
         }
         sortSelect.value = origVal;
         sortSelect.dispatchEvent(new Event('change', { bubbles: true }));
@@ -217,20 +247,41 @@ export async function runProbe(pageHandle, args = {}, invokedName = probeName) {
 
       // Allow any microtasks/MutationObserver callbacks to flush
       await new Promise((r) => setTimeout(r, 20));
-      for (const rec of mutObs.takeRecords()) {
-        nodeMutations += (rec.addedNodes?.length || 0) + (rec.removedNodes?.length || 0);
+      if (mutObs) {
+        for (const rec of mutObs.takeRecords()) {
+          nodeMutations += (rec.addedNodes?.length || 0) + (rec.removedNodes?.length || 0);
+        }
       }
     } finally {
-      mutObs.disconnect();
+      mutObs?.disconnect();
       clsObs?.disconnect();
       for (let i = restores.length - 1; i >= 0; i--) {
         restores[i]();
       }
     }
 
+    if (useHostInterceptors) {
+      const hostStats = ctrl.getDomBudgetStats();
+      const steps = Math.max(1, Number(hostStats.steps ?? stepsExecuted ?? 1));
+      const domMutations = Number(hostStats.dom_mutations ?? 0);
+      const hostLayoutReads = Number(hostStats.layout_reads ?? 0);
+      return {
+        source: 'host.js',
+        steps,
+        stepsExecuted,
+        dom_mutations: domMutations,
+        dom_mutations_per_step: domMutations / steps,
+        layout_reads: hostLayoutReads,
+        layout_reads_per_step: hostLayoutReads / steps,
+        dom_nodes: Number(hostStats.dom_nodes ?? document.getElementsByTagName('*').length),
+        cls: loadCls,
+      };
+    }
+
     const domNodes = document.querySelectorAll('*').length;
     const steps = Math.max(1, stepsExecuted);
     return {
+      source: 'self-instrumented',
       steps,
       stepsExecuted,
       dom_mutations: nodeMutations,
@@ -243,7 +294,7 @@ export async function runProbe(pageHandle, args = {}, invokedName = probeName) {
   }, { queries: args.queries || null });
 
   const profile = computeDomWorkProfile(measured, args.thresholds);
-  return formatResult(invokedName, profile, measured.cls, { source: 'self-instrumented', rawStats: measured });
+  return formatResult(invokedName, profile, measured.cls, { source: measured.source, rawStats: measured });
 }
 
 function formatResult(invokedName, profile, cls, meta) {
