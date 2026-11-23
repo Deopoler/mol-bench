@@ -3,7 +3,8 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { registerMetrics } from "../harness/src/registry.mjs";
 import { loadSpec, parseVersion, resolveVersionPaths } from "../harness/src/spec.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -397,7 +398,7 @@ export function prepareRun({
   }
 }
 
-function main() {
+async function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2));
   if (flags.help || flags.h || positional.length === 0) {
     console.log(
@@ -406,6 +407,15 @@ function main() {
     return;
   }
   const room = positional[0];
+  if (parseVersion(flags.version ?? 1) === 2) {
+    // v0.2 room specs may use adapter-registered metric ids; register them before the spec is validated.
+    const adapterPath = path.join(flags["repo-root"] || DEFAULT_REPO_ROOT, "harness", "src", "rooms-v2", `${room}.mjs`);
+    if (fs.existsSync(adapterPath)) {
+      const adapter = await import(pathToFileURL(adapterPath).href);
+      const defs = typeof adapter.registerMetrics === "function" ? adapter.registerMetrics() : null;
+      if (defs && typeof defs === "object") registerMetrics(defs, { replace: false });
+    }
+  }
   const { runDir } = prepareRun({
     room,
     runId: flags["run-id"],
@@ -421,10 +431,8 @@ function main() {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     console.error(`Error: ${err.message}`);
     process.exit(1);
-  }
+  });
 }
