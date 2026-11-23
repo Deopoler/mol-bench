@@ -18,6 +18,8 @@ let usingTempDir = false;
 before(async () => {
   try {
     await fs.mkdir(PREFERRED_WORK_BASE, { recursive: true });
+    const probe = await fs.mkdtemp(path.join(PREFERRED_WORK_BASE, '.probe-'));
+    await fs.rm(probe, { recursive: true, force: true });
     WORK_BASE = PREFERRED_WORK_BASE;
   } catch (err) {
     if (err?.code === 'EPERM' || err?.code === 'EACCES') {
@@ -384,4 +386,151 @@ test('plan.mjs executes nav_transition steps for both normal and reduced_motion 
   assert.equal(red['nav.transition_ms'], undefined, 'reduced_motion step must not emit nav.transition_ms key');
   assert.equal(red.details.clickDiag.reducedMotion, true);
   assert.ok(red['a11y.reduced_motion_transition_ms'] < norm['nav.transition_ms'], `expected reduced_motion (${red['a11y.reduced_motion_transition_ms']}) < normal (${norm['nav.transition_ms']})`);
+});
+
+test('host.js blocks unauthorized __benchHostControl mutations, fails G-tamper, stubs navigator.gpu, counts 3D/copy uploads, and flags unhooked rendering', { timeout: TEST_TIMEOUT_MS }, async () => {
+  const tamperDir = path.join(WORK_BASE, 'tamper-fixture');
+  const tamperWork = path.join(WORK_BASE, 'tamper-work');
+  const glExtDir = path.join(WORK_BASE, 'gl-ext-fixture');
+  const glExtWork = path.join(WORK_BASE, 'gl-ext-work');
+  for (const d of [tamperDir, tamperWork, glExtDir, glExtWork]) {
+    await fs.rm(d, { recursive: true, force: true });
+  }
+  await fs.mkdir(tamperDir, { recursive: true });
+  await fs.mkdir(glExtDir, { recursive: true });
+
+  // 1. Page JS attempts to tamper with __benchHostControl mutators and create a worker/webgpu context
+  await fs.writeFile(
+    path.join(tamperDir, 'index.html'),
+    `<!doctype html>
+<html><head><meta charset="utf-8"></head>
+<body>
+  <canvas id="c" width="160" height="120"></canvas>
+  <script>
+    window.__initWasPresent = '__BENCH_HOST_INIT__' in window;
+    window.__gpuValue = typeof navigator.gpu === 'undefined' ? 'undefined' : 'defined';
+    const c = document.getElementById('c');
+    window.__webgpuCtx = c.getContext('webgpu');
+    const gl = c.getContext('webgl2', { preserveDrawingBuffer: true });
+    // Attempt unauthorized mutator calls
+    window.__benchHostControl.markDomStep(1e9);
+    window.__benchHostControl.setInternalBypass(true);
+    window.__benchHostControl.resetDomMetrics({ resetCls: true });
+    window.__benchHostControl.resetWebGLFrameMetrics();
+    window.__benchHostControl.freeze(999999);
+    // Genuine DOM mutation should still be recorded because setInternalBypass(true) was blocked
+    const div = document.createElement('div');
+    div.textContent = 'legit';
+    document.body.appendChild(div);
+    // Genuine GL draw should still work
+    const vs = '#version 300 es\\nin vec2 p; void main(){ gl_Position=vec4(p,0.0,1.0); }';
+    const fsS = '#version 300 es\\nprecision mediump float; out vec4 o; void main(){ o=vec4(1.0); }';
+    function sh(t,s){ const x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x); return x; }
+    const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fsS)); gl.linkProgram(pr);
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+    function draw() {
+      gl.useProgram(pr);
+      const loc = gl.getAttribLocation(pr, 'p');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    draw();
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed() {}, seek() {}, resume() {},
+      async renderFrame() {
+        draw();
+        // Also try resetting at end of renderFrame to hide draw calls
+        window.__benchHostControl.resetWebGLFrameMetrics();
+      },
+      state() { return { initPresent: window.__initWasPresent, gpu: window.__gpuValue, webgpuCtx: window.__webgpuCtx === null }; },
+      stats() { return { drawCalls: 1, triangles: 1 }; }
+    };
+  </script>
+</body></html>`
+  );
+
+  const tamperRes = await executePlan(
+    { room: 'aurora', mode: 'swiftshader', frames: [{ key: 'f1', seed: 1, t: 0, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 }] },
+    {
+      submissionDir: tamperDir,
+      workDir: tamperWork,
+      spec: { room: 'aurora', spec_version: '0.2.0', load_timeout_ms: 15000, metrics: [{ id: 'budget.draw_calls', axis: 'craft', weight: 1, score: { type: 'lower', full: 2, zero: 10 } }] },
+      noPython: true,
+      planTimeoutMs: 60_000,
+    },
+  );
+  const tamperManifest = JSON.parse(await fs.readFile(tamperRes.manifestPath, 'utf8'));
+  assert.equal(tamperRes.gates['G-tamper'].pass, false, 'G-tamper must fail when page JS invokes mutators');
+  assert.equal(tamperManifest.tamper.detected, true);
+  assert.ok(tamperManifest.tamper.count >= 5);
+  assert.equal(tamperManifest.webgl.draw_calls_per_frame, 1, 'blocked resetWebGLFrameMetrics() must not erase draw calls');
+  assert.ok(tamperManifest.dom_budget.domMutations >= 1, 'blocked setInternalBypass(true) must not suppress DOM mutation counting');
+  assert.equal(tamperRes.gates['G-webgl-hook'].pass, false, 'webgpu getContext must fail G-webgl-hook');
+  assert.equal(tamperManifest.unhooked_rendering.detected, true);
+  assert.ok(tamperManifest.unhooked_rendering.reasons.includes('webgpu_context'));
+
+  // 2. Test navigator.gpu stub, 3D/compressed/copyBufferSubData uploads, and clean DOM/WebGL2 passes G-tamper & G-webgl-hook
+  await fs.writeFile(
+    path.join(glExtDir, 'index.html'),
+    `<!doctype html>
+<html><head><meta charset="utf-8"></head>
+<body>
+  <canvas id="c" width="160" height="120"></canvas>
+  <script>
+    const c = document.getElementById('c');
+    const gl = c.getContext('webgl2', { preserveDrawingBuffer: true });
+    // Upload 4096B via copyBufferSubData + 2048B via texImage3D
+    const b1 = gl.createBuffer(); gl.bindBuffer(gl.COPY_READ_BUFFER, b1);
+    gl.bufferData(gl.COPY_READ_BUFFER, new Uint8Array(4096), gl.STATIC_DRAW);
+    const b2 = gl.createBuffer(); gl.bindBuffer(gl.COPY_WRITE_BUFFER, b2);
+    gl.bufferData(gl.COPY_WRITE_BUFFER, 4096, gl.STATIC_DRAW);
+    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, 0, 4096);
+    const t3 = gl.createTexture(); gl.bindTexture(gl.TEXTURE_3D, t3);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 8, 8, 8, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(2048));
+    // Trigger extension hooks cleanly if available
+    const vaoExt = gl.getExtension('OES_vertex_array_object');
+    const multiExt = gl.getExtension('WEBGL_multi_draw');
+    const vs = '#version 300 es\\nin vec2 p; void main(){ gl_Position=vec4(p,0.0,1.0); }';
+    const fsS = '#version 300 es\\nprecision mediump float; out vec4 o; void main(){ o=vec4(0.2,0.8,0.4,1.0); }';
+    function sh(t,s){ const x=gl.createShader(t); gl.shaderSource(x,s); gl.compileShader(x); return x; }
+    const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fsS)); gl.linkProgram(pr);
+    const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+    function draw() {
+      gl.useProgram(pr);
+      const loc = gl.getAttribLocation(pr, 'p');
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    draw();
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed() {}, seek() {}, resume() {},
+      async renderFrame() { draw(); },
+      state() { return { gpuStubbed: typeof navigator.gpu === 'undefined', hasMulti: Boolean(multiExt), hasVao: Boolean(vaoExt) }; },
+      stats() { return { drawCalls: 1, triangles: 1 }; }
+    };
+  </script>
+</body></html>`
+  );
+
+  const extRes = await executePlan(
+    { room: 'aurora', mode: 'swiftshader', frames: [{ key: 'f1', seed: 1, t: 0, viewport: '320x240', scheme: 'light', variant: 'normal', dpr: 1 }] },
+    {
+      submissionDir: glExtDir,
+      workDir: glExtWork,
+      spec: { room: 'aurora', spec_version: '0.2.0', load_timeout_ms: 15000, metrics: [{ id: 'budget.draw_calls', axis: 'craft', weight: 1, score: { type: 'lower', full: 2, zero: 10 } }] },
+      noPython: true,
+      planTimeoutMs: 60_000,
+    },
+  );
+  const extManifest = JSON.parse(await fs.readFile(extRes.manifestPath, 'utf8'));
+  assert.equal(extRes.gates['G-tamper'].pass, true);
+  assert.equal(extRes.gates['G-webgl-hook'].pass, true);
+  // 4096 (copy_read) + 4096 (copy_write) + 4096 (copyBufferSubData) + 2048 (texImage3D) + 24 (vb) = 14360 bytes ~ 14.02 KB
+  assert.ok(extManifest.webgl.tex_upload_kb >= 14.0, `expected >=14.0 KB uploads, got ${extManifest.webgl.tex_upload_kb}`);
 });

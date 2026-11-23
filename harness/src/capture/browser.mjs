@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -257,7 +258,8 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
 
     // Inject initial config + host.js before any page script executes
     const hostScript = await getHostScript();
-    const initConfig = { seed, params: params || {}, locale: locale || null };
+    const controlSecret = crypto.randomBytes(24).toString('hex');
+    const initConfig = { seed, params: params || {}, locale: locale || null, controlSecret, disableWebGpu: true };
     await page.addInitScript((cfg) => {
       window.__BENCH_HOST_INIT__ = cfg;
     }, initConfig);
@@ -284,6 +286,7 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       context,
       page,
       cdp,
+      controlSecret,
       consoleLogs,
       networkLogs,
       fontResponses,
@@ -459,7 +462,7 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       },
 
       async resetWebGLFrameMetrics() {
-        await page.evaluate(() => window.__benchHostControl?.resetWebGLFrameMetrics?.());
+        await page.evaluate((sec) => window.__benchHostControl?.resetWebGLFrameMetrics?.(sec), controlSecret);
       },
 
       async getDomMetrics() {
@@ -471,11 +474,27 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       },
 
       async resetDomMetrics(opts = {}) {
-        await page.evaluate((o) => window.__benchHostControl?.resetDomMetrics?.(o), opts);
+        await page.evaluate(([o, sec]) => window.__benchHostControl?.resetDomMetrics?.(o, sec), [opts, controlSecret]);
       },
 
       async setDomBypass(flag) {
-        await page.evaluate((f) => window.__benchHostControl?.setDomBypass?.(Boolean(f)), flag);
+        await page.evaluate(([f, sec]) => window.__benchHostControl?.setDomBypass?.(Boolean(f), sec), [flag, controlSecret]);
+      },
+
+      async getTamperStatus() {
+        return page.evaluate(() => window.__benchHostControl?.getTamperStatus?.() ?? null);
+      },
+
+      async getUnhookedRenderingStatus() {
+        const status = await page.evaluate(() => window.__benchHostControl?.getUnhookedRenderingStatus?.() ?? null);
+        const frameCount = typeof page.frames === 'function' ? page.frames().length : 1;
+        if (!status) return { detected: frameCount > 1, reasons: frameCount > 1 ? ['iframe_detected'] : [], iframe_count: Math.max(0, frameCount - 1) };
+        if (frameCount > 1 && !status.reasons.includes('iframe_detected')) {
+          status.reasons.push('iframe_detected');
+          status.iframe_count = Math.max(status.iframe_count || 0, frameCount - 1);
+          status.detected = true;
+        }
+        return status;
       },
 
       async getToolchainInfo() {
@@ -511,36 +530,36 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       },
 
       async setSeed(newSeed, newParams) {
-        await page.evaluate(([s, p]) => {
-          window.__benchHostControl.setSeed(s, p);
+        await page.evaluate(([s, p, sec]) => {
+          window.__benchHostControl.setSeed(s, p, sec);
           window.__bench.setSeed(s);
-        }, [newSeed, newParams]);
+        }, [newSeed, newParams, controlSecret]);
       },
 
       async setParams(newParams) {
-        await page.evaluate((p) => {
-          window.__benchHostControl.setParams(p);
-        }, newParams);
+        await page.evaluate(([p, sec]) => {
+          window.__benchHostControl.setParams(p, sec);
+        }, [newParams, controlSecret]);
       },
 
       async seek(tMs) {
-        await page.evaluate((t) => {
-          window.__benchHostControl.freeze(t);
+        await page.evaluate(([t, sec]) => {
+          window.__benchHostControl.freeze(t, sec);
           window.__bench.seek(t);
-        }, Number(tMs));
+        }, [Number(tMs), controlSecret]);
       },
 
       async resume() {
-        await page.evaluate(() => {
-          window.__benchHostControl.resume();
+        await page.evaluate((sec) => {
+          window.__benchHostControl.resume(sec);
           window.__bench.resume();
-        });
+        }, controlSecret);
       },
 
       async resetClock(tMs = 0) {
-        await page.evaluate((t) => {
-          window.__benchHostControl.resetClock(t);
-        }, Number(tMs));
+        await page.evaluate(([t, sec]) => {
+          window.__benchHostControl.resetClock(t, sec);
+        }, [Number(tMs), controlSecret]);
       },
 
       async clockNow() {
@@ -603,18 +622,18 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       },
 
       async installRafOverride() {
-        await withTimeout(page.evaluate(() => window.__benchHostControl.installRafOverride()), 10_000, 'installRafOverride');
+        await withTimeout(page.evaluate((sec) => window.__benchHostControl.installRafOverride(sec), controlSecret), 10_000, 'installRafOverride');
       },
 
       async uninstallRafOverride() {
-        await withTimeout(page.evaluate(() => window.__benchHostControl.uninstallRafOverride()), 10_000, 'uninstallRafOverride');
+        await withTimeout(page.evaluate((sec) => window.__benchHostControl.uninstallRafOverride(sec), controlSecret), 10_000, 'uninstallRafOverride');
       },
 
       async stepRafVirtual(durationMs, hz, startClockMs = null) {
         return withTimeout(
-          page.evaluate(([dur, rate, start]) => {
-            return window.__benchHostControl.stepRafVirtual(dur, rate, start);
-          }, [Number(durationMs), Number(hz), startClockMs]),
+          page.evaluate(([dur, rate, start, sec]) => {
+            return window.__benchHostControl.stepRafVirtual(dur, rate, start, sec);
+          }, [Number(durationMs), Number(hz), startClockMs, controlSecret]),
           30_000,
           'stepRafVirtual',
         );

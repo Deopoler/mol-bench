@@ -7,6 +7,103 @@
   if (window.__benchHostControl) return;
 
   const initConfig = window.__BENCH_HOST_INIT__ || {};
+  try {
+    delete window.__BENCH_HOST_INIT__;
+  } catch {
+    window.__BENCH_HOST_INIT__ = undefined;
+  }
+
+  const controlSecret =
+    typeof initConfig.controlSecret === 'string' && initConfig.controlSecret.length > 0
+      ? initConfig.controlSecret
+      : null;
+
+  const tamperEvents = [];
+  function recordTamper(method, reason = 'unauthorized_call') {
+    if (tamperEvents.length < 100) {
+      tamperEvents.push({
+        method: String(method || 'unknown'),
+        reason: String(reason || 'unauthorized_call'),
+        t: Date.now(),
+      });
+    }
+  }
+  function verifySecret(provided, method) {
+    if (controlSecret === null) return true;
+    if (provided === controlSecret) return true;
+    recordTamper(method, 'unauthorized_mutator_call');
+    return false;
+  }
+
+  // ---- Stub navigator.gpu & track unhooked rendering channels ----
+  const unhookedState = {
+    workerCount: 0,
+    offscreenTransfers: 0,
+    canvas2dCount: 0,
+    bitmapRendererCount: 0,
+    webgpuAttempts: 0,
+    reasons: new Set(),
+  };
+  const hookedCanvases = new WeakSet();
+
+  function addUnhookedReason(reason) {
+    if (reason) unhookedState.reasons.add(reason);
+  }
+
+  if (initConfig.disableWebGpu !== false) {
+    try {
+      if (typeof Navigator !== 'undefined') {
+        Object.defineProperty(Navigator.prototype, 'gpu', {
+          get() { return undefined; },
+          configurable: false,
+        });
+      }
+    } catch {
+      try {
+        Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: false });
+      } catch {
+        // ignore if already non-configurable
+      }
+    }
+    try {
+      if (typeof WorkerNavigator !== 'undefined') {
+        Object.defineProperty(WorkerNavigator.prototype, 'gpu', {
+          get() { return undefined; },
+          configurable: false,
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (typeof window.Worker === 'function') {
+    const OrigWorker = window.Worker;
+    window.Worker = function PatchedWorker(...args) {
+      unhookedState.workerCount += 1;
+      addUnhookedReason('worker_created');
+      return new OrigWorker(...args);
+    };
+    window.Worker.prototype = OrigWorker.prototype;
+  }
+  if (typeof window.SharedWorker === 'function') {
+    const OrigSharedWorker = window.SharedWorker;
+    window.SharedWorker = function PatchedSharedWorker(...args) {
+      unhookedState.workerCount += 1;
+      addUnhookedReason('worker_created');
+      return new OrigSharedWorker(...args);
+    };
+    window.SharedWorker.prototype = OrigSharedWorker.prototype;
+  }
+  if (typeof HTMLCanvasElement !== 'undefined' && typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function') {
+    const origTransfer = HTMLCanvasElement.prototype.transferControlToOffscreen;
+    HTMLCanvasElement.prototype.transferControlToOffscreen = function patchedTransferControlToOffscreen(...args) {
+      unhookedState.offscreenTransfers += 1;
+      addUnhookedReason('offscreen_canvas_transferred');
+      hookedCanvases.add(this);
+      return origTransfer.apply(this, args);
+    };
+  }
 
   // ---- Deterministic PRNG (mulberry32) ----
   function mulberry32(seed) {
@@ -518,6 +615,75 @@
             const bytes = computeBufferUploadBytes(args[2], args[3], args[4]);
             glState.totalUploadBytes += bytes;
             glState.frameUploadBytes += bytes;
+          } else if (key === 'copyBufferSubData') {
+            const bytes = Math.max(0, Number(args[4]) || 0);
+            glState.totalUploadBytes += bytes;
+            glState.frameUploadBytes += bytes;
+          } else if (key === 'texImage3D') {
+            // (target, level, internalformat, width, height, depth, border, format, type, srcData[, srcOffset])
+            const srcData = args[9];
+            const srcOffset = args[10];
+            let bytes = 0;
+            if (ArrayBuffer.isView(srcData)) {
+              const bpe = srcData.BYTES_PER_ELEMENT || 1;
+              bytes = typeof srcOffset === 'number' && srcOffset > 0
+                ? Math.max(0, srcData.byteLength - srcOffset * bpe)
+                : srcData.byteLength;
+            } else if (srcData instanceof ArrayBuffer) {
+              bytes = srcData.byteLength;
+            } else if (srcData !== null && srcData !== undefined && typeof srcData !== 'number') {
+              bytes = estimateSourceUploadBytes(srcData);
+            }
+            glState.totalUploadBytes += bytes;
+            glState.frameUploadBytes += bytes;
+          } else if (key === 'texSubImage3D') {
+            // (target, level, xoffset, yoffset, zoffset, width, height, depth, format, type, srcData[, srcOffset])
+            const srcData = args[10];
+            const srcOffset = args[11];
+            let bytes = 0;
+            if (ArrayBuffer.isView(srcData)) {
+              const bpe = srcData.BYTES_PER_ELEMENT || 1;
+              bytes = typeof srcOffset === 'number' && srcOffset > 0
+                ? Math.max(0, srcData.byteLength - srcOffset * bpe)
+                : srcData.byteLength;
+            } else if (srcData instanceof ArrayBuffer) {
+              bytes = srcData.byteLength;
+            } else if (srcData !== null && srcData !== undefined && typeof srcData !== 'number') {
+              bytes = estimateSourceUploadBytes(srcData);
+            }
+            glState.totalUploadBytes += bytes;
+            glState.frameUploadBytes += bytes;
+          } else if (key === 'compressedTexImage2D' || key === 'compressedTexSubImage2D') {
+            // 7 args: (..., srcData) or 8/9 args WebGL2: (..., srcData, srcOffset, srcLengthOverride) or (..., imageSize, offset)
+            let bytes = 0;
+            const lastOrView = [args[6], args[7], args[8]].find((a) => ArrayBuffer.isView(a) || a instanceof ArrayBuffer);
+            if (ArrayBuffer.isView(lastOrView)) {
+              const bpe = lastOrView.BYTES_PER_ELEMENT || 1;
+              const srcOffset = typeof args[7] === 'number' ? args[7] : 0;
+              const srcLen = typeof args[8] === 'number' && args[8] > 0 ? args[8] * bpe : null;
+              bytes = srcLen !== null
+                ? Math.min(lastOrView.byteLength, srcLen)
+                : Math.max(0, lastOrView.byteLength - srcOffset * bpe);
+            } else if (lastOrView instanceof ArrayBuffer) {
+              bytes = lastOrView.byteLength;
+            }
+            glState.totalUploadBytes += bytes;
+            glState.frameUploadBytes += bytes;
+          } else if (key === 'compressedTexImage3D' || key === 'compressedTexSubImage3D') {
+            let bytes = 0;
+            const viewArg = [args[7], args[8], args[9]].find((a) => ArrayBuffer.isView(a) || a instanceof ArrayBuffer);
+            if (ArrayBuffer.isView(viewArg)) {
+              const bpe = viewArg.BYTES_PER_ELEMENT || 1;
+              const srcOffset = typeof args[8] === 'number' ? args[8] : (typeof args[9] === 'number' ? args[9] : 0);
+              const srcLen = typeof args[9] === 'number' && viewArg === args[8] && args[9] > 0 ? args[9] * bpe : null;
+              bytes = srcLen !== null
+                ? Math.min(viewArg.byteLength, srcLen)
+                : Math.max(0, viewArg.byteLength - srcOffset * bpe);
+            } else if (viewArg instanceof ArrayBuffer) {
+              bytes = viewArg.byteLength;
+            }
+            glState.totalUploadBytes += bytes;
+            glState.frameUploadBytes += bytes;
           } else if (key === 'shaderSource') {
             const shader = args[0];
             const src = String(args[1] || '');
@@ -626,36 +792,130 @@
   }
 
   const capturedContexts = new WeakSet();
+  const wrappedExtensionContexts = new WeakSet();
+
+  function patchContextExtensions(ctx) {
+    if (!ctx || wrappedExtensionContexts.has(ctx) || typeof ctx.getExtension !== 'function') return;
+    wrappedExtensionContexts.add(ctx);
+    const origGetExt = ctx.getExtension;
+    ctx.getExtension = function patchedGetExtension(name, ...rest) {
+      const ext = origGetExt.call(this, name, ...rest);
+      if (!ext || ext.__molPatched) return ext;
+      const extName = String(name || '');
+      if (extName === 'ANGLE_instanced_arrays') {
+        if (typeof ext.drawArraysInstancedANGLE === 'function') {
+          const orig = ext.drawArraysInstancedANGLE;
+          ext.drawArraysInstancedANGLE = function patchedDrawArraysInstancedANGLE(mode, first, count, primcount) {
+            glState.glCalls += 1;
+            recordDrawCall(ctx, mode, count, primcount);
+            return orig.call(this, mode, first, count, primcount);
+          };
+        }
+        if (typeof ext.drawElementsInstancedANGLE === 'function') {
+          const orig = ext.drawElementsInstancedANGLE;
+          ext.drawElementsInstancedANGLE = function patchedDrawElementsInstancedANGLE(mode, count, type, offset, primcount) {
+            glState.glCalls += 1;
+            recordDrawCall(ctx, mode, count, primcount);
+            return orig.call(this, mode, count, type, offset, primcount);
+          };
+        }
+        try { Object.defineProperty(ext, '__molPatched', { value: true }); } catch { /* ignore */ }
+      } else if (extName === 'WEBGL_multi_draw' || extName === 'WEBGL_multi_draw_instanced') {
+        const wrapMulti = (fnName, instanced) => {
+          if (typeof ext[fnName] !== 'function') return;
+          const orig = ext[fnName];
+          ext[fnName] = function patchedMultiDraw(mode, firstsOrCounts, fOff, countsOrTypes, cOff, offsetsOrDrawcount, oOff, instCounts, iOff, dcArg) {
+            glState.glCalls += 1;
+            try {
+              const isElements = fnName.includes('Elements');
+              const countsList = isElements ? firstsOrCounts : countsOrTypes;
+              const countsOffset = isElements ? fOff : cOff;
+              const drawcount = isElements
+                ? (instanced ? dcArg : oOff)
+                : (instanced ? oOff : offsetsOrDrawcount);
+              const dc = Math.max(0, Number(drawcount) || 0);
+              for (let i = 0; i < dc; i++) {
+                const cVal = Number(countsList?.[countsOffset + i] || 0);
+                const instVal = instanced ? Math.max(1, Number(offsetsOrDrawcount?.[oOff + i] ?? instCounts?.[iOff + i] ?? 1)) : 1;
+                recordDrawCall(ctx, mode, cVal, instVal);
+              }
+            } catch {
+              // ignore
+            }
+            return orig.apply(this, arguments);
+          };
+        };
+        wrapMulti('multiDrawArraysWEBGL', false);
+        wrapMulti('multiDrawElementsWEBGL', false);
+        wrapMulti('multiDrawArraysInstancedWEBGL', true);
+        wrapMulti('multiDrawElementsInstancedWEBGL', true);
+        try { Object.defineProperty(ext, '__molPatched', { value: true }); } catch { /* ignore */ }
+      } else if (extName === 'OES_vertex_array_object') {
+        for (const m of ['createVertexArrayOES', 'deleteVertexArrayOES', 'isVertexArrayOES', 'bindVertexArrayOES']) {
+          if (typeof ext[m] === 'function') {
+            const orig = ext[m];
+            ext[m] = function patchedVaoMethod(...a) {
+              glState.glCalls += 1;
+              return orig.apply(this, a);
+            };
+          }
+        }
+        try { Object.defineProperty(ext, '__molPatched', { value: true }); } catch { /* ignore */ }
+      }
+      return ext;
+    };
+  }
+
   function wrapGetContext(proto) {
     if (!proto || typeof proto.getContext !== 'function') return;
     const origGetContext = proto.getContext;
     proto.getContext = function patchedGetContext(type, ...rest) {
+      const lowerType = String(type || '').toLowerCase();
+      if (lowerType === 'webgpu' || lowerType === 'gpupresent') {
+        unhookedState.webgpuAttempts += 1;
+        addUnhookedReason('webgpu_context');
+        hookedCanvases.add(this);
+        return null;
+      }
       const ctx = origGetContext.call(this, type, ...rest);
-      if (
-        ctx &&
-        !capturedContexts.has(ctx) &&
-        (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl')
-      ) {
-        capturedContexts.add(ctx);
-        try {
-          const dbg = ctx.getExtension('WEBGL_debug_renderer_info');
-          const renderer = dbg
-            ? ctx.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
-            : ctx.getParameter(ctx.RENDERER);
-          if (renderer && !glState.renderers.includes(String(renderer))) {
-            glState.renderers.push(String(renderer));
+      if (ctx) {
+        hookedCanvases.add(this);
+        if (lowerType === '2d') {
+          unhookedState.canvas2dCount += 1;
+          addUnhookedReason('canvas_2d');
+        } else if (lowerType === 'bitmaprenderer') {
+          unhookedState.bitmapRendererCount += 1;
+          addUnhookedReason('canvas_bitmaprenderer');
+        } else if (
+          !capturedContexts.has(ctx) &&
+          (lowerType === 'webgl' || lowerType === 'webgl2' || lowerType === 'experimental-webgl')
+        ) {
+          capturedContexts.add(ctx);
+          patchContextExtensions(ctx);
+          try {
+            const dbg = origGetExtSafe(ctx, 'WEBGL_debug_renderer_info');
+            const renderer = dbg
+              ? ctx.getParameter(dbg.UNMASKED_RENDERER_WEBGL)
+              : ctx.getParameter(ctx.RENDERER);
+            if (renderer && !glState.renderers.includes(String(renderer))) {
+              glState.renderers.push(String(renderer));
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
         }
       }
       return ctx;
     };
   }
+  function origGetExtSafe(ctx, name) {
+    try { return ctx.getExtension(name); } catch { return null; }
+  }
   if (typeof HTMLCanvasElement !== 'undefined') wrapGetContext(HTMLCanvasElement.prototype);
   if (typeof OffscreenCanvas !== 'undefined') wrapGetContext(OffscreenCanvas.prototype);
 
-  function resetWebGLFrameMetrics() {
+  function resetWebGLFrameMetrics(secret) {
+    if (!verifySecret(secret, 'resetWebGLFrameMetrics')) return;
     glState.drawCalls = 0;
     glState.verticesDrawn = 0;
     glState.trianglesDrawn = 0;
@@ -817,7 +1077,8 @@
     }
   }
 
-  function resetDomMetrics(opts = {}) {
+  function resetDomMetrics(opts = {}, secret) {
+    if (!verifySecret(secret, 'resetDomMetrics')) return;
     if (mutationObserver) mutationObserver.takeRecords();
     domSteps = typeof opts?.steps === 'number' && opts.steps >= 0 ? opts.steps : 0;
     domMutations = 0;
@@ -834,7 +1095,8 @@
     }
   }
 
-  function markDomStep(count = 1) {
+  function markDomStep(count = 1, secret) {
+    if (!verifySecret(secret, 'markDomStep')) return domSteps;
     domSteps += Math.max(0, Number(count) || 0);
     return domSteps;
   }
@@ -873,40 +1135,91 @@
     };
   }
 
-  // ---- Internal harness control API (non-enumerable) ----
+  function getTamperStatus() {
+    return {
+      tampered: tamperEvents.length > 0,
+      count: tamperEvents.length,
+      events: tamperEvents.slice(0, 50),
+    };
+  }
+
+  function getUnhookedRenderingStatus() {
+    const reasons = new Set(unhookedState.reasons);
+    let iframeCount = 0;
+    let unhookedCanvasCount = 0;
+    if (typeof document !== 'undefined') {
+      try {
+        iframeCount = document.querySelectorAll('iframe, frame').length;
+        if (iframeCount > 0) reasons.add('iframe_detected');
+        const canvases = document.querySelectorAll('canvas');
+        for (let i = 0; i < canvases.length; i++) {
+          const c = canvases[i];
+          if (!hookedCanvases.has(c) && (c.width > 0 || c.height > 0)) {
+            unhookedCanvasCount += 1;
+          }
+        }
+        if (unhookedCanvasCount > 0 && iframeCount > 0) {
+          reasons.add('unhooked_canvas');
+        }
+      } catch {
+        // ignore
+      }
+    }
+    const reasonList = Array.from(reasons);
+    return {
+      detected: reasonList.length > 0,
+      reasons: reasonList,
+      worker_count: unhookedState.workerCount,
+      offscreen_transfers: unhookedState.offscreenTransfers,
+      iframe_count: iframeCount,
+      canvas_2d_count: unhookedState.canvas2dCount,
+      bitmap_renderer_count: unhookedState.bitmapRendererCount,
+      unhooked_canvas_count: unhookedCanvasCount,
+      webgpu_attempts: unhookedState.webgpuAttempts,
+    };
+  }
+
+  // ---- Internal harness control API (non-enumerable, mutators secret-gated) ----
   const control = Object.freeze({
-    setSeed(seed, params) {
+    setSeed(seed, params, secret) {
+      if (!verifySecret(secret, 'setSeed')) return;
       currentSeed = Number(seed) >>> 0;
       currentRng = createRng(currentSeed);
       if (params !== undefined) {
         currentParams = deepCloneAndFreeze(params || {});
       }
     },
-    setParams(params) {
+    setParams(params, secret) {
+      if (!verifySecret(secret, 'setParams')) return;
       currentParams = deepCloneAndFreeze(params || {});
     },
-    freeze(tMs) {
+    freeze(tMs, secret) {
+      if (!verifySecret(secret, 'freeze')) return;
       clockMode = 'frozen';
       frozenMs = Number(tMs);
     },
-    resume() {
+    resume(secret) {
+      if (!verifySecret(secret, 'resume')) return;
       const current = clockNow();
       liveBaseMs = current;
       liveStartPerfMs = perfNow();
       clockMode = 'live';
     },
-    resetClock(tMs = 0) {
+    resetClock(tMs = 0, secret) {
+      if (!verifySecret(secret, 'resetClock')) return;
       liveBaseMs = Number(tMs);
       liveStartPerfMs = perfNow();
       frozenMs = Number(tMs);
       virtualMs = Number(tMs);
       clockMode = 'live';
     },
-    setVirtualClock(tMs) {
+    setVirtualClock(tMs, secret) {
+      if (!verifySecret(secret, 'setVirtualClock')) return;
       clockMode = 'virtual';
       virtualMs = Number(tMs);
     },
-    advanceVirtualClock(dtMs) {
+    advanceVirtualClock(dtMs, secret) {
+      if (!verifySecret(secret, 'advanceVirtualClock')) return clockNow();
       if (clockMode !== 'virtual') {
         virtualMs = clockNow();
         clockMode = 'virtual';
@@ -920,20 +1233,31 @@
     getListenerCount() {
       return activeListeners;
     },
-    installRafOverride,
-    uninstallRafOverride,
-    stepRafVirtual,
+    installRafOverride(secret) {
+      if (!verifySecret(secret, 'installRafOverride')) return;
+      installRafOverride();
+    },
+    uninstallRafOverride(secret) {
+      if (!verifySecret(secret, 'uninstallRafOverride')) return;
+      uninstallRafOverride();
+    },
+    stepRafVirtual(durationMs, hz, startClockMs, secret) {
+      if (!verifySecret(secret, 'stepRafVirtual')) return { steps: 0, invoked: 0, finalClockMs: clockNow() };
+      return stepRafVirtual(durationMs, hz, startClockMs);
+    },
     isRafOverrideActive() {
       return rafOverrideActive;
     },
     getQueuedRafCount() {
       return rafQueue.size;
     },
-    setInternalBypass(flag) {
+    setInternalBypass(flag, secret) {
+      if (!verifySecret(secret, 'setInternalBypass')) return;
       internalListenerBypass = Boolean(flag);
       internalDomBypass = Boolean(flag);
     },
-    setDomBypass(flag) {
+    setDomBypass(flag, secret) {
+      if (!verifySecret(secret, 'setDomBypass')) return;
       internalDomBypass = Boolean(flag);
     },
     getWebGLMetrics,
@@ -942,6 +1266,8 @@
     getDomBudgetStats,
     resetDomMetrics,
     markDomStep,
+    getTamperStatus,
+    getUnhookedRenderingStatus,
   });
 
   Object.defineProperty(window, '__benchHostControl', {

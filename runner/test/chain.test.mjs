@@ -279,6 +279,34 @@ test("runChain executes 1/3, 2/3, and 3/3 handoffs without launching rounds afte
     assert.equal(res3.result.track, "chain");
     assert.ok(res3.result.composite_chain > 5, `expected high composite_chain, got ${res3.result.composite_chain}`);
     assert.equal(fs.existsSync(res3.resultPath), true);
+
+    // Case 4: runChain rejects invocation with neither runnerFn nor agentCmd
+    await assert.rejects(
+      () => runChain({ room: "lobby", runId: "lobby-chain__empty", model: "Model X", version: 2, root: runsRoot, resultsDir, repoRoot: repo }),
+      /requires a runnerFn/,
+    );
+
+    // Case 5: runChain refuses handoff when r1 flags leakage
+    const launchedLeak = [];
+    const leakRes = await runChain({
+      room: "lobby",
+      runId: "lobby-chain__leak",
+      model: "Model Leak",
+      version: 2,
+      root: runsRoot,
+      resultsDir,
+      repoRoot: repo,
+      hidden: false,
+      noCapture: true,
+      noPython: true,
+      runnerFn: ({ round, runDir }) => {
+        launchedLeak.push(round);
+        writeRoundDeliverables(runDir, round, { validDecisions: true });
+        fs.writeFileSync(path.join(runDir, "lobby", "leak.js"), 'const x = "hidden-v2";\n');
+      },
+    });
+    assert.deepEqual(launchedLeak, ["r1"], "chain must refuse handoff to r2 when r1 has leakage");
+    assert.equal(leakRes.result.rounds_completed, "0/3");
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }
