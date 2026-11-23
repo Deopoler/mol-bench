@@ -614,7 +614,10 @@ export function registerMetrics(defs, { replace = false } = {}) {
     if (typeof needsFn !== "function") {
       throw new Error(`Metric "${id}" needs must be a function`);
     }
-    if (!replace && (Object.hasOwn(DEFINITIONS, id) || PLUGIN_DEFINITIONS.has(id))) {
+    if (Object.hasOwn(DEFINITIONS, id)) {
+      throw new Error(`Cannot override built-in metric "${id}"`);
+    }
+    if (!replace && PLUGIN_DEFINITIONS.has(id)) {
       throw new Error(`Metric "${id}" is already registered (pass { replace: true } to override)`);
     }
     PLUGIN_DEFINITIONS.set(id, { source: def.source, needs: needsFn });
@@ -630,18 +633,18 @@ export function unregisterMetrics(ids = []) {
 }
 
 export function hasMetric(id) {
-  if (PLUGIN_DEFINITIONS.has(id)) return true;
   if (Object.hasOwn(DEFINITIONS, id)) return true;
+  if (PLUGIN_DEFINITIONS.has(id)) return true;
   if (typeof id === "string" && id.startsWith("request.") && id.length > "request.".length) return true;
   return false;
 }
 
 export function getMetricDef(id) {
-  if (PLUGIN_DEFINITIONS.has(id)) {
-    return { id, ...PLUGIN_DEFINITIONS.get(id) };
-  }
   if (Object.hasOwn(DEFINITIONS, id)) {
     return { id, ...DEFINITIONS[id] };
+  }
+  if (PLUGIN_DEFINITIONS.has(id)) {
+    return { id, ...PLUGIN_DEFINITIONS.get(id) };
   }
   if (typeof id === "string" && id.startsWith("request.") && id.length > "request.".length) {
     return { id, source: "harness", needs: none };

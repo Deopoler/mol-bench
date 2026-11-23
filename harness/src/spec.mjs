@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { getMetricDef, isValidVariant } from "./registry.mjs";
+import { getMetricDef, isValidVariant, registerVariants } from "./registry.mjs";
 import { isV2Spec } from "./score.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -89,6 +89,24 @@ function splitAtTokens(atStr) {
   const trimmed = current.trim();
   if (trimmed) tokens.push(trimmed);
   return tokens;
+}
+
+const CUSTOM_AT_TOKENS = new Map();
+
+/**
+ * Register a custom `at` grammar token parser (M1 Extension Protocol).
+ * @param {string} name Unique name for the token parser
+ * @param {(token: string, result: object) => boolean} matcher Returns true if it consumed the token
+ */
+export function registerAtToken(name, matcher) {
+  if (typeof name !== "string" || !name) throw new Error("registerAtToken requires a non-empty name");
+  if (typeof matcher !== "function") throw new Error("registerAtToken requires a matcher function");
+  if (CUSTOM_AT_TOKENS.has(name)) throw new Error(`at token parser "${name}" is already registered`);
+  CUSTOM_AT_TOKENS.set(name, matcher);
+}
+
+export function unregisterAtToken(name) {
+  CUSTOM_AT_TOKENS.delete(name);
 }
 
 /**
@@ -194,6 +212,12 @@ export function parseAt(atString, opts = {}) {
       orthoViews.push(token);
     } else {
       matched = false;
+      for (const matcher of CUSTOM_AT_TOKENS.values()) {
+        if (matcher(token, result) === true) {
+          matched = true;
+          break;
+        }
+      }
     }
 
     if (!matched) {
@@ -282,6 +306,9 @@ export function loadSpec(roomOrPath, opts = {}) {
 
   const rawSpec = JSON.parse(fs.readFileSync(specPath, "utf8"));
   validateSpec(rawSpec);
+  if (Array.isArray(rawSpec.extra_variants) && rawSpec.extra_variants.length > 0) {
+    registerVariants(rawSpec.extra_variants);
+  }
 
   const resolvedVersion =
     version !== null && version !== undefined

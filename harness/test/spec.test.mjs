@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadSpec, buildPlan, parseAt, parseVersion, resolveVersionPaths, resolveSpecPath, validateSpec, SpecError } from "../src/spec.mjs";
+import { loadSpec, buildPlan, parseAt, parseVersion, resolveVersionPaths, resolveSpecPath, validateSpec, registerAtToken, unregisterAtToken, SpecError } from "../src/spec.mjs";
 import { getMetricDef, hasMetric, registerMetrics, unregisterMetrics, registerVariants } from "../src/registry.mjs";
 import { generate } from "../src/rooms/_template.mjs";
 
@@ -160,6 +160,27 @@ test("registerMetrics, registerVariants, v2 parseAt tokens, and v2 spec schema w
     // buildPlan emits hidden-v2/<room>/tests for v2 specs
     const plan = buildPlan({ ...validV2Spec, _version: 2 }, { hidden: true });
     assert.deepEqual(plan.tests, ["hidden-v2/demo/tests"]);
+
+    // Built-in metric shadowing is always rejected even with replace: true
+    assert.throws(
+      () => registerMetrics({ "lum.mean": { source: "room", needs: () => [] } }, { replace: true }),
+      /Cannot override built-in metric/
+    );
+
+    // Custom at-token registration hook
+    registerAtToken("custom_camera", (tok, res) => {
+      if (tok === "cam=hero") {
+        res.camera = "hero";
+        return true;
+      }
+      return false;
+    });
+    try {
+      const pCustom = parseAt("1440x900, cam=hero");
+      assert.equal(pCustom.camera, "hero");
+    } finally {
+      unregisterAtToken("custom_camera");
+    }
   } finally {
     unregisterMetrics(["v2.custom_metric"]);
   }

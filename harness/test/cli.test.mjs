@@ -6,10 +6,10 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
-import { gradeSubmission, generatePreviewContactSheets } from "../src/cli.mjs";
-import { unregisterMetrics } from "../src/registry.mjs";
-import { openRoom } from "../src/testing/room-harness.mjs";
-import { discoverProbes, listProbes } from "../src/capture/probes/index.js";
+import { gradeSubmission, generatePreviewContactSheets, parseAttackThreshold } from "../src/cli.mjs";
+import { hasMetric, unregisterMetrics } from "../src/registry.mjs";
+import { openRoom, runSandboxedTest } from "../src/testing/room-harness.mjs";
+import { discoverProbes, listProbes, runProbe, getProbeLoadErrors } from "../src/capture/probes/index.js";
 import { getFontManifest, verifyVendoredFonts, copyFontsTo } from "../fonts/loader.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -215,20 +215,226 @@ test("gradeSubmission captures web renovation start version for relative, mask.e
   }
 });
 
-test("harness/fonts placeholder manifest and loader API work offline", () => {
+test("harness/fonts vendored OFL manifest and loader API verify cleanly", () => {
   const manifest = getFontManifest();
   assert.equal(manifest.license, "OFL-1.1");
+  assert.equal(manifest.status, "vendored");
   assert.ok(Array.isArray(manifest.fonts) && manifest.fonts.length >= 4);
   const status = verifyVendoredFonts();
-  assert.equal(typeof status.complete, "boolean");
+  assert.equal(status.complete, true, `Vendored fonts check failed: ${JSON.stringify(status)}`);
+  assert.equal(status.hashMismatches.length, 0);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-fonts-"));
   try {
     const copied = copyFontsTo(tmpDir);
     assert.ok(copied.includes("fonts.css"));
     assert.ok(copied.includes("manifest.json"));
+    assert.ok(copied.includes("InterVariable.woff2"));
     assert.equal(fs.existsSync(path.join(tmpDir, "fonts.css")), true);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("runSandboxedTest enforces Node --permission runtime isolation with IPC openRoom bridge", { timeout: 60_000 }, async () => {
+  const subDir = path.join(__dirname, "fixtures", "v2", "submission");
+  const harnessPath = path.join(REPO_ROOT, "harness", "src", "testing", "room-harness.mjs");
+  const tmpTestDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-sandbox-rt-"));
+  try {
+    // 1. Clean black-box test passes via IPC openRoom() inside --permission child
+    const goodTest = path.join(tmpTestDir, "good.test.mjs");
+    fs.writeFileSync(
+      goodTest,
+      `import test from "node:test";
+import assert from "node:assert/strict";
+import { openRoom } from ${JSON.stringify(new URL("../src/testing/room-harness.mjs", import.meta.url).href)};
+test("sandboxed openRoom works via IPC", async () => {
+  const room = await openRoom({ viewport: "320x240", seed: 3 });
+  try {
+    await room.setSeed(9);
+    await room.seek(100);
+    await room.renderFrame();
+    const st = await room.state();
+    assert.equal(st.seed, 9);
+    const buf = await room.screenshot();
+    assert.ok(Buffer.isBuffer(buf) && buf.length > 100);
+  } finally {
+    await room.close();
+  }
+});
+`
+    );
+    const goodRes = await runSandboxedTest({ testFile: goodTest, targetDir: subDir, testDir: tmpTestDir });
+    assert.equal(goodRes.pass, true, `Expected sandboxed test to pass:\nSTDOUT: ${goodRes.stdout}\nSTDERR: ${goodRes.stderr}`);
+
+    // 2. Malicious test trying to read submission room source or write files is denied by Node --permission
+    const badTest = path.join(tmpTestDir, "bad_read.test.mjs");
+    fs.writeFileSync(
+      badTest,
+      `import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+test("attempt reading target submission fails with ERR_ACCESS_DENIED", () => {
+  assert.throws(() => fs.readFileSync(${JSON.stringify(path.join(subDir, "index.html"))}, "utf8"), { code: "ERR_ACCESS_DENIED" });
+  assert.throws(() => fs.writeFileSync(${JSON.stringify(path.join(tmpTestDir, "pwn.txt"))}, "x"), { code: "ERR_ACCESS_DENIED" });
+});
+`
+    );
+    const badRes = await runSandboxedTest({ testFile: badTest, targetDir: subDir, testDir: tmpTestDir });
+    assert.equal(badRes.pass, true, `Expected --permission to deny read/write:\nSTDOUT: ${badRes.stdout}\nSTDERR: ${badRes.stderr}`);
+    assert.equal(fs.existsSync(path.join(tmpTestDir, "pwn.txt")), false);
+    assert.ok(fs.existsSync(harnessPath));
+  } finally {
+    fs.rmSync(tmpTestDir, { recursive: true, force: true });
+  }
+});
+
+test("selfcheck refuses version switching from submission-controlled .bench-room and errors on disagreement", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-selfcheck-ver-"));
+  try {
+    fs.cpSync(MOCK_AURORA, tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bench-room"), JSON.stringify({ room: "aurora", version: 2 }));
+    assert.throws(
+      () => execFileSync(process.execPath, [CLI_PATH, "selfcheck", "--dir", tmpDir, "--no-capture", "--no-python"], { cwd: REPO_ROOT, encoding: "utf8", stdio: "pipe" }),
+      /Version mismatch/
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("probe and python plugin discovery enforce duplicate/shadow checks, isolate errors, and protect v0.1", async () => {
+  const tmpPluginDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-plugin-chk-"));
+  const prevProbeEnv = process.env.MOL_PROBE_DIRS;
+  try {
+    // 1. Probe duplicate throws
+    const dupDir = path.join(tmpPluginDir, "probe_dup");
+    fs.mkdirSync(dupDir, { recursive: true });
+    fs.writeFileSync(path.join(dupDir, "a.js"), `export const probeName = "dup_p"; export async function runProbe() { return {}; }\n`);
+    fs.writeFileSync(path.join(dupDir, "b.js"), `export const probeName = "dup_p"; export async function runProbe() { return {}; }\n`);
+    await assert.rejects(() => discoverProbes({ extraDirs: [dupDir], forceReload: true }), /Duplicate probe registration/);
+
+    // 2. Probe shadowing builtin throws
+    const shadowDir = path.join(tmpPluginDir, "probe_shadow");
+    fs.mkdirSync(shadowDir, { recursive: true });
+    fs.writeFileSync(path.join(shadowDir, "s.js"), `export const probeName = "layout"; export async function runProbe() { return {}; }\n`);
+    await assert.rejects(() => discoverProbes({ extraDirs: [shadowDir], forceReload: true }), /cannot shadow built-in probe/);
+
+    // 3. Broken probe does not abort healthy probe, and unresolved probe fails closed naming the file
+    const brokenDir = path.join(tmpPluginDir, "probe_broken");
+    fs.mkdirSync(brokenDir, { recursive: true });
+    fs.writeFileSync(path.join(brokenDir, "broken.js"), `throw new Error("boom_dep");\n`);
+    fs.writeFileSync(path.join(brokenDir, "ok.js"), `export const probeName = "healthy_probe"; export async function runProbe() { return { ok: 1 }; }\n`);
+    process.env.MOL_PROBE_DIRS = brokenDir;
+    const reg = await discoverProbes({ forceReload: true });
+    assert.equal(reg.has("healthy_probe"), true);
+    assert.equal(getProbeLoadErrors().length, 1);
+    assert.ok(getProbeLoadErrors()[0].fileName === "broken.js");
+    await assert.rejects(() => runProbe("missing_from_broken", {}), /broken\.js/);
+
+    // 4. Python duplicate & shadowing raise ValueError, and extra_variants work on v2
+    const py = fs.existsSync(path.join(REPO_ROOT, ".venv", "Scripts", "python.exe"))
+      ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
+      : "python";
+    const pyDupDir = path.join(tmpPluginDir, "py_dup");
+    fs.mkdirSync(pyDupDir, { recursive: true });
+    fs.writeFileSync(path.join(pyDupDir, "p1.py"), `def register(M): M["x.dup"] = lambda ctx: None\n`);
+    fs.writeFileSync(path.join(pyDupDir, "p2.py"), `def register(M): M["x.dup"] = lambda ctx: None\n`);
+    const pyShadowDir = path.join(tmpPluginDir, "py_shadow");
+    fs.mkdirSync(pyShadowDir, { recursive: true });
+    fs.writeFileSync(path.join(pyShadowDir, "s1.py"), `def register(M): M["lum.mean"] = lambda ctx: None\n`);
+
+    const pyCheck = execFileSync(
+      py,
+      [
+        "-c",
+        `import sys, json; sys.path.insert(0, 'metrics'); from molmetrics import cli
+for d, expect in [(${JSON.stringify(pyDupDir)}, 'Duplicate'), (${JSON.stringify(pyShadowDir)}, 'shadow')]:
+    try:
+        cli.discover_plugins([d])
+        raise SystemExit('expected error for ' + d)
+    except ValueError as e:
+        assert expect in str(e), str(e)
+cli._validate_manifest_variants_v2({'samples': [{'key':'k','variant':'my_custom_v'}]}, {'extra_variants': ['my_custom_v']})
+print('PY_CHECKS_OK')`
+      ],
+      { cwd: REPO_ROOT, encoding: "utf8" }
+    );
+    assert.match(pyCheck, /PY_CHECKS_OK/);
+
+    // 5. parseAttackThreshold keeps strict <= on v1, allows < on v2
+    assert.equal(parseAttackThreshold("flat: composite < 2", { version: 1 }), 4);
+    assert.equal(parseAttackThreshold("flat: composite <= 3.5", { version: 1 }), 3.5);
+    assert.equal(parseAttackThreshold("flat: composite < 2.5", { version: 2 }), 2.5);
+  } finally {
+    if (prevProbeEnv === undefined) delete process.env.MOL_PROBE_DIRS;
+    else process.env.MOL_PROBE_DIRS = prevProbeEnv;
+    await discoverProbes({ forceReload: true });
+    fs.rmSync(tmpPluginDir, { recursive: true, force: true });
+  }
+});
+
+test("golden v0.1 gradeSubmission JSON snapshot matches byte-for-byte structure and values", async () => {
+  const res = await gradeSubmission({
+    room: "aurora",
+    submissionDir: MOCK_AURORA,
+    noCapture: true,
+    noPython: true,
+    repoRoot: REPO_ROOT
+  });
+  const normalized = { ...res, submission: "<MOCK_AURORA>" };
+  const golden = {
+    room: "aurora",
+    track: "build",
+    spec_version: "0.1.0-draft",
+    bench_version: "0.1.0",
+    submission: "<MOCK_AURORA>",
+    seeds: "public",
+    gates: {
+      "G-load": { pass: null, detail: "not evaluated (capture skipped)" },
+      "G-console": { pass: null, detail: "not evaluated (capture skipped)" },
+      "G-contract": { pass: null, detail: "not evaluated (capture skipped)" },
+      "G-determinism": { pass: null, detail: "not evaluated (capture skipped)" },
+      "G-live": { pass: null, detail: "not evaluated (capture skipped)" },
+      "G-alive": { pass: null, detail: "not evaluated (time.motion unavailable)" },
+      "G-offline": { pass: null, detail: "not evaluated (capture skipped)" },
+      "G-raster": { pass: null, detail: "not evaluated (capture skipped)" },
+      "G-report": { pass: true, detail: "valid report.json" }
+    },
+    axes: {
+      craft: null,
+      visual_quality: null,
+      reliability: 10
+    },
+    composite: null,
+    completeness: null,
+    completeness_multiplier: 1,
+    taste: null,
+    efficiency: { wall_min: null }
+  };
+
+  assert.deepEqual(Object.keys(normalized), [
+    "room",
+    "track",
+    "spec_version",
+    "bench_version",
+    "submission",
+    "seeds",
+    "gates",
+    "metrics",
+    "axes",
+    "composite",
+    "completeness",
+    "completeness_multiplier",
+    "taste",
+    "efficiency"
+  ]);
+  for (const [k, v] of Object.entries(golden)) {
+    assert.deepEqual(normalized[k], v, `v0.1 golden mismatch at key "${k}"`);
+  }
+  // Verify no v0.2-only keys leaked onto v0.1 metric entries
+  for (const [mid, m] of Object.entries(normalized.metrics)) {
+    assert.equal("missing" in m, false, `v0.1 metric ${mid} should not have missing`);
+    assert.equal("informational" in m, false, `v0.1 metric ${mid} should not have informational`);
   }
 });
 
@@ -330,6 +536,23 @@ test("M1 smoke test: mock v2 adapter + mock probe + mock python metric grade end
     assert.ok(typeof res.toolchain.python_version === "string" && res.toolchain.python_version.length > 0);
     assert.ok(typeof res.toolchain.chromium_version === "string" && res.toolchain.chromium_version.includes("playwright-core"));
     assert.equal(res.toolchain.os_platform, `${process.platform}-${process.arch}`);
+
+    // Adapter metric registrations must be scoped and cleaned up after gradeSubmission
+    assert.equal(hasMetric("mock.probe_elements"), false);
+
+    // Partial eval on v2 marks partial_eval: true in result JSON
+    const partialV2 = await gradeSubmission({
+      room: specPath,
+      submissionDir: subDir,
+      version: 2,
+      adapterDir,
+      noCapture: true,
+      noPython: true,
+      workDir: tmpWork,
+      repoRoot: REPO_ROOT
+    });
+    assert.equal(partialV2.partial_eval, true);
+    assert.equal(hasMetric("mock.probe_elements"), false);
 
     // Fail-closed end-to-end check: removing python plugin drops mock.py_mean_blue -> fails closed to 0
     delete process.env.MOLMETRICS_PLUGIN_DIRS;

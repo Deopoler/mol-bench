@@ -33,8 +33,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "dir": { "type": "string", "minLength": 1 }
+        "dir": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" }
       }
+    },
+    "extra_variants": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_]+$" }
     },
     "load_timeout_ms": { "type": "number", "exclusiveMinimum": 0 },
     "max_raster_asset_kb": { "type": "number", "minimum": 0 },

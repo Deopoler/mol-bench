@@ -25,9 +25,11 @@ export function isV2Spec(spec) {
   return sv.major > 0 || sv.minor >= 2;
 }
 
-export function isInformationalMetric(metric) {
+export function isInformationalMetric(metric, spec = null) {
   if (!metric || typeof metric !== "object") return false;
-  return Boolean(metric.informational) || metric.weight === 0 || metric.score?.type === "informational";
+  if (metric.informational === true || metric.score?.type === "informational") return true;
+  if (metric.weight === 0 && (spec === null || isV2Spec(spec))) return true;
+  return false;
 }
 
 export function round1(val) {
@@ -315,13 +317,13 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
       for (const sub of req.metrics || []) {
         const scopedKey = `request.${req.id}.${sub.id}`;
         const rawVal = scopedKey in effectiveRaw ? effectiveRaw[scopedKey] : effectiveRaw[sub.id];
-        const informational = isInformationalMetric(sub);
+        const informational = isInformationalMetric(sub, spec);
         const res = scoreMetric(sub, rawVal, opts.ctx);
         if (res.warning) warnings.push(res.warning);
 
         let subScore = res.score;
         let missing = false;
-        if (!informational && failClosed && (subScore === null || subScore === undefined)) {
+        if (!informational && !res.excluded && failClosed && (subScore === null || subScore === undefined)) {
           subScore = 0;
           missing = true;
           warnings.push(`missing_required_metric: request.${req.id}.${sub.id}`);
@@ -360,13 +362,13 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
 
   // 2. Score top-level metrics
   for (const m of spec.metrics || []) {
-    const informational = isInformationalMetric(m);
+    const informational = isInformationalMetric(m, spec);
     const res = scoreMetric(m, effectiveRaw[m.id], opts.ctx);
     if (res.warning) warnings.push(res.warning);
 
     let finalScore = res.score;
     let missing = false;
-    if (!informational && failClosed && (finalScore === null || finalScore === undefined)) {
+    if (!informational && !res.excluded && failClosed && (finalScore === null || finalScore === undefined)) {
       finalScore = 0;
       missing = true;
       warnings.push(`missing_required_metric: ${m.id}`);
@@ -405,7 +407,7 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
     let wsSum = 0;
     for (const m of spec.metrics || []) {
       if (m.axis !== axis) continue;
-      if (isInformationalMetric(m) || m.weight === 0) continue;
+      if (isInformationalMetric(m, spec) || m.weight === 0) continue;
       const out = metricsOut[m.id];
       if (!out || out.score === null || out.score === undefined) continue;
       wSum += m.weight;
@@ -493,6 +495,7 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
     composite,
     completeness,
     completeness_multiplier: completenessMultiplier,
+    ...(partialEval && specWantsFailClosed ? { partial_eval: true } : {}),
     warnings
   };
 }

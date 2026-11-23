@@ -300,13 +300,40 @@ test("v0.2 fail-closed scoring zeroes missing required metrics and excludes info
   const partialRes = scoreSubmission(v2Spec, { "c.present": true, "v.present": true }, { partialEval: true });
   assert.equal(partialRes.metrics["c.missing"].score, null);
   assert.equal(partialRes.axes.craft, 10);
+  assert.equal(partialRes.partial_eval, true);
 
-  // v0.1 spec preserves exact null-drop behavior (unchanged)
-  const v1Spec = { ...v2Spec, spec_version: "0.1.0" };
-  const v1Res = scoreSubmission(v1Spec, { "c.present": true, "c.missing": null, "v.present": true });
+  // Calibrate / null-band metrics (res.excluded) must NOT fail closed to 0
+  const calSpec = {
+    spec_version: "0.2.0",
+    composite: { craft: 0.5, visual_quality: 0.5 },
+    metrics: [
+      { id: "c.present", axis: "craft", weight: 1, score: { type: "pass" } },
+      { id: "v.cal", axis: "visual_quality", weight: 2, calibrate: true, score: { type: "range", ideal: [null, null], zero: [null, null] } },
+      { id: "v.present", axis: "visual_quality", weight: 1, score: { type: "pass" } }
+    ]
+  };
+  const calRes = scoreSubmission(calSpec, { "c.present": true, "v.cal": 3.5, "v.present": true });
+  assert.equal(calRes.metrics["v.cal"].score, null);
+  assert.equal(calRes.metrics["v.cal"].excluded, true);
+  assert.equal(calRes.metrics["v.cal"].missing, undefined);
+  assert.equal(calRes.axes.visual_quality, 10);
+  assert.ok(!calRes.warnings.some((w) => w.includes("missing_required_metric")));
+
+  // v0.1 spec preserves exact null-drop behavior (unchanged, no partial_eval or informational on weight:0)
+  const v1Spec = {
+    spec_version: "0.1.0",
+    composite: { craft: 0.6, visual_quality: 0.4 },
+    metrics: [
+      { id: "c.present", axis: "craft", weight: 2, score: { type: "pass" } },
+      { id: "c.missing", axis: "craft", weight: 2, score: { type: "higher", full: 1, zero: 0 } },
+      { id: "v.present", axis: "visual_quality", weight: 1, score: { type: "pass" } }
+    ]
+  };
+  const v1Res = scoreSubmission(v1Spec, { "c.present": true, "c.missing": null, "v.present": true }, { partialEval: true });
   assert.equal(v1Res.metrics["c.missing"].score, null);
   assert.equal(v1Res.axes.craft, 10);
   assert.equal(v1Res.composite, 10);
+  assert.equal("partial_eval" in v1Res, false);
 });
 
 test("v0.2 fail-closed applies to renovation request sub-metrics", () => {

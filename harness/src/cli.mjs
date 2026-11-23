@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
 import { loadSpec, buildPlan, parseVersion, resolveVersionPaths } from "./spec.mjs";
 import { scoreSubmission, scoreMetric, round1, isV2Spec } from "./score.mjs";
-import { registerMetrics } from "./registry.mjs";
+import { registerMetrics, unregisterMetrics } from "./registry.mjs";
 import { evaluateStaticGates, combineGates, getGitChangedFiles, evaluateAliveGate } from "./gates.mjs";
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "./report.mjs";
 import { compareSourceTrees, compareAllFiles, countPatchLines, computeDiffMetrics } from "./diffmetrics.mjs";
@@ -54,7 +54,14 @@ function findPythonExecutable(repoRoot = REPO_ROOT) {
   return "python";
 }
 
-export async function loadRoomAdapter(room, { version = 1, repoRoot = REPO_ROOT, adapterDir = null } = {}) {
+export function registerAdapterMetrics(adapter) {
+  if (!adapter || typeof adapter.registerMetrics !== "function") return [];
+  const defs = adapter.registerMetrics();
+  if (!defs || typeof defs !== "object") return [];
+  return registerMetrics(defs, { replace: false });
+}
+
+export async function loadRoomAdapter(room, { version = 1, repoRoot = REPO_ROOT, adapterDir = null, register = true } = {}) {
   const v = parseVersion(version);
   const envDirs = (process.env.MOL_ADAPTER_DIRS || "")
     .split(path.delimiter)
@@ -84,11 +91,8 @@ export async function loadRoomAdapter(room, { version = 1, repoRoot = REPO_ROOT,
       loaded = await import(pathToFileURL(tplPath).href);
     }
   }
-  if (loaded && typeof loaded.registerMetrics === "function") {
-    const defs = loaded.registerMetrics();
-    if (defs && typeof defs === "object") {
-      registerMetrics(defs, { replace: true });
-    }
+  if (register && loaded) {
+    registerAdapterMetrics(loaded);
   }
   return loaded;
 }
@@ -348,9 +352,58 @@ export async function gradeSubmission({
     }
   }
 
-  // Load room adapter before loadSpec so adapter.registerMetrics() populates registry.mjs.
-  const adapter = await loadRoomAdapter(adapterRoomName, { version: inferredVersion, repoRoot, adapterDir });
+  // Load room adapter before loadSpec, scoping its metric registrations strictly to this grade call.
+  const adapter = await loadRoomAdapter(adapterRoomName, { version: inferredVersion, repoRoot, adapterDir, register: false });
+  const registeredMetricIds = registerAdapterMetrics(adapter);
+  try {
+    return await _gradeSubmissionWithAdapter({
+      room,
+      resolvedSub,
+      renovation,
+      version,
+      inferredVersion,
+      adapter,
+      hidden,
+      noCapture,
+      noPython,
+      perf,
+      lenient,
+      timedOut,
+      interventions,
+      repoRoot,
+      workDir,
+      start
+    });
+  } finally {
+    unregisterMetrics(registeredMetricIds);
+  }
+}
+
+async function _gradeSubmissionWithAdapter({
+  room,
+  resolvedSub,
+  renovation,
+  version,
+  inferredVersion,
+  adapter,
+  hidden,
+  noCapture,
+  noPython,
+  perf,
+  lenient,
+  timedOut,
+  interventions,
+  repoRoot,
+  workDir,
+  start
+}) {
   const spec = loadSpec(room, { renovation, lenient, version: inferredVersion, repoRoot });
+  const specInferredVersion = isV2Spec(spec) ? 2 : 1;
+  if (version !== null && version !== undefined && parseVersion(version) !== specInferredVersion) {
+    throw new Error(
+      `Version mismatch: CLI/caller requested version ${parseVersion(version)} but spec "${spec.room}" declares spec_version "${spec.spec_version}" (version ${specInferredVersion})`
+    );
+  }
   const effectiveVersion = spec._version ?? inferredVersion;
   const versionPaths = resolveVersionPaths(effectiveVersion, repoRoot);
   const isV2 = effectiveVersion === 2 || isV2Spec(spec);
@@ -695,6 +748,7 @@ export async function gradeSubmission({
     taste: null,
     efficiency: { wall_min: null },
     ...(isV2 ? { toolchain: collectToolchainInfo({ repoRoot, captureRes, noCapture, noPython }) } : {}),
+    ...(finalScored.partial_eval ? { partial_eval: true } : {}),
     ...(autonomyRes.invalid ? { invalid: true, invalid_reason: autonomyRes.outcome } : {}),
     ...(allWarnings.length > 0 ? { warnings: allWarnings } : {})
   };
@@ -702,7 +756,7 @@ export async function gradeSubmission({
   return result;
 }
 
-function readBenchRoomFile(dir) {
+export function readBenchRoomFile(dir) {
   const file = path.join(dir, ".bench-room");
   const runJsonFile = path.join(dir, ".run.json");
   let runMeta = null;
@@ -713,21 +767,32 @@ function readBenchRoomFile(dir) {
       runMeta = null;
     }
   }
-  const runVersion = runMeta?.version ?? (runMeta?.bench_version ? parseVersion(runMeta.bench_version) : null);
+  const runVersion = runMeta?.version !== undefined
+    ? parseVersion(runMeta.version)
+    : (runMeta?.bench_version ? parseVersion(runMeta.bench_version) : null);
   if (!fs.existsSync(file)) {
     if (runMeta?.room) {
-      return { room: runMeta.room, renovation: runMeta.renovation ?? null, version: runVersion };
+      return { room: runMeta.room, renovation: runMeta.renovation ?? null, declaredVersion: runVersion };
     }
     throw new Error(`Missing .bench-room file in ${dir}. Create .bench-room containing the room name (e.g. "aurora").`);
   }
   const raw = fs.readFileSync(file, "utf8").trim();
   if (raw.startsWith("{")) {
     const parsed = JSON.parse(raw);
-    const parsedVersion = parsed.version !== undefined ? parseVersion(parsed.version) : (parsed.bench_version ? parseVersion(parsed.bench_version) : runVersion);
-    return { room: parsed.room, renovation: parsed.renovation ?? runMeta?.renovation ?? null, version: parsedVersion };
+    const parsedVersion = parsed.version !== undefined
+      ? parseVersion(parsed.version)
+      : (parsed.bench_version ? parseVersion(parsed.bench_version) : null);
+    if (parsedVersion !== null && runVersion !== null && parsedVersion !== runVersion) {
+      throw new Error(`Version mismatch between .bench-room (v${parsedVersion}) and .run.json (v${runVersion})`);
+    }
+    return {
+      room: parsed.room,
+      renovation: parsed.renovation ?? runMeta?.renovation ?? null,
+      declaredVersion: parsedVersion ?? runVersion
+    };
   }
   const parts = raw.split(/\s+/);
-  return { room: parts[0], renovation: parts[1] ?? runMeta?.renovation ?? null, version: runVersion };
+  return { room: parts[0], renovation: parts[1] ?? runMeta?.renovation ?? null, declaredVersion: runVersion };
 }
 
 function formatSelfcheckTable(result) {
@@ -833,9 +898,14 @@ export function generatePreviewContactSheets(manifestPath, outDir, opts = {}) {
   return written;
 }
 
-function parseAttackThreshold(attackEntry, defaultThreshold = 4) {
+export function parseAttackThreshold(attackEntry, { version = 1 } = {}) {
+  const v = parseVersion(version);
+  if (v === 1) {
+    const m = String(attackEntry).match(/composite\s*<=\s*(\d+(?:\.\d+)?)/i);
+    return m ? Number(m[1]) : 4;
+  }
   const m = String(attackEntry).match(/composite\s*<=?\s*(\d+(?:\.\d+)?)/i);
-  return m ? Number(m[1]) : defaultThreshold;
+  return m ? Number(m[1]) : 3.0;
 }
 
 async function runCalibrate(room, flags) {
@@ -845,8 +915,14 @@ async function runCalibrate(room, flags) {
   const lenient = Boolean(flags.lenient);
   const noCapture = Boolean(flags["no-capture"]);
   const noPython = Boolean(flags["no-python"]);
-  await loadRoomAdapter(room, { version, repoRoot: REPO_ROOT });
-  const spec = loadSpec(room, { renovation, lenient, version, repoRoot: REPO_ROOT });
+  const adapter = await loadRoomAdapter(room, { version, repoRoot: REPO_ROOT, register: false });
+  const registeredIds = registerAdapterMetrics(adapter);
+  let spec;
+  try {
+    spec = loadSpec(room, { renovation, lenient, version, repoRoot: REPO_ROOT });
+  } finally {
+    unregisterMetrics(registeredIds);
+  }
 
   const roomBase = path.join(versionPaths.roomsDir, room);
   const candidates = [
@@ -857,7 +933,6 @@ async function runCalibrate(room, flags) {
 
   const attacksDir = path.join(roomBase, "attacks");
   const attackSpecs = spec.attacks || [];
-  const defaultAttackThresh = version === 2 ? 3.0 : 4;
   if (fs.existsSync(attacksDir)) {
     for (const entry of fs.readdirSync(attacksDir)) {
       const full = path.join(attacksDir, entry);
@@ -866,7 +941,7 @@ async function runCalibrate(room, flags) {
         candidates.push({
           label: `attack:${entry}`,
           dir: full,
-          threshold: parseAttackThreshold(specLine, defaultAttackThresh)
+          threshold: parseAttackThreshold(specLine, { version })
         });
       }
     }
@@ -1002,12 +1077,19 @@ async function main() {
 
   if (cmd === "selfcheck") {
     const dir = path.resolve(flags.dir || process.cwd());
-    const { room, renovation, version: benchRoomVersion } = readBenchRoomFile(dir);
+    const { room, renovation, declaredVersion } = readBenchRoomFile(dir);
+    // Authoritative version comes from CLI --version (default 1), never from submission-controlled files.
+    const cliVersion = flags.version !== undefined ? parseVersion(flags.version) : 1;
+    if (declaredVersion !== null && declaredVersion !== cliVersion) {
+      throw new Error(
+        `Version mismatch: selfcheck version is ${cliVersion} (pass --version ${declaredVersion} if intended), but .bench-room/.run.json declares version ${declaredVersion}`
+      );
+    }
     const result = await gradeSubmission({
       room,
       submissionDir: dir,
       renovation: flags.renovation ?? renovation,
-      version: flags.version ?? benchRoomVersion ?? null,
+      version: cliVersion,
       hidden: false, // selfcheck never touches hidden/
       noCapture: Boolean(flags["no-capture"]),
       noPython: Boolean(flags["no-python"]),

@@ -49,8 +49,22 @@ def _is_v2_spec(spec: dict[str, Any], spec_dir: Path | None = None) -> bool:
     return False
 
 
-def _validate_manifest_variants_v2(manifest: dict[str, Any]) -> None:
-    allowed = VALID_VARIANTS | V2_EXTRA_VARIANTS
+def _validate_manifest_variants_v2(
+    manifest: dict[str, Any],
+    spec: dict[str, Any] | None = None,
+) -> None:
+    extra: set[str] = set()
+    if isinstance(spec, dict):
+        for v in spec.get("extra_variants") or []:
+            if isinstance(v, str) and v:
+                extra.add(v)
+        for v in (spec.get("capture") or {}).get("variants") or []:
+            if isinstance(v, str) and v:
+                extra.add(v)
+    for v in manifest.get("extra_variants") or []:
+        if isinstance(v, str) and v:
+            extra.add(v)
+    allowed = VALID_VARIANTS | V2_EXTRA_VARIANTS | extra
     for kind in ("samples", "sequences"):
         for item in manifest.get(kind, []):
             v = item.get("variant")
@@ -71,13 +85,36 @@ def _load_external_module(py_file: Path):
     return mod
 
 
+def _merge_plugin_registrations(
+    target: dict[str, Callable[[dict[str, Any]], Any]],
+    sources: dict[str, str],
+    local_reg: dict[str, Any],
+    source_label: str,
+) -> None:
+    for mid, fn in local_reg.items():
+        if not isinstance(mid, str) or not mid:
+            raise ValueError(f"Plugin {source_label} registered invalid metric id: {mid!r}")
+        if not callable(fn):
+            raise TypeError(f"Plugin {source_label} registered non-callable handler for {mid!r}")
+        if mid in IMPLEMENTED_METRICS:
+            raise ValueError(f"Plugin {source_label} cannot shadow built-in metric {mid!r}")
+        if mid in target:
+            raise ValueError(
+                f"Duplicate Python metric plugin {mid!r} in {source_label} (already registered by {sources[mid]})"
+            )
+        target[mid] = fn
+        sources[mid] = source_label
+
+
 def discover_plugins(extra_dirs: Sequence[str | Path] | None = None) -> dict[str, Callable[[dict[str, Any]], Any]]:
     """Auto-discover Python metric plugins exporting `register(METRICS)`.
 
     Scans `metrics/molmetrics/*.py` plus any directories in `MOLMETRICS_PLUGIN_DIRS`
     (os.pathsep-delimited) and `extra_dirs`.
+    Raises ValueError if any plugin shadows a built-in metric or registers a duplicate metric id.
     """
     metrics: dict[str, Callable[[dict[str, Any]], Any]] = {}
+    sources: dict[str, str] = {}
     pkg_dir = Path(__file__).resolve().parent
 
     # 1. Built-in package directory
@@ -88,7 +125,9 @@ def discover_plugins(extra_dirs: Sequence[str | Path] | None = None) -> dict[str
         mod = importlib.import_module(f"{__package__}.{stem}")
         reg = getattr(mod, "register", None)
         if callable(reg):
-            reg(metrics)
+            local_reg: dict[str, Any] = {}
+            reg(local_reg)
+            _merge_plugin_registrations(metrics, sources, local_reg, str(py_file))
 
     # 2. Extra directories from env and explicit args (used by tests / external plugins)
     search_dirs: list[Path] = []
@@ -114,7 +153,9 @@ def discover_plugins(extra_dirs: Sequence[str | Path] | None = None) -> dict[str
                 continue
             reg = getattr(mod, "register", None)
             if callable(reg):
-                reg(metrics)
+                local_reg = {}
+                reg(local_reg)
+                _merge_plugin_registrations(metrics, sources, local_reg, str(py_file))
 
     return metrics
 
@@ -658,7 +699,7 @@ def compute_metrics(
 
     is_v2 = _is_v2_spec(spec, spec_dir)
     if is_v2:
-        _validate_manifest_variants_v2(manifest)
+        _validate_manifest_variants_v2(manifest, spec)
     else:
         validate_manifest_variants(manifest)
 
@@ -668,12 +709,15 @@ def compute_metrics(
         st_path = Path(renovation_start_path)
         start_manifest = load_json(st_path)
         if is_v2:
-            _validate_manifest_variants_v2(start_manifest)
+            _validate_manifest_variants_v2(start_manifest, spec)
         else:
             validate_manifest_variants(start_manifest)
         start_dir = st_path.parent
 
-    plugins = discover_plugins(extra_dirs=plugin_dirs)
+    # Only load plugin modules for v2 specs (or when explicit plugin dirs are configured),
+    # isolating v0.1 grading from any optional v2 plugin dependencies.
+    has_explicit_plugin_dirs = bool(plugin_dirs) or bool(os.environ.get("MOLMETRICS_PLUGIN_DIRS", "").strip())
+    plugins = discover_plugins(extra_dirs=plugin_dirs) if (is_v2 or has_explicit_plugin_dirs) else {}
     spec_entries = extract_spec_metrics(spec) if spec else []
     spec_by_id = {e["id"]: e for e in spec_entries}
 

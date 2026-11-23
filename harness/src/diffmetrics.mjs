@@ -3,8 +3,9 @@ import path from "node:path";
 
 const EXCLUDED_DIRS = new Set(["tests", "public-tests", "node_modules", ".venv", "bench", "metrics", ".git", "out"]);
 const EXCLUDED_FILES = new Set(["report.json", "decisions.json"]);
-const WORKSPACE_ARTIFACT_DIRS = new Set(["preview", "work", ".venv", "__pycache__", "bench", "metrics"]);
-const WORKSPACE_ARTIFACT_FILES = new Set([".run.json", "selfcheck.json", ".bench-room"]);
+// v0.2 root-only harness artifacts (never excluded in nested paths so submissions cannot hide edits in src/work/ etc.)
+const ROOT_WORKSPACE_ARTIFACT_DIRS = new Set(["preview", "work"]);
+const ROOT_WORKSPACE_ARTIFACT_FILES = new Set([".run.json", "selfcheck.json", ".bench-room"]);
 const BINARY_EXTS = new Set([".png", ".glb", ".blend", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm", ".woff", ".woff2", ".ttf", ".otf", ".ico", ".pdf", ".zip"]);
 
 function included(rel, excludeWorkspaceArtifacts = false) {
@@ -13,19 +14,20 @@ function included(rel, excludeWorkspaceArtifacts = false) {
   if (parts.some((p) => EXCLUDED_DIRS.has(p))) return false;
   if (EXCLUDED_FILES.has(baseName)) return false;
   if (excludeWorkspaceArtifacts) {
-    if (parts.some((p) => WORKSPACE_ARTIFACT_DIRS.has(p))) return false;
-    if (WORKSPACE_ARTIFACT_FILES.has(baseName)) return false;
+    if (parts.length > 1 && ROOT_WORKSPACE_ARTIFACT_DIRS.has(parts[0])) return false;
+    if (parts.length === 1 && ROOT_WORKSPACE_ARTIFACT_FILES.has(baseName)) return false;
   }
   return !BINARY_EXTS.has(path.extname(rel).toLowerCase());
 }
 
 function walk(root, base = root, out = new Map(), excludeWorkspaceArtifacts = false) {
+  const isRoot = root === base;
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const full = path.join(root, entry.name);
     const rel = path.relative(base, full).replace(/\\/g, "/");
     if (entry.isDirectory()) {
       if (EXCLUDED_DIRS.has(entry.name)) continue;
-      if (excludeWorkspaceArtifacts && WORKSPACE_ARTIFACT_DIRS.has(entry.name)) continue;
+      if (excludeWorkspaceArtifacts && isRoot && ROOT_WORKSPACE_ARTIFACT_DIRS.has(entry.name)) continue;
       walk(full, base, out, excludeWorkspaceArtifacts);
     } else if (entry.isFile() && included(rel, excludeWorkspaceArtifacts)) {
       out.set(rel, fs.readFileSync(full, "utf8").split(/\r?\n/));
@@ -86,10 +88,11 @@ export function compareAllFiles(startDir, submissionDir, opts = {}) {
   const excludeWorkspaceArtifacts = Boolean(opts.excludeWorkspaceArtifacts);
   if (!startDir || !fs.existsSync(startDir) || !fs.statSync(startDir).isDirectory()) throw new Error(`start source directory unavailable: ${startDir || "not provided"}`);
   const collect = (dir, base = dir, result = new Set()) => {
+    const isRoot = dir === base;
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       if (ent.name === ".git" || ent.name === "node_modules") continue;
-      if (excludeWorkspaceArtifacts && ent.isDirectory() && WORKSPACE_ARTIFACT_DIRS.has(ent.name)) continue;
-      if (excludeWorkspaceArtifacts && ent.isFile() && WORKSPACE_ARTIFACT_FILES.has(ent.name)) continue;
+      if (excludeWorkspaceArtifacts && isRoot && ent.isDirectory() && ROOT_WORKSPACE_ARTIFACT_DIRS.has(ent.name)) continue;
+      if (excludeWorkspaceArtifacts && isRoot && ent.isFile() && ROOT_WORKSPACE_ARTIFACT_FILES.has(ent.name)) continue;
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) collect(full, base, result);
       else if (ent.isFile()) result.add(path.relative(base, full).replace(/\\/g, "/"));

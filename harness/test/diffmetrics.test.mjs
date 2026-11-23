@@ -71,7 +71,7 @@ test("file comparison supplies out-of-scope files when git diff is unavailable",
   }
 });
 
-test("v0.2 excludeWorkspaceArtifacts ignores workspace files while preserving v0.1 default", () => {
+test("v0.2 excludeWorkspaceArtifacts ignores root harness files only and never hides nested edits", () => {
   const start = tree({ "room/src/app.js": "const a = 1;\n" });
   const sub = tree({
     "room/src/app.js": "const a = 2;\n",
@@ -79,7 +79,12 @@ test("v0.2 excludeWorkspaceArtifacts ignores workspace files while preserving v0
     "selfcheck.json": '{}\n',
     ".bench-room": '{"room":"restoration","version":2}\n',
     "preview/sheet_1.png": "png",
-    "work/tmp/out.json": "{}"
+    "work/tmp/out.json": "{}",
+    // Nested paths with artifact names MUST NOT be excluded (prevents hiding out-of-scope edits)
+    "src/work/hidden.js": "export const cheat = 1;\n",
+    "room/preview/hack.js": "export const hack = 1;\n",
+    "room/.run.json": '{"nested":true}\n',
+    "bench/tamper.js": "export const t = 1;\n"
   });
   try {
     // v0.1 default behavior untouched
@@ -89,10 +94,16 @@ test("v0.2 excludeWorkspaceArtifacts ignores workspace files while preserving v0
     assert.ok(v1Changed.includes("preview/sheet_1.png"));
     assert.ok(v1Changed.includes("work/tmp/out.json"));
 
-    // v0.2 option excludes workspace artifacts
+    // v0.2 excludes root harness artifacts only; nested work/preview/.run.json and bench/ stay visible
     const v2Changed = compareAllFiles(start, sub, { excludeWorkspaceArtifacts: true });
-    assert.deepEqual(v2Changed, ["room/src/app.js"]);
-    assert.equal(checkScope(v2Changed, ["room/src/**"]).outOfScopeCount, 0);
+    assert.deepEqual(v2Changed, [
+      "bench/tamper.js",
+      "room/.run.json",
+      "room/preview/hack.js",
+      "room/src/app.js",
+      "src/work/hidden.js"
+    ]);
+    assert.equal(checkScope(v2Changed, ["room/src/**"]).outOfScopeCount, 4);
   } finally {
     fs.rmSync(start, { recursive: true, force: true });
     fs.rmSync(sub, { recursive: true, force: true });
