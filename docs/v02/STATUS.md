@@ -3,7 +3,7 @@
 설계: [`docs/V02-DESIGN.md`](../V02-DESIGN.md) · 확장 규약: [`docs/v02/HOOKS.md`](HOOKS.md)(wp0a 병합 후)
 작업 중인 브랜치는 GitHub에 그대로 올려 둔다(`wp0a`, `wp4`, …). 숨김 채점 자료(`hidden-v2/`)는 올리지 않는다.
 
-마지막 갱신: 2026-11-23 23:40
+마지막 갱신: 2026-11-23 23:55
 
 ## 작업 패키지
 
@@ -24,7 +24,7 @@
 
 - WP-2 aurora·WP-3 lobby: agy Claude 쿼터 초기화(11-25 오후) 뒤 Sonnet 5.5로 시작.
 - restoration: mem/budget 지표를 host.js 계측으로 옮기기, B9 시계를 하네스가 직접 구동(리뷰 잔여 medium/low).
-- Wave 0 카나리: P0 방 3개가 모이면 Neon (XHigh)·Flash (High)로 시작.
+- Wave 0 카나리: restoration에서 먼저 시작 — Gemini 4 Neon (XHigh) 진행 중, 다음 Gemini 3.8 Flash (High). 결과는 `results-v2/`.
 
 ## 참가 시험 계획
 
