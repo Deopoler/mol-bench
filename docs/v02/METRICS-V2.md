@@ -22,13 +22,15 @@ All four modules export `register(METRICS)` and are auto-discovered by `molmetri
 - **`scene.reflection_coherence`** (`higher`, `full: 0.62`, `zero: 0.20`):
   - Gaussian-blurred (`σ = 6`) OKLab `(L, a, b)` normalized cross-correlation (NCC) between vertically mirrored sky strip above the horizon/shoreline and lake strip below, multiplied by `fresnel_ok = 1.0 if mean(L_lake) < 0.85 * mean(L_sky) else 0.0`.
 - **`scene.water_ripple`** (`range`, `ideal: [0.015, 0.12]`, `zero: [0.0, 0.30]`):
-  - Computes lake vertical-vs-horizontal luminance gradient anisotropy `(mean(|∂L/∂y|) - mean(|∂L/∂x|)) / (mean(|∂L/∂y|) + mean(|∂L/∂x|))` (clamped to `[0, 1]`), multiplied by mean LDR-FLIP between the lake strip and a luminance-matched mirrored sky strip. Rejects unrippled mirror copies (`FLIP ≈ 0`), isotropic static noise (`anisotropy ≈ 0`), and solid black lakes.
+  - Computes lake vertical-vs-horizontal luminance gradient anisotropy `(mean(|∂L/∂y|) - mean(|∂L/∂x|)) / (mean(|∂L/∂y|) + mean(|∂L/∂x|))` (clamped to `[0, 1]`), multiplied by mean LDR-FLIP between the lake strip and a luminance-matched mirrored sky strip. Rejects unrippled mirror copies (`FLIP < 0.01`), isotropic static noise (`anisotropy ≈ 0`), and solid black lakes.
 - **`scene.terrain_lighting`** (`higher`, `full: 0.55`, `zero: 0.10`):
   - 32-column-bin Pearson correlation `r` between overhead aurora luminance (`~25–50 px` above `h_ridge(x)`) and ridge-crest rim luminance (`6 px` below `h_ridge(x)`), requiring dark ridge interior (`mean L < 0.07`) and measurable rim brightness above the interior (`mean(rim) - mean(interior) > 0.005`).
+- **Temporal & Live-WebGL Gates (`_compute_reflection_metric`):**
+  - Requires live-WebGL evidence (`draw_calls > 0` and non-zero shader/program ops via `budget_glsl.compute_gpu_work_profile`), at least 2 timestamps showing temporal lake luminance delta (`>= 0.003`) while the dark mountain ridge remains stable, and pointer response in the lake region when pointer-variant samples are present; otherwise returns `0.0` (explicit fail, never skipped).
 
 ### 1.3 `budget_glsl.py` — `budget.gpu_work_profile`, `budget.shader_ops`, `budget.render_passes`, `budget.draw_calls`, `budget.render_work`
 - **GLSL Static Analyzer (`count_shader_ops`, `count_program_ops`):**
-  - Strips `/*...*/` and `//...` comments, expands constant integer `#define` macros, extracts user-defined functions (inlining call-site costs with cycle protection), expands constant-bound `for` loops exactly, and treats dynamic/uniform-bound loops (`for` without constant upper bound or `while`) as `32` iterations.
+  - Strips `/*...*/` and `//...` comments, joins line continuations, iteratively expands object-like and function-like `#define` macros, evaluates `const` arithmetic bounds (for exact `const int` loops), extracts top-level functions (including `const`/`struct`/array return types and overload resolution taking max cost when ambiguous), charges matrix/vector op widths (`mat4*mat4`, `vecN`), counts `break`/`continue` branch jumps, scales multi-draw & coverage programs, and caps dynamic/uniform-bound loops conservatively (`max(32, reported_uniform)`).
   - Op weights: `1` ALU op/builtin, `2` branch (`if`, `?`, `discard`), `4` transcendental (`sin/cos/tan/asin/acos/atan/exp/pow/log/sqrt/...`), `16` texture fetch (`texture*`, `texelFetch*`).
 - **Expected `manifest.json` Input Shape from WP-0b `host.js`:**
   Can be placed per sample (`manifest.samples[i].webgl`) or once at manifest root (`manifest.webgl`), with optional `manifest.bundle_gz_kb`:
@@ -103,14 +105,14 @@ All five plugins export `probeName`, `aliases`, and `runProbe(pageHandle, args, 
 
 | File | `probeName` | Aliases / Metric IDs | Key Inputs / Notes |
 |---|---|---|---|
-| `overlap.js` | `overlap` | `layout.overlap_count` | Pairwise AABB intersection `> 2 px²` across visible sibling block/interactive elements + cross-parent `[data-bench]`/interactive overflow, excluding hidden/closed overlays (`detail-drawer`, `dialog:not([open])`, `[hidden]`, `[aria-hidden="true"]`). Supports `args.zoom200: true`. |
+| `overlap.js` | `overlap` | `layout.overlap_count` | Pairwise AABB intersection `> 2 px²` across visible sibling block/interactive elements + cross-parent `[data-bench]`/interactive overflow (never skipping visible `aria-hidden="true"`, `inert`, or `pointer-events: none` elements). Supports `args.zoom200: true`. |
 | `contrast_apca.js` | `contrast_apca` | `a11y.apca_contrast` | Captures PNG screenshot, masks foreground-like pixels dilated by a 2 px anti-aliased glyph halo, takes 3×3 median background RGB per visible text node, computes APCA `|Lc|` (`>= 60` body, `>= 75` high-contrast, `>= 45` large headings). Supports `args.highContrast` / `args.scheme === "high_contrast"`. |
-| `flow.js` | `flow` | `interact.scripted_flow` | Executes the 10-checkpoint `lobby` v0.2 flow: search -> category chip -> sort by duration -> Tab to 3rd card -> Enter opens drawer -> Tab trap -> Esc restores focus -> Enter Room navigates -> Back restores filter/sort/scroll -> Reload preserves state. |
-| `perf_dom.js` | `perf_dom` | `budget.dom_work_profile`, `perf.cls` | Consumes WP-0b `window.__benchHostControl.getDomBudgetStats()` / `window.__benchDomBudget` (when `.ready === true`) or `args.domStats`, or self-instruments `MutationObserver`, forced-layout read wrappers, and `PerformanceObserver('layout-shift', buffered: true)` over filter/sort steps. |
-| `theme_tri.js` | `theme_tri` | `theme.tri_valid` | Evaluates `light`, `dark`, and `prefers-contrast: more` via CDP `Emulation.setEmulatedMedia`; passes iff all 3 pixel SHA-256 hashes differ AND both axe `color-contrast` and APCA `a11y.apca_contrast` have 0 failures in all 3 modes. |
+| `flow.js` | `flow` | `interact.scripted_flow` | Executes the 10-checkpoint `lobby` v0.2 flow with deterministic virtual-time/double-rAF settling: search -> category chip (must actually reduce card count) -> sort by duration -> Tab to 3rd card -> Enter opens drawer -> Tab wraps across `>= 2` elements inside drawer -> Esc restores focus -> Enter Room navigates -> Back restores filter/sort/scroll -> Reload preserves state. |
+| `perf_dom.js` | `perf_dom` | `budget.dom_work_profile`, `perf.cls` | Consumes WP-0b DOM interceptor counts via single `createDomHostAdapter(pageHandle)` (or self-instruments as fallback), drives filter/sort steps with Playwright trusted input and deterministic virtual-time + double-rAF quiescence, re-reads CLS post-steps, counts shadow/iframe DOM nodes, and returns `0` / `failed: true` if `< minSteps` (`3`) steps ran. |
+| `theme_tri.js` | `theme_tri` | `theme.tri_valid` | Freezes animations/clock, verifies `matchMedia` actually flips per scheme (`light`, `dark`, `prefers-contrast: more`), requires minimum viewport pixel (`>= 1%`) and OKLab ΔE diffs across all 3 pairs, AND requires 0 axe + APCA contrast failures. |
 
 ### 2.1 WP-0b DOM Interceptor Input Shape (`perf_dom.js`)
-When `window.__benchHostControl.getDomBudgetStats()` is present:
+All host DOM counter access goes through `createDomHostAdapter(pageHandle)`:
 ```json
 {
   "ready": true,
@@ -121,8 +123,8 @@ When `window.__benchHostControl.getDomBudgetStats()` is present:
   "cls": 0.002
 }
 ```
-- If `steps > 1` (or `args.useExistingHostStats === true`), `perf_dom.js` consumes `getDomBudgetStats()` directly.
-- Otherwise (`steps <= 1`), `perf_dom.js` records load-phase `cls`, clears initial HTML-parse mutations via `resetDomMetrics({ steps: 0, resetCls: false })`, drives the filter/sort steps while calling `markDomStep(1)`, and reads the authoritative `host.js` counts via `getDomBudgetStats()`. (`dom_mutations_per_step` and `layout_reads_per_step` may also be supplied directly in `args.domStats`.)
+- Only consumes pre-collected stats when `args.useExistingHostStats === true` (never trusts page-mutable `steps > 1`).
+- After load-phase virtual-time/rAF settle, captures baseline snapshot (via `resetDomMetrics` or monotonic baseline diff), drives Playwright trusted input steps, settles deterministically, and computes delta `dom_mutations`, `layout_reads`, deep `dom_nodes`, and post-step `cls`. (`dom_mutations_per_step` and `layout_reads_per_step` may also be supplied directly in `args.domStats`.)
 
 ---
 

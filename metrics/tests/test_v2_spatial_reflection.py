@@ -48,6 +48,7 @@ def _make_fjord_scene(
     ridge_height: int = 22,
     fresnel_scale: float = 0.45,
     ripple_amp_px: float = 4.5,
+    wave_phase: float = 0.0,
     rim_gain: float = 0.35,
     noise_lake: bool = False,
     flat_black_lake: bool = False,
@@ -118,12 +119,12 @@ def _make_fjord_scene(
     else:
         dy = np.maximum(0, yy[y_shore:, :] - y_shore)
         src_y = np.clip(np.round(y_shore - 1 - dy).astype(int), 0, y_shore - 1)
-        ripple_dx = np.round(ripple_amp_px * np.sin(dy * 0.45 + xx[y_shore:, :] * 0.05)).astype(int)
+        ripple_dx = np.round(ripple_amp_px * np.sin(dy * 0.45 + xx[y_shore:, :] * 0.05 + wave_phase)).astype(int)
         src_x = np.clip(xx[y_shore:, :].astype(int) + ripple_dx, 0, width - 1)
         reflected = img_lin[src_y, src_x, :]
         # Subtle horizontal wave shading when ripples are active
         if ripple_amp_px > 0:
-            wave_mod = (1.0 - 0.18 * (0.5 + 0.5 * np.sin(dy * 0.7)))[..., None]
+            wave_mod = (1.0 - 0.18 * (0.5 + 0.5 * np.sin(dy * 0.7 + wave_phase)))[..., None]
         else:
             wave_mod = 1.0
         img_lin[y_shore:, :] = reflected * fresnel_scale * wave_mod
@@ -227,16 +228,37 @@ def test_reflection_coherence_water_ripple_and_terrain_lighting_separation():
 def test_v2_cli_autodiscovery_and_consecutive_repeatability(tmp_path: Path):
     from PIL import Image
 
-    good_img, pal = _make_fjord_scene(fresnel_scale=0.45, ripple_amp_px=5.0, rim_gain=0.40)
+    good_t1, pal = _make_fjord_scene(fresnel_scale=0.45, ripple_amp_px=5.0, wave_phase=0.0, rim_gain=0.40)
+    good_t2, _ = _make_fjord_scene(fresnel_scale=0.45, ripple_amp_px=5.0, wave_phase=2.2, rim_gain=0.40)
     frames_dir = tmp_path / "frames"
     frames_dir.mkdir()
-    Image.fromarray(good_img).save(frames_dir / "s1.png")
+    Image.fromarray(good_t1).save(frames_dir / "s1_t1.png")
+    Image.fromarray(good_t2).save(frames_dir / "s1_t2.png")
 
     manifest = {
         "room": "aurora",
         "viewport_default": "320x240",
         "params": {"1": {"palette": pal, "horizonY": 0.56}},
+        "webgl": {
+            "draw_calls_per_frame": 1,
+            "programs": [
+                {
+                    "vertex": "in vec2 a_pos; out vec2 v_uv; void main(){v_uv=a_pos*0.5+0.5; gl_Position=vec4(a_pos,0.0,1.0);}",
+                    "fragment": "precision highp float; in vec2 v_uv; uniform float u_t; out vec4 o; void main(){float w=sin(v_uv.x*6.0+u_t)*0.5+0.5; o=vec4(0.1,w*0.8,0.5,1.0);}",
+                    "draw_calls": 1,
+                }
+            ],
+        },
         "samples": [
+            {
+                "key": "s1_t1000_320x240_light_normal",
+                "seed": 1,
+                "t": 1000,
+                "viewport": "320x240",
+                "scheme": "light",
+                "variant": "normal",
+                "file": "frames/s1_t1.png",
+            },
             {
                 "key": "s1_t4720_320x240_light_normal",
                 "seed": 1,
@@ -244,8 +266,8 @@ def test_v2_cli_autodiscovery_and_consecutive_repeatability(tmp_path: Path):
                 "viewport": "320x240",
                 "scheme": "light",
                 "variant": "normal",
-                "file": "frames/s1.png",
-            }
+                "file": "frames/s1_t2.png",
+            },
         ],
     }
     spec = {
@@ -277,3 +299,71 @@ def test_v2_cli_autodiscovery_and_consecutive_repeatability(tmp_path: Path):
     assert parsed["scene.reflection_coherence"]["raw"] >= 0.62
     assert 0.015 <= parsed["scene.water_ripple"]["raw"] <= 0.12
     assert parsed["scene.terrain_lighting"]["raw"] >= 0.55
+
+
+def test_reflection_rejects_static_image_and_missing_webgl(tmp_path: Path):
+    from PIL import Image
+
+    good_t1, pal = _make_fjord_scene(fresnel_scale=0.45, ripple_amp_px=5.0, wave_phase=0.0, rim_gain=0.40)
+    good_t2, _ = _make_fjord_scene(fresnel_scale=0.45, ripple_amp_px=5.0, wave_phase=2.2, rim_gain=0.40)
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    Image.fromarray(good_t1).save(frames_dir / "t1.png")
+    Image.fromarray(good_t2).save(frames_dir / "t2.png")
+
+    spec = {
+        "room": "aurora",
+        "spec_version": "0.2.0",
+        "metrics": [
+            {"id": "scene.reflection_coherence", "at": "320x240, t=4720"},
+            {"id": "scene.water_ripple", "at": "320x240, t=4720"},
+            {"id": "scene.terrain_lighting", "at": "320x240, all timestamps"},
+        ],
+    }
+    s_path = tmp_path / "spec.json"
+    s_path.write_text(json.dumps(spec), encoding="utf-8")
+
+    # 1. Identical static frame across both timestamps -> fails with 0.0 (even with WebGL present)
+    static_manifest = {
+        "room": "aurora",
+        "viewport_default": "320x240",
+        "params": {"1": {"palette": pal, "horizonY": 0.56}},
+        "webgl": {
+            "draw_calls_per_frame": 1,
+            "programs": [
+                {
+                    "vertex": "in vec2 a_pos; out vec2 v_uv; void main(){v_uv=a_pos*0.5+0.5; gl_Position=vec4(a_pos,0.0,1.0);}",
+                    "fragment": "precision highp float; in vec2 v_uv; uniform float u_t; out vec4 o; void main(){float w=sin(v_uv.x*6.0+u_t)*0.5+0.5; o=vec4(0.1,w*0.8,0.5,1.0);}",
+                    "draw_calls": 1,
+                }
+            ],
+        },
+        "samples": [
+            {"key": "s1_t1", "seed": 1, "t": 1000, "viewport": "320x240", "scheme": "light", "variant": "normal", "file": "frames/t1.png"},
+            {"key": "s1_t4720", "seed": 1, "t": 4720, "viewport": "320x240", "scheme": "light", "variant": "normal", "file": "frames/t1.png"},
+        ],
+    }
+    m_static = tmp_path / "m_static.json"
+    m_static.write_text(json.dumps(static_manifest), encoding="utf-8")
+    res_static = cli.compute_metrics(m_static, s_path)
+    assert res_static["scene.reflection_coherence"]["raw"] == 0.0
+    assert res_static["scene.water_ripple"]["raw"] == 0.0
+    assert res_static["scene.terrain_lighting"]["raw"] == 0.0
+
+    # 2. Moving frames but missing live-WebGL evidence (e.g. 2D canvas / fake) -> fail 0.0 (not skipped)
+    no_webgl_manifest = {
+        "room": "aurora",
+        "viewport_default": "320x240",
+        "params": {"1": {"palette": pal, "horizonY": 0.56}},
+        "samples": [
+            {"key": "s1_t1", "seed": 1, "t": 1000, "viewport": "320x240", "scheme": "light", "variant": "normal", "file": "frames/t1.png"},
+            {"key": "s1_t4720", "seed": 1, "t": 4720, "viewport": "320x240", "scheme": "light", "variant": "normal", "file": "frames/t2.png"},
+        ],
+    }
+    m_nowgl = tmp_path / "m_nowgl.json"
+    m_nowgl.write_text(json.dumps(no_webgl_manifest), encoding="utf-8")
+    res_nowgl = cli.compute_metrics(m_nowgl, s_path)
+    assert res_nowgl["scene.reflection_coherence"]["raw"] == 0.0
+    assert res_nowgl["scene.water_ripple"]["raw"] == 0.0
+    assert res_nowgl["scene.terrain_lighting"]["raw"] == 0.0
+

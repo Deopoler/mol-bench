@@ -2,11 +2,11 @@
  * Scripted 10-checkpoint interactive flow probe for `lobby` v0.2:
  * - interact.scripted_flow:
  *   1. Search filters visible room cards
- *   2. Category chip filters room cards
+ *   2. Category chip actually filters room cards (count < initialCount)
  *   3. Sort by duration reorders room cards monotonically
  *   4. Keyboard Tab reaches 3rd visible room card
  *   5. Enter opens detail drawer
- *   6. Tab wraps inside detail drawer (focus trap)
+ *   6. Tab cycles multiple elements and wraps inside detail drawer (focus trap)
  *   7. Escape closes drawer & restores focus to exact 3rd card
  *   8. Enter Room navigates to room route & updates __bench.state().route
  *   9. Browser Back restores lobby, active filter/sort state, and scroll (+/- 50 px)
@@ -15,6 +15,27 @@
 
 export const probeName = 'flow';
 export const aliases = ['interact.scripted_flow'];
+
+async function settleFlow(pageHandle, page, budgetMs = 120) {
+  if (pageHandle && typeof pageHandle.virtualTimeAdvance === 'function') {
+    try {
+      await pageHandle.virtualTimeAdvance(budgetMs);
+    } catch {
+      // ignore if virtual time unavailable
+    } finally {
+      if (typeof pageHandle.virtualTimeResume === 'function') {
+        await pageHandle.virtualTimeResume().catch(() => {});
+      }
+    }
+  }
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        queueMicrotask(resolve);
+      });
+    });
+  }));
+}
 
 export async function runProbe(pageHandle, args = {}) {
   const { page } = pageHandle;
@@ -55,11 +76,11 @@ export async function runProbe(pageHandle, args = {}) {
       if (query) {
         const input = page.locator('[data-bench="search-input"]').first();
         await input.fill(query);
-        await page.waitForTimeout(50);
+        await settleFlow(pageHandle, page);
         const filtered = await countVisibleCards();
         searchPass = filtered >= 1 && filtered < initialCount;
         await input.fill('');
-        await page.waitForTimeout(50);
+        await settleFlow(pageHandle, page);
       }
     }
   } catch {
@@ -107,29 +128,17 @@ export async function runProbe(pageHandle, args = {}) {
     if (catInfo) {
       chosenCat = catInfo.category;
       await page.locator('[data-bench-flow-cat="1"]').first().click();
-      await page.waitForTimeout(50);
+      await settleFlow(pageHandle, page);
       const afterCat = await countVisibleCards();
-      const activeMarked = await page.evaluate(() => {
-        const el = document.querySelector('[data-bench-flow-cat="1"]');
-        if (!el) return false;
-        return (
-          el.getAttribute('aria-pressed') === 'true' ||
-          el.getAttribute('aria-selected') === 'true' ||
-          el.classList.contains('active') ||
-          el.classList.contains('is-active') ||
-          el.hasAttribute('data-active')
-        );
-      });
-      categoryPass = afterCat >= 1 && (afterCat < initialCount || activeMarked);
-      // If fewer than 3 cards remain for checkpoint 4, try clicking "all" only if needed?
-      // Keep category active if >= 3 cards, else reset to "all" only after verifying category works.
+      categoryPass = afterCat >= 1 && afterCat < initialCount;
+      // If fewer than 3 cards remain for checkpoint 4, reset to "all" only after verifying filter worked.
       if (afterCat < 3) {
         await page.evaluate(() => {
           const bar = document.querySelector('[data-bench="filter-bar"]');
           const allBtn = bar?.querySelector('[data-category="all"], [data-filter="all"], button');
           allBtn?.click();
         });
-        await page.waitForTimeout(50);
+        await settleFlow(pageHandle, page);
       }
     }
   } catch {
@@ -144,7 +153,7 @@ export async function runProbe(pageHandle, args = {}) {
     const hasSort = (await sortSel.count()) > 0;
     if (hasSort) {
       await sortSel.selectOption('duration');
-      await page.waitForTimeout(50);
+      await settleFlow(pageHandle, page);
       sortPass = await page.evaluate(() => {
         const sel = document.querySelector('[data-bench="sort-select"]');
         if (!sel || sel.value !== 'duration') return false;
@@ -240,7 +249,7 @@ export async function runProbe(pageHandle, args = {}) {
   try {
     if (tabThirdPass) {
       await page.keyboard.press('Enter');
-      await page.waitForTimeout(80);
+      await settleFlow(pageHandle, page);
       const open = await isDrawerVisible();
       const focusInside = await page.evaluate(() => {
         const d = document.querySelector('[data-bench="detail-drawer"]');
@@ -279,7 +288,7 @@ export async function runProbe(pageHandle, args = {}) {
       }
       const uniqueCount = new Set(visited).size;
       const wrapped = visited.length >= 2 && visited.slice(1).includes(visited[0]);
-      trapPass = stayedInside && (wrapped || uniqueCount >= 1);
+      trapPass = stayedInside && wrapped && uniqueCount >= 2;
     }
   } catch {
     trapPass = false;
@@ -291,7 +300,7 @@ export async function runProbe(pageHandle, args = {}) {
   try {
     if (drawerOpenPass) {
       await page.keyboard.press('Escape');
-      await page.waitForTimeout(80);
+      await settleFlow(pageHandle, page);
       const closed = !(await isDrawerVisible());
       const restored = await page.evaluate(() => {
         const third = document.querySelector('[data-bench-flow-third="1"]');
@@ -330,7 +339,7 @@ export async function runProbe(pageHandle, args = {}) {
     savedVisibleCount = await countVisibleCards();
 
     // Open drawer for first open room and click Enter Room link/button, or click open card link directly
-    let clickedNav = await page.evaluate(() => {
+    const clickedNav = await page.evaluate(() => {
       const cards = Array.from(document.querySelectorAll('[data-bench="room-card"]')).filter((c) => {
         const st = getComputedStyle(c);
         return !c.hidden && st.display !== 'none' && c.getAttribute('data-status') !== 'coming_soon';
@@ -346,15 +355,14 @@ export async function runProbe(pageHandle, args = {}) {
       return true;
     });
 
-    await page.waitForTimeout(80);
-    // If clicking the card opened the detail drawer instead of navigating, click the Enter Room button/link inside drawer
+    await settleFlow(pageHandle, page);
     if (clickedNav && (await isDrawerVisible())) {
       await page.evaluate(() => {
         const d = document.querySelector('[data-bench="detail-drawer"]');
         const btn = d?.querySelector('[data-bench="enter-room"], a[href^="#/room/"], a[href], button[data-route]');
         btn?.click();
       });
-      await page.waitForTimeout(80);
+      await settleFlow(pageHandle, page);
     }
 
     const afterNav = await page.evaluate(() => ({
@@ -376,7 +384,7 @@ export async function runProbe(pageHandle, args = {}) {
   try {
     if (navPass) {
       await page.goBack();
-      await page.waitForTimeout(100);
+      await settleFlow(pageHandle, page);
       const backState = await page.evaluate(() => ({
         scrollY: window.scrollY,
         route: window.__bench?.state?.()?.route ?? null,
@@ -401,7 +409,7 @@ export async function runProbe(pageHandle, args = {}) {
       await page.reload({ waitUntil: 'load' });
       await page.waitForFunction(() => Boolean(window.__bench && window.__bench.ready), null, { timeout: 10000 }).catch(() => {});
       await page.evaluate(() => Promise.resolve(window.__bench?.ready)).catch(() => {});
-      await page.waitForTimeout(60);
+      await settleFlow(pageHandle, page);
 
       const reloadState = await page.evaluate(() => ({
         sortVal: document.querySelector('[data-bench="sort-select"]')?.value ?? null,

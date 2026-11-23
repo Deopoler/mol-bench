@@ -415,7 +415,7 @@ test('perf_dom measures DOM mutations, layout reads, node count, CLS, and synthe
       const list = document.getElementById('list');
       const cards = Array.from(list.children);
       if (${mode === 'attack' ? 'true' : 'false'}) {
-        setTimeout(() => { document.getElementById('banner').style.height = '240px'; }, 10);
+        requestAnimationFrame(() => setTimeout(() => { document.getElementById('banner').style.height = '240px'; }, 0));
       }
       input.addEventListener('input', () => {
         const q = input.value;
@@ -611,3 +611,65 @@ test('end-to-end: plan.mjs captures synthetic WebGL page -> manifest.webgl -> bu
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
 });
+
+test('WP-1 anti-gaming hardening: zero-step perf_dom, overlap hidden-attr bypass, theme_tri 1px swatch, flow no-op chip', { timeout: TEST_TIMEOUT_MS }, async () => {
+  // 1. perf_dom fails (returns 0) when interactive controls are omitted (0 steps) or forged via markDomStep(1e9)
+  const noControlsHtml = `<!doctype html><html><body><div>Static Lobby Without Search</div>
+    <script>
+      window.__benchHostControl?.markDomStep?.(1e9);
+      window.__bench={version:1,ready:Promise.resolve(),setSeed(){},seek(){},resume(){},renderFrame:async()=>{},state:()=>({}),stats:()=>({drawCalls:0,triangles:0})};
+    </script></body></html>`;
+  const zeroStepRes = await withFixturePage('pd_zero', noControlsHtml, {}, (h) => runProbe('perf_dom', h));
+  assert.equal(zeroStepRes['budget.dom_work_profile'], 0);
+  assert.equal(zeroStepRes.details.failed, true);
+  assert.equal(zeroStepRes.details.stepsExecuted, 0);
+
+  // 2. overlap still catches overlapping elements marked aria-hidden="true", inert, or pointer-events: none
+  const trickyOverlapHtml = `<!doctype html><html><head><style>
+    body { margin: 0; }
+    .grid { display: flex; padding: 16px; }
+    .card { width: 160px; height: 80px; background: #eee; }
+    .card-b { margin-left: -40px; pointer-events: none; }
+  </style></head><body>
+    <div class="grid">
+      <div class="card">Card A</div>
+      <div class="card card-b" aria-hidden="true" inert>Card B</div>
+    </div>
+    <script>window.__bench={version:1,ready:Promise.resolve(),setSeed(){},seek(){},resume(){},renderFrame:async()=>{},state:()=>({}),stats:()=>({drawCalls:0,triangles:0})};</script>
+  </body></html>`;
+  const ovRes = await withFixturePage('ov_tricky', trickyOverlapHtml, {}, (h) => runProbe('overlap', h));
+  assert.ok(ovRes['layout.overlap_count'] >= 1, `Expected overlap count >= 1, got ${ovRes['layout.overlap_count']}`);
+
+  // 3. theme_tri rejects 1-pixel swatch + animated blink tricks when themes are effectively identical
+  const swatchThemeHtml = `<!doctype html><html><head><style>
+    :root { --sw: #111111; }
+    @media (prefers-color-scheme: dark) { :root { --sw: #222222; } }
+    @media (prefers-contrast: more) { :root { --sw: #ffffff; } }
+    body { margin: 0; background: #ffffff; color: #111111; }
+    #swatch { width: 1px; height: 1px; background: var(--sw); }
+    @keyframes pulse { 0% { opacity: 0.2; } 100% { opacity: 1; } }
+    .anim { width: 200px; height: 40px; background: #000; animation: pulse 100ms infinite alternate; }
+  </style></head><body>
+    <div id="swatch"></div><div class="anim"></div><p>Same body everywhere</p>
+    <script>window.__bench={version:1,ready:Promise.resolve(),setSeed(){},seek(){},resume(){},renderFrame:async()=>{},state:()=>({}),stats:()=>({drawCalls:0,triangles:0})};</script>
+  </body></html>`;
+  const triRes = await withFixturePage('tri_swatch', swatchThemeHtml, {}, (h) => runProbe('theme_tri', h));
+  assert.equal(triRes['theme.tri_valid'], false);
+
+  // 4. flow fails category_chip when chip only toggles aria-pressed without filtering cards
+  const fakeChipHtml = `<!doctype html><html><body>
+    <div data-bench="filter-bar">
+      <button type="button" data-category="all" aria-pressed="true">All</button>
+      <button type="button" id="cat-btn" data-category="light" aria-pressed="false">Light</button>
+    </div>
+    <div data-bench="room-card">A</div>
+    <div data-bench="room-card">B</div>
+    <script>
+      document.getElementById('cat-btn').addEventListener('click', (e) => e.currentTarget.setAttribute('aria-pressed', 'true'));
+      window.__bench={version:1,ready:Promise.resolve(),setSeed(){},seek(){},resume(){},renderFrame:async()=>{},state:()=>({route:'lobby'}),stats:()=>({drawCalls:0,triangles:0})};
+    </script></body></html>`;
+  const flowRes = await withFixturePage('flow_fake_chip', fakeChipHtml, {}, (h) => runProbe('flow', h));
+  const catCp = flowRes.details.checkpoints.find((c) => c.id === 'category_chip');
+  assert.equal(catCp?.pass, false);
+});
+

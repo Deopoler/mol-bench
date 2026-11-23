@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
+from . import budget_glsl
 from .color import srgb_to_linear, srgb_to_oklab
 from .flip import compute_ldrflip
 
@@ -32,7 +33,6 @@ def _detect_ridge_and_shore(
         y_min = max(4, int(round(0.35 * h)))
         y_max = min(h - 4, int(round(0.85 * h)))
 
-    # Locate contiguous dark ridge interior (L < 0.07) per column.
     y_int = np.full(w, -1, dtype=np.int32)
     h_ridge = np.full(w, -1, dtype=np.int32)
     valid = np.zeros(w, dtype=bool)
@@ -40,7 +40,6 @@ def _detect_ridge_and_shore(
 
     band = l_img[y_min:y_max, :]
     dark_mask = band < 0.07
-    # Require a dark block of at least 4 pixels (or remaining rows) so thin dark lines don't false-trigger.
     win = min(6, max(2, band.shape[0] // 4))
     for x in range(w):
         col_dark = dark_mask[:, x]
@@ -59,7 +58,6 @@ def _detect_ridge_and_shore(
         valid[x] = True
         y_int[x] = found_int
 
-        # Locate the ridge crest h_ridge[x] immediately at or above y_int[x].
         above_lo = max(0, found_int - 20)
         above_hi = max(above_lo + 1, found_int - 10)
         l_above = float(np.mean(l_img[above_lo:above_hi, x]))
@@ -69,13 +67,10 @@ def _detect_ridge_and_shore(
         crest_y = found_int
         if crest_seg.size > 0:
             if float(np.max(crest_seg)) > l_above + 0.025:
-                # Bright rim peak above a darker lower sky.
                 rel_hits = np.nonzero(crest_seg > (l_above + 0.015))[0]
                 if rel_hits.size > 0:
                     crest_y = crest_lo + int(rel_hits[0])
             elif l_above > 0.09:
-                # Stepped drop from brighter sky through an intermediate rim band into dark interior:
-                # scan top-down across [crest_lo .. found_int - 2] for the sky->rim boundary step.
                 best_step = -1
                 best_drop = 0.035
                 for r in range(max(1, crest_lo), found_int - 1):
@@ -90,7 +85,6 @@ def _detect_ridge_and_shore(
 
         h_ridge[x] = crest_y
 
-        # Scan downward past the dark ridge interior to find where the lake starts.
         int_end = min(h - 1, found_int + 4)
         int_l = float(np.mean(l_img[found_int : min(h, found_int + 8), x]))
         shore_lim = min(h - 8, max(int_end + 1, int(round(0.86 * h))))
@@ -102,14 +96,12 @@ def _detect_ridge_and_shore(
     if shore_candidates:
         y_shore = int(round(float(np.median(shore_candidates))))
     elif np.any(valid):
-        # Fallback: ridge exists, place shoreline just below median dark interior
         med_int = int(round(float(np.median(y_int[valid]))))
         y_shore = min(h - 8, med_int + max(6, int(round(0.03 * h))))
     elif horizon_y is not None:
         hy = float(horizon_y)
         y_shore = max(4, min(h - 8, int(round(hy * h)) if 0.0 < hy <= 1.0 else int(round(hy))))
     else:
-        # Sky-meets-lake directly at vertical midpoint or brightness minimum
         y_shore = int(round(0.5 * h))
 
     return h_ridge, y_int, y_shore, valid
@@ -141,11 +133,9 @@ def _strip_pair_for_reflection(
     lake_lab = lab[y_shore : y_shore + max_strip, :]
     lake_rgb = arr[y_shore : y_shore + max_strip, :]
 
-    # Candidate A: mirrored directly across the shoreline y_shore
     sky_a_lab = lab[y_shore - max_strip : y_shore, :][::-1, :, :]
     sky_a_rgb = arr[y_shore - max_strip : y_shore, :][::-1, :, :]
 
-    # Candidate B: sky above the mountain ridge crest mirrored into the lake
     sky_b_lab = lab[y_ridge_med - max_strip : y_ridge_med, :][::-1, :, :]
     sky_b_rgb = arr[y_ridge_med - max_strip : y_ridge_med, :][::-1, :, :]
 
@@ -163,10 +153,8 @@ def _blurred_oklab_ncc(sky_lab: np.ndarray, lake_lab: np.ndarray, sigma: float =
         if c == 0 and (s_std <= 1e-4 or l_std <= 1e-4):
             return 0.0
         if s_std <= 1e-4:
-            # Sky has no variation on this chroma axis (e.g., grayscale fixture)
             continue
         if l_std <= 1e-5:
-            # Sky has chromatic variation but lake lost it -> penalize
             nccs.append(0.0)
             continue
         s_z = s_b - float(np.mean(s_b))
@@ -196,7 +184,6 @@ def reflection_coherence(img: np.ndarray, *, horizon_y: float | None = None) -> 
     if mean_l_lake <= 0.01:
         return 0.0
 
-    # Evaluate both shoreline-mirrored and ridge-top-mirrored alignments
     ncc_a = _blurred_oklab_ncc(sky_a_lab, lake_lab, sigma=6.0)
     mean_l_a = float(np.mean(sky_a_lab[..., 0]))
     fresnel_a = 1.0 if (mean_l_a > 1e-4 and mean_l_lake < 0.85 * mean_l_a) else 0.0
@@ -209,13 +196,11 @@ def reflection_coherence(img: np.ndarray, *, horizon_y: float | None = None) -> 
 
 
 def _match_luminance_srgb(sky_rgb: np.ndarray, sky_lab: np.ndarray, lake_lab: np.ndarray) -> np.ndarray:
-    """Scale sky linear RGB to match lake mean lightness (removes pure Fresnel darkening
-    so unrippled attenuated mirrors yield ~0 FLIP difference)."""
+    """Scale sky linear RGB to match lake mean lightness."""
     mean_l_sky = float(np.mean(sky_lab[..., 0]))
     mean_l_lake = float(np.mean(lake_lab[..., 0]))
     if mean_l_sky <= 1e-4:
         return sky_rgb.astype(np.float64) / 255.0 if sky_rgb.dtype == np.uint8 else np.asarray(sky_rgb, dtype=np.float64)
-    # Approximate linear luminance ratio via L^3
     ratio = float(np.clip((mean_l_lake / mean_l_sky) ** 3, 0.05, 1.5))
     lin = srgb_to_linear(sky_rgb) * ratio
     lin = np.clip(lin, 0.0, 1.0)
@@ -238,7 +223,6 @@ def water_ripple(img: np.ndarray, *, horizon_y: float | None = None) -> float:
     if float(np.mean(lake_l)) <= 0.01:
         return 0.0
 
-    # Horizontal ripples produce dominant vertical luminance variation (|dL/dy| > |dL/dx|)
     gy = np.abs(np.diff(lake_l, axis=0))
     gx = np.abs(np.diff(lake_l, axis=1))
     mean_gy = float(np.mean(gy)) if gy.size > 0 else 0.0
@@ -250,7 +234,6 @@ def water_ripple(img: np.ndarray, *, horizon_y: float | None = None) -> float:
     if anisotropy <= 0.0:
         return 0.0
 
-    # Choose the sky strip alignment that best reflects the lake (highest blurred NCC)
     ncc_a = _blurred_oklab_ncc(sky_a_lab, lake_lab, sigma=6.0)
     ncc_b = _blurred_oklab_ncc(sky_b_lab, lake_lab, sigma=6.0)
     if ncc_b > ncc_a:
@@ -261,6 +244,8 @@ def water_ripple(img: np.ndarray, *, horizon_y: float | None = None) -> float:
     sky_matched = _match_luminance_srgb(best_sky_rgb, best_sky_lab, lake_lab)
     lake_srgb = lake_rgb.astype(np.float64) / 255.0 if lake_rgb.dtype == np.uint8 else np.asarray(lake_rgb, dtype=np.float64)
     flip_val = float(np.mean(compute_ldrflip(sky_matched, lake_srgb)))
+    if flip_val < 0.01:
+        return 0.0
 
     return float(anisotropy * flip_val)
 
@@ -326,11 +311,9 @@ def terrain_lighting(
     rim_arr = np.asarray(rim_bins, dtype=np.float64)
     int_arr = np.asarray(int_bins, dtype=np.float64)
 
-    # Dark ridge interior required (< 0.07)
     if float(np.mean(int_arr)) >= 0.07:
         return 0.0
 
-    # Rim must actually brighten a meaningful fraction (>= 25%) of ridge crest columns
     rim_delta = rim_col[valid] - interior_col[valid]
     if float(np.mean(rim_delta > 0.01)) < 0.25:
         return 0.0
@@ -346,6 +329,135 @@ def terrain_lighting(
     if not np.isfinite(r):
         return 0.0
     return float(max(0.0, min(1.0, r)))
+
+
+def _has_live_webgl_evidence(manifest: dict[str, Any], sample: dict[str, Any]) -> bool:
+    """Verify live WebGL draw activity & shader presence via the GPU work-budget block."""
+    wg = sample.get("webgl")
+    if not isinstance(wg, dict):
+        wg = manifest.get("webgl")
+    if not isinstance(wg, dict):
+        return False
+
+    dc = float(wg.get("draw_calls_per_frame", wg.get("draw_calls", 0.0)))
+    if dc <= 0.0:
+        return False
+
+    progs = wg.get("programs") or []
+    active_prog = any(
+        (p.get("draw_calls", 1) > 0)
+        and (
+            p.get("vertex")
+            or p.get("vs")
+            or p.get("vertexShader")
+            or p.get("fragment")
+            or p.get("fs")
+            or p.get("fragmentShader")
+        )
+        for p in progs
+        if isinstance(p, dict)
+    )
+    if not active_prog and float(wg.get("shader_ops", 0.0)) <= 0.0:
+        return False
+
+    prof = budget_glsl.compute_gpu_work_profile(wg, bundle_gz_kb=manifest.get("bundle_gz_kb"))
+    return int(prof.get("shader_ops", 0)) > 0
+
+
+def _temporal_lake_and_ridge_ok(
+    sample: dict[str, Any],
+    img_cur: np.ndarray,
+    ctx: dict[str, Any],
+    horizon_y: float | None,
+) -> bool:
+    """Require measurable temporal luminance change in the lake across timestamps
+    while the dark mountain ridge region stays stable, plus pointer response when available.
+    """
+    manifest = ctx["manifest"]
+    all_samples = manifest.get("samples", [])
+    vp_default = manifest.get("viewport_default")
+    cur_vp = sample.get("viewport") or vp_default
+    cur_seed = sample.get("seed")
+    cur_scheme = sample.get("scheme", "light")
+    cur_variant = sample.get("variant", "normal")
+    cur_t = sample.get("t")
+
+    siblings = [
+        o for o in all_samples
+        if o.get("seed") == cur_seed
+        and (o.get("viewport") or vp_default) == cur_vp
+        and o.get("scheme", "light") == cur_scheme
+        and o.get("variant", "normal") == cur_variant
+        and o.get("t") is not None
+        and o.get("t") != cur_t
+    ]
+    if not siblings:
+        return False
+
+    l_cur = srgb_to_oklab(img_cur)[..., 0]
+    h_ridge, y_int, y_shore, valid = _detect_ridge_and_shore(l_cur, horizon_y=horizon_y)
+    if y_shore < 12 or y_shore >= l_cur.shape[0] - 12 or not np.any(valid):
+        return False
+
+    ridge_dark_mask_cur = l_cur[:y_shore, :] < 0.07
+    ridge_band_lo = max(0, int(np.median(y_int[valid])) + 2)
+    ridge_band_hi = max(ridge_band_lo + 1, y_shore - 1)
+    ridge_slice_cur = l_cur[ridge_band_lo:ridge_band_hi, valid]
+
+    # Pick timestamp farthest from cur_t for strongest motion signal (and check at least one sibling)
+    siblings_sorted = sorted(
+        siblings,
+        key=lambda o: abs(float(o["t"]) - float(cur_t)) if cur_t is not None else 0.0,
+        reverse=True,
+    )
+    temporal_verified = False
+    for sib in siblings_sorted[:3]:
+        img_other = ctx["load_image"](sib)
+        if img_other.shape[:2] != img_cur.shape[:2]:
+            continue
+        l_other = srgb_to_oklab(img_other)[..., 0]
+        lake_diff = float(np.mean(np.abs(l_other[y_shore:, :] - l_cur[y_shore:, :])))
+        ridge_interior_diff = float(np.mean(np.abs(l_other[ridge_band_lo:ridge_band_hi, valid] - ridge_slice_cur)))
+        ridge_dark_other = l_other[:y_shore, :] < 0.07
+        ridge_silhouette_flip = float(np.mean(ridge_dark_mask_cur ^ ridge_dark_other))
+
+        if (
+            lake_diff >= 0.003
+            and ridge_interior_diff <= max(0.015, 0.35 * lake_diff)
+            and ridge_silhouette_flip <= 0.05
+            and lake_diff > ridge_interior_diff
+        ):
+            temporal_verified = True
+            break
+
+    if not temporal_verified:
+        return False
+
+    # If pointer-shifted samples are also captured for this seed/viewport, ensure lake responds to pointer
+    cur_ptr = sample.get("pointer") or (sample.get("state") or {}).get("pointer")
+    ptr_siblings = [
+        o for o in all_samples
+        if o.get("seed") == cur_seed
+        and (o.get("viewport") or vp_default) == cur_vp
+        and o.get("scheme", "light") == cur_scheme
+        and (
+            (o.get("variant") == "pointer" and cur_variant != "pointer")
+            or (
+                cur_ptr is not None
+                and (o.get("pointer") or (o.get("state") or {}).get("pointer")) is not None
+                and (o.get("pointer") or (o.get("state") or {}).get("pointer")) != cur_ptr
+            )
+        )
+    ]
+    if ptr_siblings:
+        img_ptr = ctx["load_image"](ptr_siblings[0])
+        if img_ptr.shape[:2] == img_cur.shape[:2]:
+            l_ptr = srgb_to_oklab(img_ptr)[..., 0]
+            ptr_lake_diff = float(np.mean(np.abs(l_ptr[y_shore:, :] - l_cur[y_shore:, :])))
+            if ptr_lake_diff < 0.001:
+                return False
+
+    return True
 
 
 def _compute_reflection_metric(ctx: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -368,11 +480,17 @@ def _compute_reflection_metric(ctx: dict[str, Any]) -> list[dict[str, Any]] | No
 
     out: list[dict[str, Any]] = []
     for s in samples:
+        if not _has_live_webgl_evidence(manifest, s):
+            out.append({"key": s["key"], "value": 0.0})
+            continue
         seed_params = ctx["get_params"](s.get("seed"))
         horizon_y = s.get("horizonY")
         if horizon_y is None:
             horizon_y = seed_params.get("horizonY", seed_params.get("horizon_y"))
         img = ctx["load_image"](s)
+        if not _temporal_lake_and_ridge_ok(s, img, ctx, horizon_y):
+            out.append({"key": s["key"], "value": 0.0})
+            continue
         out.append({"key": s["key"], "value": fn(img, horizon_y=horizon_y)})
 
     return out or None

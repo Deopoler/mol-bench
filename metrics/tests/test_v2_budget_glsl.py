@@ -196,3 +196,68 @@ def test_budget_glsl_cli_integration_and_repeatability(tmp_path: Path):
     assert r1["budget.render_passes"]["raw"] == 2.0
     assert r1["budget.draw_calls"]["raw"] == 1.0
     assert r1["budget.render_work"]["raw"] == 1.0
+
+
+def test_glsl_macros_overloads_const_loops_and_mat_widths():
+    # 1. Function-like macro & expression macro
+    macro_fs = """#version 300 es
+precision highp float;
+#define COSTLY_WAVE(v) (sin(v) * cos(v) + exp(-abs(v)))
+in vec2 v_uv;
+out vec4 o;
+void main() {
+  float x = COSTLY_WAVE(v_uv.x);
+  o = vec4(x, 0.0, 0.0, 1.0);
+}
+"""
+    m_ops = budget_glsl.count_shader_ops(macro_fs)
+    assert m_ops["transcendental"] >= 3
+    assert m_ops["total"] >= 16
+
+    # 2. const / struct return types & overload resolution (cheap float overload must not hide vec4 overload)
+    overload_fs = """#version 300 es
+precision highp float;
+struct Ray { vec4 col; };
+const int K = 2 * 3;
+float helper(float x) { return x; }
+vec4 helper(vec4 v) {
+  return vec4(sin(v.x), cos(v.y), exp(v.z), pow(v.w, 2.0));
+}
+const Ray shade(vec4 p) {
+  Ray r;
+  r.col = helper(p);
+  return r;
+}
+out vec4 o;
+void main() {
+  vec4 acc = vec4(0.0);
+  for (int i = 0; i < K; i++) {
+    acc += shade(vec4(float(i))).col;
+    if (i == 2) continue;
+    if (i > 4) break;
+  }
+  o = acc;
+}
+"""
+    ov_ops = budget_glsl.count_shader_ops(overload_fs)
+    # 6 const iterations * (4 transcendentals in vec4 overload + branch ops from if/continue/break)
+    assert ov_ops["transcendental"] >= 24
+    assert ov_ops["branch"] >= 6 * 5
+
+    # 3. Matrix & vector widths vs scalar
+    mat_ops = budget_glsl.count_shader_ops("void main() { mat4 a = mat4(1.0); mat4 b = mat4(2.0); mat4 c = a * b; }")
+    scalar_ops = budget_glsl.count_shader_ops("void main() { float a = 1.0; float b = 2.0; float c = a * b; }")
+    assert mat_ops["alu"] >= scalar_ops["alu"] + 15
+
+    # 4. Program draw_calls multiplier & dynamic uniform bound maxing
+    uni_fs = """void main() {
+  vec4 s = vec4(0.0);
+  for (int i = 0; i < u_steps; i++) { s += texture(u_t, vec2(0.0)); }
+}"""
+    u64 = budget_glsl.count_shader_ops(uni_fs, uniforms={"u_steps": 64})
+    assert u64["texture"] == 64
+
+    p1 = budget_glsl.compute_gpu_work_profile({"programs": [{"vertex": GOOD_VS, "fragment": GOOD_FS, "draw_calls": 1}]})
+    p5 = budget_glsl.compute_gpu_work_profile({"programs": [{"vertex": GOOD_VS, "fragment": GOOD_FS, "draw_calls": 5}]})
+    assert p5["shader_ops"] == p1["shader_ops"] * 5
+

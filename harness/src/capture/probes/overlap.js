@@ -46,12 +46,11 @@ export async function runProbe(pageHandle, args = {}) {
       const INTERACTIVE_SEL = 'a, button, input, select, textarea, [role="button"], [tabindex="0"], [data-bench]';
 
       function isClosedOverlay(el) {
-        if (el.hasAttribute('hidden') || el.hasAttribute('inert')) return true;
-        if (el.getAttribute('aria-hidden') === 'true') return true;
+        const st = getComputedStyle(el);
+        if (el.hasAttribute('hidden') && st.display === 'none') return true;
         if (el.tagName === 'DIALOG' && !el.hasAttribute('open')) return true;
         const bench = el.getAttribute('data-bench');
         if (bench === 'detail-drawer' || el.getAttribute('role') === 'dialog') {
-          const st = getComputedStyle(el);
           if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) <= 0) {
             return true;
           }
@@ -63,7 +62,7 @@ export async function runProbe(pageHandle, args = {}) {
             r.bottom <= 0 ||
             r.top >= document.documentElement.scrollHeight
           ) {
-            if (st.pointerEvents === 'none') return true;
+            return true;
           }
         }
         return false;
