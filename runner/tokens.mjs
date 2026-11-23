@@ -52,12 +52,54 @@ function isWithinWindow(timeMs, startMs, endMs, bufferMs = 5 * 60 * 1000) {
   return true;
 }
 
+function parseTimestampValue(val) {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "number") {
+    if (!Number.isFinite(val) || val <= 0) return null;
+    return val < 1e12 ? val * 1000 : val;
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (!Number.isFinite(num) || num <= 0) return null;
+      return num < 1e12 ? num * 1000 : num;
+    }
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function extractEventTimestampMs(obj) {
+  if (!obj || typeof obj !== "object") return null;
+  const candidates = [
+    obj.timestamp,
+    obj.created_at,
+    obj.ts,
+    obj.time,
+    obj.message?.timestamp,
+    obj.payload?.timestamp,
+    obj.payload?.created_at,
+    obj.step?.timestamp,
+    obj.snapshot?.timestamp,
+    obj.metadata?.timestamp
+  ];
+  for (const c of candidates) {
+    const ms = parseTimestampValue(c);
+    if (ms !== null) return ms;
+  }
+  return null;
+}
+
 function collectClaudeSessionFile(filePath, seenMsgIds) {
   let input = 0;
   let output = 0;
   let cache_read = 0;
   let cache_write = 0;
   let reasoning = 0;
+  const timestamps = [];
 
   const content = fs.readFileSync(filePath, "utf8");
   for (const line of content.split(/\r?\n/)) {
@@ -68,6 +110,9 @@ function collectClaudeSessionFile(filePath, seenMsgIds) {
     } catch {
       continue;
     }
+    const ts = extractEventTimestampMs(obj);
+    if (ts !== null) timestamps.push(ts);
+
     const msg = obj.message || (obj.type === "assistant" ? obj : null);
     if (msg) {
       if (msg.id) {
@@ -91,22 +136,19 @@ function collectClaudeSessionFile(filePath, seenMsgIds) {
     }
   }
 
-  return { input, output, cache_read, cache_write, reasoning };
+  return { input, output, cache_read, cache_write, reasoning, timestamps };
 }
 
-export function collectClaudeTokens({ runDir, claudeDir = getClaudeDir(), startedAt = null, endedAt = null }) {
+function scanClaudeTokens({ runDir, claudeDir = getClaudeDir(), startedAt = null, endedAt = null }) {
   const encoded = encodeClaudeProjectPath(runDir);
   const projDir = path.join(claudeDir, "projects", encoded);
-  if (!fs.existsSync(projDir)) return null;
+  if (!fs.existsSync(projDir)) return { tokens: null, timestamps: [] };
 
   const entries = fs.readdirSync(projDir, { withFileTypes: true });
   const jsonlFiles = entries
     .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
     .map((e) => path.join(projDir, e.name));
-  if (jsonlFiles.length === 0) return null;
-
-  const startMs = startedAt ? Date.parse(startedAt) : -Infinity;
-  const endMs = endedAt ? Date.parse(endedAt) : Infinity;
+  if (jsonlFiles.length === 0) return { tokens: null, timestamps: [] };
 
   const seenMsgIds = new Set();
   let input = 0;
@@ -115,6 +157,7 @@ export function collectClaudeTokens({ runDir, claudeDir = getClaudeDir(), starte
   let cache_write = 0;
   let reasoning = 0;
   let matchingSessions = 0;
+  const timestamps = [];
 
   for (const file of jsonlFiles) {
     const res = collectClaudeSessionFile(file, seenMsgIds);
@@ -123,36 +166,42 @@ export function collectClaudeTokens({ runDir, claudeDir = getClaudeDir(), starte
     cache_read += res.cache_read;
     cache_write += res.cache_write;
     reasoning += res.reasoning;
+    timestamps.push(...res.timestamps);
     matchingSessions++;
   }
 
-  if (matchingSessions === 0) return null;
+  if (matchingSessions === 0) return { tokens: null, timestamps: [] };
 
   const total = input + output + cache_read + cache_write + reasoning;
   return {
-    source: "claude",
-    sessions: matchingSessions,
-    input,
-    output,
-    cache_read,
-    cache_write,
-    reasoning,
-    total
+    tokens: {
+      source: "claude",
+      sessions: matchingSessions,
+      input,
+      output,
+      cache_read,
+      cache_write,
+      reasoning,
+      total
+    },
+    timestamps
   };
 }
 
-export function collectCodexTokens({ runDir, codexDir = getCodexDir(), startedAt = null, endedAt = null }) {
+export function collectClaudeTokens(opts) {
+  return scanClaudeTokens(opts).tokens;
+}
+
+function scanCodexTokens({ runDir, codexDir = getCodexDir(), startedAt = null, endedAt = null }) {
   const sessionsDir = path.join(codexDir, "sessions");
-  if (!fs.existsSync(sessionsDir)) return null;
+  if (!fs.existsSync(sessionsDir)) return { tokens: null, timestamps: [] };
 
   const files = findFilesRecursive(sessionsDir, (name) => name.startsWith("rollout-") && name.endsWith(".jsonl"));
-  if (files.length === 0) return null;
+  if (files.length === 0) return { tokens: null, timestamps: [] };
 
   const targetNorm = normalizePath(runDir);
   const normRunDirBack = path.resolve(runDir);
   const normRunDirSlash = normRunDirBack.replace(/\\/g, "/");
-  const startMs = startedAt ? Date.parse(startedAt) : -Infinity;
-  const endMs = endedAt ? Date.parse(endedAt) : Infinity;
 
   let sessionCount = 0;
   let input = 0;
@@ -161,6 +210,7 @@ export function collectCodexTokens({ runDir, codexDir = getCodexDir(), startedAt
   let cache_write = 0;
   let reasoning = 0;
   let total = 0;
+  const timestamps = [];
 
   for (const file of files) {
     const content = fs.readFileSync(file, "utf8");
@@ -171,7 +221,7 @@ export function collectCodexTokens({ runDir, codexDir = getCodexDir(), startedAt
 
     let fileMatches = false;
     let lastUsage = null;
-    let fileTimestamp = null;
+    const fileTimestamps = [];
 
     for (const line of content.split(/\r?\n/)) {
       if (!line.trim()) continue;
@@ -182,10 +232,8 @@ export function collectCodexTokens({ runDir, codexDir = getCodexDir(), startedAt
         continue;
       }
 
-      if (obj.created_at || obj.timestamp) {
-        const t = Date.parse(obj.created_at || obj.timestamp);
-        if (Number.isFinite(t)) fileTimestamp = t;
-      }
+      const ts = extractEventTimestampMs(obj);
+      if (ts !== null) fileTimestamps.push(ts);
 
       const cwd = obj.payload?.cwd || obj.cwd;
       if (cwd && normalizePath(cwd) === targetNorm) {
@@ -202,7 +250,9 @@ export function collectCodexTokens({ runDir, codexDir = getCodexDir(), startedAt
       fileMatches = true;
     }
 
-    if (!fileMatches || !lastUsage) continue;
+    if (!fileMatches) continue;
+    timestamps.push(...fileTimestamps);
+    if (!lastUsage) continue;
 
     sessionCount++;
     input += lastUsage.input_tokens || 0;
@@ -213,28 +263,33 @@ export function collectCodexTokens({ runDir, codexDir = getCodexDir(), startedAt
     total += lastUsage.total_tokens ?? ((lastUsage.input_tokens || 0) + (lastUsage.output_tokens || 0));
   }
 
-  if (sessionCount === 0) return null;
-
   return {
-    source: "codex",
-    sessions: sessionCount,
-    input,
-    output,
-    cache_read,
-    cache_write,
-    reasoning,
-    total
+    tokens: sessionCount === 0
+      ? null
+      : {
+          source: "codex",
+          sessions: sessionCount,
+          input,
+          output,
+          cache_read,
+          cache_write,
+          reasoning,
+          total
+        },
+    timestamps
   };
 }
 
-export function collectAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt = null, endedAt = null }) {
+export function collectCodexTokens(opts) {
+  return scanCodexTokens(opts).tokens;
+}
+
+function scanAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt = null, endedAt = null }) {
   const brainDir = path.join(geminiDir, "antigravity-cli", "brain");
-  if (!fs.existsSync(brainDir)) return null;
+  if (!fs.existsSync(brainDir)) return { tokens: null, timestamps: [] };
 
   const normRunDirBack = path.resolve(runDir);
   const normRunDirSlash = normRunDirBack.replace(/\\/g, "/");
-  const startMs = startedAt ? Date.parse(startedAt) : -Infinity;
-  const endMs = endedAt ? Date.parse(endedAt) : Infinity;
 
   const brainEntries = fs.readdirSync(brainDir, { withFileTypes: true });
   let sessionCount = 0;
@@ -244,6 +299,7 @@ export function collectAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt
   let cache_write = 0;
   let reasoning = 0;
   let total = 0;
+  const timestamps = [];
 
   for (const entry of brainEntries) {
     if (!entry.isDirectory()) continue;
@@ -265,6 +321,9 @@ export function collectAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt
       } catch {
         continue;
       }
+
+      const ts = extractEventTimestampMs(obj);
+      if (ts !== null) timestamps.push(ts);
 
       function walk(node) {
         if (!node || typeof node !== "object") return;
@@ -290,18 +349,25 @@ export function collectAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt
     }
   }
 
-  if (sessionCount === 0) return null;
-
   return {
-    source: "agy",
-    sessions: sessionCount,
-    input,
-    output,
-    cache_read,
-    cache_write,
-    reasoning,
-    total
+    tokens: sessionCount === 0
+      ? null
+      : {
+          source: "agy",
+          sessions: sessionCount,
+          input,
+          output,
+          cache_read,
+          cache_write,
+          reasoning,
+          total
+        },
+    timestamps
   };
+}
+
+export function collectAgyTokens(opts) {
+  return scanAgyTokens(opts).tokens;
 }
 
 function matchesOrchestraTarget(targetPath, runDir, runsRoot) {
@@ -319,7 +385,7 @@ function matchesOrchestraTarget(targetPath, runDir, runsRoot) {
   return false;
 }
 
-export function collectOrchestraTokens({
+function scanOrchestraTokens({
   runDir,
   runsRoot = DEFAULT_RUNS_ROOT,
   startedAt = null,
@@ -336,6 +402,7 @@ export function collectOrchestraTokens({
     codex: { source: "codex", sessions: 0, input: 0, output: 0, cache_read: 0, cache_write: 0, reasoning: 0, total: 0 },
     agy: { source: "agy", sessions: 0, input: 0, output: 0, cache_read: 0, cache_write: 0, reasoning: 0, total: 0 }
   };
+  const timestamps = [];
 
   // 1. Claude: conductor transcripts for runDir + any sibling wt-* projects
   const claudeProjectsDir = path.join(claudeDir, "projects");
@@ -370,6 +437,7 @@ export function collectOrchestraTokens({
         breakdown.claude.cache_read += res.cache_read;
         breakdown.claude.cache_write += res.cache_write;
         breakdown.claude.reasoning += res.reasoning;
+        timestamps.push(...res.timestamps);
       }
     }
     breakdown.claude.total =
@@ -389,6 +457,7 @@ export function collectOrchestraTokens({
       let targetCwd = null;
       let lastUsage = null;
       let fileTimestamp = null;
+      const fileTimestamps = [];
 
       for (const line of content.split(/\r?\n/)) {
         if (!line.trim()) continue;
@@ -399,9 +468,10 @@ export function collectOrchestraTokens({
           continue;
         }
 
-        if (obj.created_at || obj.timestamp) {
-          const t = Date.parse(obj.created_at || obj.timestamp);
-          if (Number.isFinite(t)) fileTimestamp = t;
+        const ts = extractEventTimestampMs(obj);
+        if (ts !== null) {
+          fileTimestamp = ts;
+          fileTimestamps.push(ts);
         }
 
         const cwd = obj.payload?.cwd || obj.cwd;
@@ -413,13 +483,16 @@ export function collectOrchestraTokens({
         }
       }
 
-      if (!targetCwd || !lastUsage) continue;
+      if (!targetCwd) continue;
       if (!matchesOrchestraTarget(targetCwd, runDir, runsRoot)) continue;
 
       const checkTime = fileTimestamp || fs.statSync(file).mtimeMs;
       if (startedAt || endedAt) {
         if (!isWithinWindow(checkTime, startMs, endMs)) continue;
       }
+
+      timestamps.push(...fileTimestamps);
+      if (!lastUsage) continue;
 
       breakdown.codex.sessions++;
       breakdown.codex.input += lastUsage.input_tokens || 0;
@@ -446,12 +519,10 @@ export function collectOrchestraTokens({
       }
 
       const content = fs.readFileSync(fullLog, "utf8");
-      // Check if any matching path string appears in the transcript
       let matched = false;
       const normRunsRoot = normalizePath(runsRoot);
       const normRunDir = normalizePath(runDir);
 
-      // Search lines for workspace or cwd
       let fileHasUsage = false;
       let sessionInput = 0;
       let sessionOutput = 0;
@@ -459,6 +530,7 @@ export function collectOrchestraTokens({
       let sessionCacheWrite = 0;
       let sessionReasoning = 0;
       let sessionTotal = 0;
+      const fileTimestamps = [];
 
       for (const line of content.split(/\r?\n/)) {
         if (!line.trim()) continue;
@@ -469,10 +541,12 @@ export function collectOrchestraTokens({
           continue;
         }
 
+        const ts = extractEventTimestampMs(obj);
+        if (ts !== null) fileTimestamps.push(ts);
+
         if (!matched) {
           const ws = obj.workspace || obj.cwd || obj.content || "";
           if (typeof ws === "string" && (ws.includes(runsRoot) || ws.includes(normRunsRoot))) {
-            // Check if matches orchestra target
             if (matchesOrchestraTarget(ws, runDir, runsRoot) || ws.includes(normRunDir) || ws.includes(path.resolve(runDir))) {
               matched = true;
             } else if (ws.includes("wt-")) {
@@ -500,6 +574,9 @@ export function collectOrchestraTokens({
         walk(obj);
       }
 
+      if (matched) {
+        timestamps.push(...fileTimestamps);
+      }
       if (matched && fileHasUsage) {
         breakdown.agy.sessions++;
         breakdown.agy.input += sessionInput;
@@ -513,20 +590,27 @@ export function collectOrchestraTokens({
   }
 
   const totalSessions = breakdown.claude.sessions + breakdown.codex.sessions + breakdown.agy.sessions;
-  if (totalSessions === 0) return null;
-
   return {
-    source: "orchestra",
-    sessions: totalSessions,
-    input: breakdown.claude.input + breakdown.codex.input + breakdown.agy.input,
-    output: breakdown.claude.output + breakdown.codex.output + breakdown.agy.output,
-    cache_read: breakdown.claude.cache_read + breakdown.codex.cache_read + breakdown.agy.cache_read,
-    cache_write: breakdown.claude.cache_write + breakdown.codex.cache_write + breakdown.agy.cache_write,
-    reasoning: breakdown.claude.reasoning + breakdown.codex.reasoning + breakdown.agy.reasoning,
-    total: breakdown.claude.total + breakdown.codex.total + breakdown.agy.total,
-    by_agent: breakdown,
-    breakdown
+    tokens: totalSessions === 0
+      ? null
+      : {
+          source: "orchestra",
+          sessions: totalSessions,
+          input: breakdown.claude.input + breakdown.codex.input + breakdown.agy.input,
+          output: breakdown.claude.output + breakdown.codex.output + breakdown.agy.output,
+          cache_read: breakdown.claude.cache_read + breakdown.codex.cache_read + breakdown.agy.cache_read,
+          cache_write: breakdown.claude.cache_write + breakdown.codex.cache_write + breakdown.agy.cache_write,
+          reasoning: breakdown.claude.reasoning + breakdown.codex.reasoning + breakdown.agy.reasoning,
+          total: breakdown.claude.total + breakdown.codex.total + breakdown.agy.total,
+          by_agent: breakdown,
+          breakdown
+        },
+    timestamps
   };
+}
+
+export function collectOrchestraTokens(opts) {
+  return scanOrchestraTokens(opts).tokens;
 }
 
 export function resolveAgent({
@@ -614,7 +698,10 @@ export function resolveAgent({
   return "claude";
 }
 
-export function collectTokens({
+const ACTIVE_MAX_GAP_MS = 5 * 60 * 1000;
+const MTIME_SKIP_DIRS = new Set(["node_modules", ".venv", "bench", "metrics", ".git", "work", "preview", "__pycache__"]);
+
+function scanRunAgent({
   runDir,
   agent = null,
   startedAt = null,
@@ -635,13 +722,13 @@ export function collectTokens({
   });
 
   if (resolvedAgent === "claude") {
-    return collectClaudeTokens({ runDir, claudeDir, startedAt, endedAt });
+    return scanClaudeTokens({ runDir, claudeDir, startedAt, endedAt });
   } else if (resolvedAgent === "codex") {
-    return collectCodexTokens({ runDir, codexDir, startedAt, endedAt });
+    return scanCodexTokens({ runDir, codexDir, startedAt, endedAt });
   } else if (resolvedAgent === "agy") {
-    return collectAgyTokens({ runDir, geminiDir, startedAt, endedAt });
+    return scanAgyTokens({ runDir, geminiDir, startedAt, endedAt });
   } else if (resolvedAgent === "orchestra") {
-    return collectOrchestraTokens({
+    return scanOrchestraTokens({
       runDir,
       runsRoot: effectiveRunsRoot,
       startedAt,
@@ -652,7 +739,89 @@ export function collectTokens({
     });
   }
 
-  return null;
+  return { tokens: null, timestamps: [] };
+}
+
+export function collectTokens(opts) {
+  return scanRunAgent(opts).tokens;
+}
+
+export function collectActivityTimestamps(opts) {
+  return [...scanRunAgent(opts).timestamps].sort((a, b) => a - b);
+}
+
+export function collectRunFileMtimes(runDir) {
+  const mtimes = [];
+  if (!runDir || !fs.existsSync(runDir)) return mtimes;
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (MTIME_SKIP_DIRS.has(e.name) || e.name === "selfcheck.json" || e.name === ".run.json") continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        walk(p);
+      } else if (e.isFile()) {
+        try {
+          const mt = fs.statSync(p).mtimeMs;
+          if (Number.isFinite(mt)) mtimes.push(mt);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  };
+  walk(runDir);
+  return mtimes.sort((a, b) => a - b);
+}
+
+/**
+ * Sum consecutive timestamp gaps (each capped at maxGapMs, default 5 minutes), in minutes.
+ */
+export function computeActiveMinutes(timestampsMs, maxGapMs = ACTIVE_MAX_GAP_MS) {
+  const sorted = (timestampsMs || [])
+    .filter((t) => typeof t === "number" && Number.isFinite(t))
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  if (sorted.length === 1) return 0;
+
+  let totalMs = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = Math.max(0, sorted[i] - sorted[i - 1]);
+    totalMs += Math.min(gap, maxGapMs);
+  }
+  return Number((totalMs / 60000).toFixed(4));
+}
+
+export function collectActiveTime({
+  runDir,
+  agent = null,
+  startedAt = null,
+  endedAt = null,
+  runsRoot = null,
+  repoRoot = DEFAULT_REPO_ROOT,
+  claudeDir = getClaudeDir(),
+  codexDir = getCodexDir(),
+  geminiDir = getGeminiDir(),
+  maxGapMs = ACTIVE_MAX_GAP_MS
+}) {
+  const sessionTimestamps = collectActivityTimestamps({
+    runDir,
+    agent,
+    startedAt,
+    endedAt,
+    runsRoot,
+    repoRoot,
+    claudeDir,
+    codexDir,
+    geminiDir
+  });
+  const timestamps = sessionTimestamps.length > 0 ? sessionTimestamps : collectRunFileMtimes(runDir);
+  return computeActiveMinutes(timestamps, maxGapMs);
 }
 
 export function backfillResults({

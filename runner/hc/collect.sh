@@ -5,11 +5,18 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 rid=$1; flag=${2:-}
 CONTEST_LOG=${CONTEST_LOG:-$REPO/.orchestra/runs.tsv}
+RESULTS_DIR=${RESULTS_DIR:-$REPO/results}
+HC_BIN=${HC_BIN:-hc}
 line=$(awk -F'\t' -v r="$rid" '$1==r' "$CONTEST_LOG" | tail -1)
 label=$(echo "$line" | cut -f2); term=$(echo "$line" | cut -f4)
-[ "$flag" = "--timeout" ] && hc interrupt "$term" >/dev/null 2>&1 || true
-hc kill "$term" >/dev/null 2>&1 || true
-hc rm "$term" >/dev/null 2>&1 || true
+[ "$flag" = "--timeout" ] && "$HC_BIN" interrupt "$term" >/dev/null 2>&1 || true
+"$HC_BIN" kill "$term" >/dev/null 2>&1 || true
+"$HC_BIN" rm "$term" >/dev/null 2>&1 || true
 cd "$REPO"
 n=0; [ -f .orchestra/interventions.tsv ] && n=$(awk -F'	' -v r="$rid" '$1==r && $2 !~ /^approve/' .orchestra/interventions.tsv | wc -l)
-node runner/collect.mjs "$rid" --model "$label" ${flag:+--timed-out} --interventions "$n" 2>&1 | tail -3
+rc=0
+node runner/collect.mjs "$rid" --model "$label" --results-dir "$RESULTS_DIR" ${flag:+--timed-out} --interventions "$n" 2>&1 | tail -3 || rc=$?
+term_state="collected"
+[ "$flag" = "--timeout" ] && term_state="timed-out"
+node runner/collect.mjs --ensure-terminal-result "$rid" --label "$label" --runs-tsv "$CONTEST_LOG" --results-dir "$RESULTS_DIR" --state "$term_state" --reason "collect.mjs exited with status $rc" >/dev/null 2>&1 || true
+exit "$rc"

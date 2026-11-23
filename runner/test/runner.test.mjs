@@ -6,7 +6,14 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { prepareRun } from "../../runner/prepare.mjs";
-import { collectRun } from "../../runner/collect.mjs";
+import {
+  collectRun,
+  updateAwakeState,
+  registerAwakeLaunch,
+  getRunStatusRows,
+  ensureTerminalResult,
+  parseRunsTsv
+} from "../../runner/collect.mjs";
 import { generateLeaderboard } from "../../harness/src/leaderboard.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -316,6 +323,138 @@ test("leaderboard aggregates fixture results per room and overall and embeds pre
     assert.match(html, /MoL-Bench Leaderboard/);
     assert.match(html, /previews\/run-1\/aurora_sheet_1\.png/);
     assert.doesNotMatch(html, /https?:\/\/cdn/i);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test("collectRun detects no-submission once and terminal marker prevents re-collection", () => {
+  const tmpBase = makeTmpWorkBase("test-nosub-");
+  try {
+    const fixtureRepo = makeFixtureRepo(tmpBase);
+    const runsRoot = path.join(tmpBase, "runs");
+    const resultsDir = path.join(tmpBase, "results");
+    const orchestraDir = path.join(tmpBase, "orchestra");
+    fs.mkdirSync(orchestraDir, { recursive: true });
+    const runsTsvPath = path.join(orchestraDir, "runs.tsv");
+    const awakePath = path.join(orchestraDir, "awake.tsv");
+
+    const runId = "aurora__empty-agent";
+    const { runDir } = prepareRun({
+      room: "aurora",
+      runId,
+      root: runsRoot,
+      repoRoot: fixtureRepo
+    });
+
+    // Write only selfcheck.json (no real submission files changed vs start commit)
+    fs.writeFileSync(path.join(runDir, "selfcheck.json"), JSON.stringify({ ok: true }));
+
+    fs.writeFileSync(
+      runsTsvPath,
+      `${runId}\tEmpty Agent\tagent\tterm1\t${runDir}\t1000\t60\n`,
+      "utf8"
+    );
+
+    // Before collection, status rows lists the run
+    const before = getRunStatusRows({ runsTsvPath, awakePath, resultsDir, nowSec: 1300 });
+    assert.equal(before.length, 1);
+    assert.equal(before[0].rid, runId);
+
+    const out = collectRun({
+      runId,
+      model: "Empty Agent",
+      root: runsRoot,
+      noCapture: true,
+      noPython: true,
+      repoRoot: fixtureRepo,
+      resultsDir
+    });
+
+    assert.equal(out.result.status, "no-submission");
+    assert.match(out.result.reason, /No files changed/i);
+    assert.equal(out.result.composite, null);
+    assert.equal(typeof out.result.efficiency.active_min, "number");
+    assert.equal(fs.existsSync(path.join(resultsDir, `${runId}.json`)), true);
+    assert.equal(out.diffPath, null);
+
+    // Mark terminal via ensureTerminalResult (as collect.sh / autopilot.sh do)
+    const term = ensureTerminalResult({ runId, runsTsvPath, resultsDir, state: "collected" });
+    assert.equal(term.state, "no-submission");
+    const tsvRows = parseRunsTsv(runsTsvPath);
+    assert.equal(tsvRows[0].status, "no-submission");
+
+    // Never listed or accumulated again on subsequent ticks — even if result file were deleted
+    updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 1600, intervalSec: 300 });
+    const after = getRunStatusRows({ runsTsvPath, awakePath, resultsDir, nowSec: 1600 });
+    assert.equal(after.length, 0);
+
+    fs.unlinkSync(path.join(resultsDir, `${runId}.json`));
+    const afterDelete = getRunStatusRows({ runsTsvPath, awakePath, resultsDir, nowSec: 1900 });
+    assert.equal(afterDelete.length, 0, "terminal marker in runs.tsv must prevent re-collection");
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test("awake-time accounting handles simulated sleep gaps and drives OVER and STUCK_HOURS", () => {
+  const tmpBase = makeTmpWorkBase("test-awake-");
+  try {
+    const orchestraDir = path.join(tmpBase, "orchestra");
+    const resultsDir = path.join(tmpBase, "results");
+    fs.mkdirSync(orchestraDir, { recursive: true });
+    fs.mkdirSync(resultsDir, { recursive: true });
+
+    const runsTsvPath = path.join(orchestraDir, "runs.tsv");
+    const awakePath = path.join(orchestraDir, "awake.tsv");
+    const runId = "aurora__sleep-test";
+    fs.writeFileSync(
+      runsTsvPath,
+      `${runId}\tSleep Model\tclaude\tterm1\t/tmp/r\t1000\t60\n`,
+      "utf8"
+    );
+
+    // Tick 0 at t=1000 (initializes last_tick)
+    const t0 = updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 1000, intervalSec: 300 });
+    assert.equal(t0.add, 0);
+    assert.equal(t0.runs[runId], 0);
+    assert.equal(t0.since_launch, 0);
+
+    // Tick 1 at t=1300 (normal 5m loop)
+    const t1 = updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 1300, intervalSec: 300 });
+    assert.equal(t1.slept, false);
+    assert.equal(t1.add, 300);
+    assert.equal(t1.runs[runId], 300);
+    assert.equal(t1.since_launch, 300);
+
+    // Tick 2 at t=19300 (5h sleep gap: delta=18000 > 2*300+60 -> add only 300s)
+    const t2 = updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: 19300, intervalSec: 300 });
+    assert.equal(t2.slept, true);
+    assert.equal(t2.delta, 18000);
+    assert.equal(t2.add, 300);
+    assert.equal(t2.runs[runId], 600);
+    assert.equal(t2.since_launch, 600);
+
+    // Wall time is 305m (>= 60m limit), but awake time is only 10m -> NOT OVER, NOT STUCK
+    const rowsBeforeLimit = getRunStatusRows({ runsTsvPath, awakePath, resultsDir, nowSec: 19300 });
+    assert.equal(rowsBeforeLimit.length, 1);
+    assert.equal(rowsBeforeLimit[0].elapsedMin, 10);
+    assert.equal(rowsBeforeLimit[0].over, "");
+
+    // Advance 10 normal 300s ticks (+3000s = 3600s total awake = 60m -> OVER)
+    let cur = 19300;
+    for (let i = 0; i < 10; i++) {
+      cur += 300;
+      updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: cur, intervalSec: 300 });
+    }
+    const rowsAtLimit = getRunStatusRows({ runsTsvPath, awakePath, resultsDir, nowSec: cur });
+    assert.equal(rowsAtLimit[0].elapsedMin, 60);
+    assert.equal(rowsAtLimit[0].over, "OVER");
+
+    // Launching a job resets since_launch to 0 for STUCK_HOURS tracking
+    registerAwakeLaunch({ awakePath, runId: "aurora__next", nowSec: cur });
+    const tAfterLaunch = updateAwakeState({ runsTsvPath, awakePath, resultsDir, nowSec: cur + 300, intervalSec: 300 });
+    assert.equal(tAfterLaunch.since_launch, 300);
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }

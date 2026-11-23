@@ -11,57 +11,89 @@ set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 QUEUE=${QUEUE:-$REPO/.orchestra/queue.tsv}
+CONTEST_LOG=${CONTEST_LOG:-$REPO/.orchestra/runs.tsv}
+AWAKE_FILE=${AWAKE_FILE:-$REPO/.orchestra/awake.tsv}
+RESULTS_DIR=${RESULTS_DIR:-$REPO/results}
 LOG=${LOG:-$REPO/.orchestra/autopilot.log}
 MAXPAR=${MAXPAR:-3}
 INTERVAL=${INTERVAL:-300}
 QUOTA=${QUOTA:-$HOME/.claude/orchestra/quota.py}
+HC_BIN=${HC_BIN:-hc}
+AUTOPILOT_ONCE=${AUTOPILOT_ONCE:-0}
 export AGY_BIN=${AGY_BIN:-agy} CODEX_BIN=${CODEX_BIN:-codex}
-last_launch=$(date +%s)
 log() { echo "[$(date '+%m-%d %H:%M')] $*" | tee -a "$LOG"; }
 
 summary() {
-  python -c "
-import json,sys
-d=json.load(open('results/$1.json'))
-ax=d.get('axes',{}); g=[k for k,v in d.get('gates',{}).items() if v.get('pass') is False]
-print('%s composite=%.2f %s wall=%.1fm %s'%('$1',d.get('composite') or 0,' '.join('%s=%.2f'%(k,v) for k,v in ax.items() if v is not None),d.get('efficiency',{}).get('wall_min') or 0,('FAILGATES='+','.join(g)) if g else ''))" 2>/dev/null || echo "$1 (no result)"
+  python - "$RESULTS_DIR/$1.json" "$1" 2>/dev/null <<'PY' || echo "$1 (no result)"
+import json, sys
+d = json.load(open(sys.argv[1]))
+if d.get('status') in ('no-submission', 'collect-error') or d.get('composite') is None:
+  print('%s status=%s (%s)' % (sys.argv[2], d.get('status') or 'unranked', d.get('reason') or 'no composite'))
+else:
+  ax = d.get('axes', {})
+  g = [k for k, v in d.get('gates', {}).items() if v.get('pass') is False]
+  eff = d.get('efficiency', {})
+  t = eff.get('active_min') if eff.get('active_min') is not None else eff.get('wall_min')
+  print('%s composite=%.2f %s active=%.1fm %s' % (
+    sys.argv[2],
+    d.get('composite') or 0,
+    ' '.join('%s=%.2f' % (k, v) for k, v in ax.items() if v is not None),
+    t or 0,
+    ('FAILGATES=' + ','.join(g)) if g else ''
+  ))
+PY
 }
 
 publish() {
-  node harness/src/leaderboard.mjs >/dev/null 2>&1 || log "leaderboard failed"
-  [ -f harness/src/gallery.mjs ] && { node harness/src/gallery.mjs >/dev/null 2>&1 || log "gallery failed"; }
+  node harness/src/leaderboard.mjs --results "$RESULTS_DIR" >/dev/null 2>&1 || log "leaderboard failed"
+  [ -f harness/src/gallery.mjs ] && { node harness/src/gallery.mjs --results "$RESULTS_DIR" >/dev/null 2>&1 || log "gallery failed"; }
+  real_changes=$(git status --porcelain -- 'results/*.json' 'results/submissions' 2>/dev/null | grep -cvE '^.. results/(leaderboard|data)\.json$' || true)
+  if [ "${real_changes:-0}" -eq 0 ]; then
+    return 0
+  fi
   git add results site >/dev/null 2>&1
   if ! git diff --cached --quiet; then
     git commit -qm "results: autopilot update $(date '+%m-%d %H:%M')" && (git push -q >/dev/null 2>&1 || log "push failed")
   fi
 }
 
+collect_and_mark() {
+  local rid="$1" flag="${2:-}" term_state="${3:-collected}"
+  CONTEST_LOG="$CONTEST_LOG" RESULTS_DIR="$RESULTS_DIR" HC_BIN="$HC_BIN" bash runner/hc/collect.sh "$rid" $flag >/dev/null 2>&1 || true
+  node runner/collect.mjs --ensure-terminal-result "$rid" --runs-tsv "$CONTEST_LOG" --results-dir "$RESULTS_DIR" --state "$term_state" >/dev/null 2>&1 || true
+}
+
 while true; do
   changed=0
+  awake_since_launch=$(node runner/collect.mjs --awake-tick --runs-tsv "$CONTEST_LOG" --awake-file "$AWAKE_FILE" --results-dir "$RESULTS_DIR" --interval "$INTERVAL" ${NOW_EPOCH:+--now "$NOW_EPOCH"} --print-since-launch 2>/dev/null || echo 0)
+
   # 1) collect finished or over-limit runs; handle permission prompts
   while read -r rid state elapsed over; do
     [ -z "$rid" ] && continue
-    term=$(awk -F'\t' -v r="$rid" '$1==r{t=$4} END{print t}' .orchestra/runs.tsv)
+    term=$(awk -F'\t' -v r="$rid" '$1==r{t=$4} END{print t}' "$CONTEST_LOG")
+    collected_now=0
     case "$state" in
       done|idle|gone|error)
-        [ "$state" = error ] && log "$rid ended in ERROR state ($(hc get "$term" 2>/dev/null | grep -o '"msg":"[^"]*"' | head -1))"
-        bash runner/hc/collect.sh "$rid" >/dev/null 2>&1; log "collected: $(summary "$rid")"; changed=1 ;;
+        [ "$state" = error ] && log "$rid ended in ERROR state ($("$HC_BIN" get "$term" 2>/dev/null | grep -o '"msg":"[^"]*"' | head -1))"
+        collect_and_mark "$rid" "" "collected"
+        log "collected: $(summary "$rid")"; changed=1; collected_now=1 ;;
       blocked)
-        screen=$(hc read --lines 25 "$term" 2>/dev/null)
+        screen=$("$HC_BIN" read --lines 25 "$term" 2>/dev/null)
         if echo "$screen" | grep -q "No, cancel"; then
-          hc keys "$term" down down down enter >/dev/null 2>&1; sleep 3
-          hc send "$term" "[harness] That command was denied by the benchmark harness (only actions inside this folder are allowed). Continue the task without it." >/dev/null 2>&1
+          "$HC_BIN" keys "$term" down down down enter >/dev/null 2>&1; sleep 3
+          "$HC_BIN" send "$term" "[harness] That command was denied by the benchmark harness (only actions inside this folder are allowed). Continue the task without it." >/dev/null 2>&1
           printf '%s\tdeny+continue\t%s\n' "$rid" "$(echo "$screen" | grep -A1 'Requesting permission' | tail -1 | tr -s ' ' | cut -c1-160)" >> .orchestra/interventions.tsv
           log "$rid: denied a permission prompt (intervention logged)"
         fi ;;
     esac
-    if [ "$over" = OVER ] && [ ! -f "results/$rid.json" ]; then
-      bash runner/hc/collect.sh "$rid" --timeout >/dev/null 2>&1; log "timeout-collected: $(summary "$rid")"; changed=1
+    if [ "$collected_now" = 0 ] && [ "$over" = OVER ] && [ ! -f "$RESULTS_DIR/$rid.json" ]; then
+      collect_and_mark "$rid" "--timeout" "timed-out"
+      log "timeout-collected: $(summary "$rid")"; changed=1
     fi
-  done < <(bash runner/hc/status.sh | sed 's# \([0-9]*\)m/[0-9]*m# \1#')
+  done < <(CONTEST_LOG="$CONTEST_LOG" AWAKE_FILE="$AWAKE_FILE" RESULTS_DIR="$RESULTS_DIR" HC_BIN="$HC_BIN" bash runner/hc/status.sh | sed 's# \([0-9]*\)m/[0-9]*m# \1#')
 
   # 2) launch queued jobs while capacity and quota allow
-  running=$(bash runner/hc/status.sh | wc -l)
+  running=$(CONTEST_LOG="$CONTEST_LOG" AWAKE_FILE="$AWAKE_FILE" RESULTS_DIR="$RESULTS_DIR" HC_BIN="$HC_BIN" bash runner/hc/status.sh | wc -l)
   if [ -f "$QUEUE" ] && [ "$running" -lt "$MAXPAR" ]; then
     : > "$QUEUE.next"
     while IFS=$'\t' read -r agent model effort label room rev qkey need; do
@@ -69,8 +101,10 @@ while true; do
       case "$agent" in \#*) echo -e "$agent\t$model\t$effort\t$label\t$room\t$rev\t$qkey\t$need" >> "$QUEUE.next"; continue ;; esac
       if [ "$running" -lt "$MAXPAR" ] && python "$QUOTA" "$qkey" --need "$need" >/dev/null 2>&1; then
         [ "$rev" = "-" ] && rev=""
-        out=$(bash runner/hc/contest.sh "$agent" "$model" "$effort" "$label" "$room" $rev 2>&1 | tail -1)
-        log "launched: $label on $room${rev:+-$rev} -> $out"; running=$((running + 1)); last_launch=$(date +%s)
+        out=$(CONTEST_LOG="$CONTEST_LOG" bash runner/hc/contest.sh "$agent" "$model" "$effort" "$label" "$room" $rev 2>&1 | tail -1)
+        launched_rid=$(echo "$out" | awk '{print $1}')
+        node runner/collect.mjs --awake-launch "$launched_rid" --awake-file "$AWAKE_FILE" ${NOW_EPOCH:+--now "$NOW_EPOCH"} >/dev/null 2>&1 || true
+        log "launched: $label on $room${rev:+-$rev} -> $out"; running=$((running + 1)); awake_since_launch=0
       else
         echo -e "$agent\t$model\t$effort\t$label\t$room\t$rev\t$qkey\t$need" >> "$QUEUE.next"
       fi
@@ -81,21 +115,22 @@ while true; do
   [ "$changed" = 1 ] && publish
 
   # 3) optional: put the machine to sleep when there is nothing left to do.
-  #    Done = no running runs AND (no active queue jobs OR nothing could launch for STUCK_HOURS after NOT_BEFORE).
+  #    Done = no running runs AND (no active queue jobs OR nothing could launch for STUCK_HOURS of awake time after NOT_BEFORE).
   if [ "${SLEEP_WHEN_DONE:-0}" = 1 ]; then
-    running=$(bash runner/hc/status.sh | wc -l)
+    running=$(CONTEST_LOG="$CONTEST_LOG" AWAKE_FILE="$AWAKE_FILE" RESULTS_DIR="$RESULTS_DIR" HC_BIN="$HC_BIN" bash runner/hc/status.sh | wc -l)
     active=$(grep -vc '^#' "$QUEUE" 2>/dev/null || echo 0)
-    now=$(date +%s); not_before=${NOT_BEFORE_EPOCH:-0}; stuck=$(( ${STUCK_HOURS:-4} * 3600 ))
-    if [ "$running" -eq 0 ] && [ "$now" -ge "$not_before" ] && { [ "$active" -eq 0 ] || [ $((now - last_launch)) -ge "$stuck" ]; }; then
+    now=${NOW_EPOCH:-$(date +%s)}; not_before=${NOT_BEFORE_EPOCH:-0}; stuck=$(( ${STUCK_HOURS:-4} * 3600 ))
+    if [ "$running" -eq 0 ] && [ "$now" -ge "$not_before" ] && { [ "$active" -eq 0 ] || [ "${awake_since_launch:-0}" -ge "$stuck" ]; }; then
       if [ "${REGRADE_BEFORE_SLEEP:-0}" = 1 ]; then
         log "final regrade of all runs (current harness/specs)"
         runs_root=${MOLBENCH_RUNS:-$HOME/molbench-runs}
-        for f in results/*.json; do
+        for f in "$RESULTS_DIR"/*.json; do
+          [ -f "$f" ] || continue
           rid=$(basename "$f" .json); [ "$rid" = leaderboard ] && continue
           [ -d "$runs_root/$rid" ] || continue
-          bash runner/hc/collect.sh "$rid" >/dev/null 2>&1 && log "regraded: $(summary "$rid")"
+          CONTEST_LOG="$CONTEST_LOG" RESULTS_DIR="$RESULTS_DIR" HC_BIN="$HC_BIN" bash runner/hc/collect.sh "$rid" >/dev/null 2>&1 && log "regraded: $(summary "$rid")"
         done
-        [ -f runner/tokens.mjs ] && node runner/tokens.mjs --backfill >/dev/null 2>&1
+        [ -f runner/tokens.mjs ] && node runner/tokens.mjs --backfill --results "$RESULTS_DIR" >/dev/null 2>&1
       fi
       publish
       log "all work done (active queue jobs: $active) -> putting the machine to sleep"
@@ -103,5 +138,6 @@ while true; do
       exit 0
     fi
   fi
+  [ "$AUTOPILOT_ONCE" = 1 ] && break
   sleep "$INTERVAL"
 done
