@@ -194,8 +194,577 @@ export function getGitChangedFiles(submissionDir, baseRef = "HEAD") {
   }
 }
 
+const TEST_SANDBOX_EXTS = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"]);
+const DEFAULT_ALLOWED_BARE_SPECIFIERS = Object.freeze([
+  "node:test",
+  "node:assert",
+  "node:assert/strict",
+  "playwright"
+]);
+
+const BUILTIN_STATIC_GATES = new Set(["G-report", "G-decisions", "G-test-sandbox"]);
+const CUSTOM_STATIC_GATES = new Map();
+
 /**
- * Evaluate static gates (G-report, G-decisions) and optional scope check.
+ * Register a custom static gate evaluator (M1 Extension Protocol).
+ * @param {string} gateId Gate identifier starting with "G-"
+ * @param {(submissionDir: string, spec: object, opts: object) => { pass: boolean|null, detail: string }} evaluator
+ */
+export function registerGate(gateId, evaluator) {
+  if (typeof gateId !== "string" || !/^G-[a-z0-9-]+$/.test(gateId)) {
+    throw new Error(`Invalid gate id: "${gateId}"`);
+  }
+  if (typeof evaluator !== "function") {
+    throw new Error(`Gate evaluator for "${gateId}" must be a function`);
+  }
+  if (BUILTIN_STATIC_GATES.has(gateId) || CUSTOM_STATIC_GATES.has(gateId)) {
+    throw new Error(`Gate "${gateId}" is already registered`);
+  }
+  CUSTOM_STATIC_GATES.set(gateId, evaluator);
+}
+
+export function unregisterGate(gateId) {
+  CUSTOM_STATIC_GATES.delete(gateId);
+}
+
+/**
+ * Minimal JS lexer for static sandbox allowlist verification.
+ * Emits tokens `{ type, value, raw, index, line }` skipping whitespace and comments.
+ * Token types: "ident" | "string" | "template" | "punct" | "other"
+ */
+function tokenizeJsForSandbox(source) {
+  const tokens = [];
+  let i = 0;
+  let line = 1;
+  const len = source.length;
+
+  while (i < len) {
+    const ch = source[i];
+    const next = source[i + 1];
+
+    // Whitespace
+    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\f" || ch === "\v") {
+      i += 1;
+      continue;
+    }
+    if (ch === "\n") {
+      line += 1;
+      i += 1;
+      continue;
+    }
+
+    // Line comment
+    if (ch === "/" && next === "/") {
+      i += 2;
+      while (i < len && source[i] !== "\n") i += 1;
+      continue;
+    }
+    // Block comment
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < len && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] === "\n") line += 1;
+        i += 1;
+      }
+      i += 2;
+      continue;
+    }
+
+    // Single or double quoted string literal
+    if (ch === "'" || ch === '"') {
+      const start = i;
+      const startLine = line;
+      const quote = ch;
+      i += 1;
+      let val = "";
+      while (i < len && source[i] !== quote) {
+        if (source[i] === "\\" && i + 1 < len) {
+          const esc = source[i + 1];
+          if (esc === "\n") line += 1;
+          val += esc === "n" ? "\n" : esc === "r" ? "\r" : esc === "t" ? "\t" : esc;
+          i += 2;
+        } else {
+          if (source[i] === "\n") line += 1;
+          val += source[i];
+          i += 1;
+        }
+      }
+      if (i < len) i += 1;
+      tokens.push({ type: "string", value: val, raw: source.slice(start, i), index: start, line: startLine });
+      continue;
+    }
+
+    // Template literal (tracks nested ${ ... } expressions as raw template so we can reject non-plain imports)
+    if (ch === "`") {
+      const start = i;
+      const startLine = line;
+      i += 1;
+      let braceDepth = 0;
+      while (i < len) {
+        if (source[i] === "\\" && i + 1 < len) {
+          if (source[i + 1] === "\n") line += 1;
+          i += 2;
+          continue;
+        }
+        if (source[i] === "$" && source[i + 1] === "{") {
+          braceDepth += 1;
+          i += 2;
+          continue;
+        }
+        if (braceDepth > 0) {
+          if (source[i] === "{") braceDepth += 1;
+          else if (source[i] === "}") braceDepth -= 1;
+          if (source[i] === "\n") line += 1;
+          i += 1;
+          continue;
+        }
+        if (source[i] === "`") {
+          i += 1;
+          break;
+        }
+        if (source[i] === "\n") line += 1;
+        i += 1;
+      }
+      const raw = source.slice(start, i);
+      tokens.push({ type: "template", value: raw.slice(1, -1), raw, index: start, line: startLine });
+      continue;
+    }
+
+    // Identifier / keyword
+    if (/[A-Za-z_$]/.test(ch)) {
+      const start = i;
+      i += 1;
+      while (i < len && /[A-Za-z0-9_$]/.test(source[i])) i += 1;
+      const word = source.slice(start, i);
+      tokens.push({ type: "ident", value: word, raw: word, index: start, line });
+      continue;
+    }
+
+    // Optional chaining `?.`
+    if (ch === "?" && next === ".") {
+      tokens.push({ type: "punct", value: "?.", raw: "?.", index: i, line });
+      i += 2;
+      continue;
+    }
+
+    // Single punctuation
+    if ("(){}[];,.:+-*/=!<>?&|^~@".includes(ch)) {
+      tokens.push({ type: "punct", value: ch, raw: ch, index: i, line });
+      i += 1;
+      continue;
+    }
+
+    // Numbers / other
+    const start = i;
+    while (i < len && !/[\s'"`(){}[\];,.:+\-*/=!<>?&|^~@A-Za-z_$]/.test(source[i])) i += 1;
+    const raw = source.slice(start, i) || ch;
+    if (i === start) i += 1;
+    tokens.push({ type: "other", value: raw, raw, index: start, line });
+  }
+  return tokens;
+}
+
+function isSubPath(childPath, parentPath) {
+  const rel = path.relative(parentPath, childPath);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function isAllowedRoomHarnessTarget(resolvedPath, submissionDir) {
+  const norm = resolvedPath.replace(/\\/g, "/");
+  const workspaceHarness = path.resolve(submissionDir, "bench", "testing", "room-harness.mjs").replace(/\\/g, "/");
+  const repoHarness = path.resolve(DEFAULT_REPO_ROOT, "harness", "src", "testing", "room-harness.mjs").replace(/\\/g, "/");
+  if (norm === workspaceHarness || norm === repoHarness) return true;
+  if (/\/(?:bench|harness\/src)\/testing\/room-harness\.mjs$/.test(norm)) return true;
+  return false;
+}
+
+function hasSymlinkInChain(baseDir, targetPath) {
+  const rel = path.relative(baseDir, targetPath);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return false;
+  let cur = path.resolve(baseDir);
+  if (fs.existsSync(cur) && fs.lstatSync(cur).isSymbolicLink()) return true;
+  const parts = rel.split(path.sep).filter(Boolean);
+  for (const part of parts) {
+    cur = path.join(cur, part);
+    if (!fs.existsSync(cur)) break;
+    if (fs.lstatSync(cur).isSymbolicLink()) return true;
+  }
+  return false;
+}
+
+/**
+ * G-test-sandbox (v0.2 Restoration): strict static ALLOWLIST scan of black-box
+ * regression tests (plus transitive relative imports inside testDir).
+ *
+ * Allowed specifiers (plain string literals only):
+ * - Bare: node:test, node:assert, node:assert/strict, playwright (+ optional opts.allowedBareSpecifiers)
+ * - room-harness.mjs (bench/testing/room-harness.mjs or harness/src/testing/room-harness.mjs)
+ * - Relative JS/TS modules strictly inside testDir (scanned transitively; symlinks & non-JS rejected)
+ *
+ * Rejects: all other imports, absolute/file: specifiers, non-literal import()/require(),
+ * import.meta.resolve, eval/Function/createRequire, symlinks, and any `process` usage
+ * other than `process.env.MOL_*`.
+ */
+export function evaluateTestSandboxGate(submissionDir, opts = {}) {
+  const testDirRel = opts.testDir || "tests/regression";
+  const requireTests = opts.requireTests !== undefined ? Boolean(opts.requireTests) : true;
+  const allowedBare = new Set([
+    ...DEFAULT_ALLOWED_BARE_SPECIFIERS,
+    ...(Array.isArray(opts.allowedBareSpecifiers) ? opts.allowedBareSpecifiers : [])
+  ]);
+
+  const absSubmission = path.resolve(submissionDir);
+  const testRoot = path.resolve(absSubmission, testDirRel);
+  const violations = [];
+
+  if (!fs.existsSync(testRoot)) {
+    if (requireTests) {
+      return {
+        pass: false,
+        detail: `no regression test directory found at ${testDirRel} (required by G-test-sandbox)`,
+        violations: [],
+        filesScanned: 0
+      };
+    }
+    return {
+      pass: true,
+      detail: `no regression test files in ${testDirRel} (0 violations)`,
+      violations: [],
+      filesScanned: 0
+    };
+  }
+
+  if (hasSymlinkInChain(absSubmission, testRoot)) {
+    violations.push({
+      file: testDirRel.replace(/\\/g, "/"),
+      line: 1,
+      rule: "forbidden_symlink",
+      snippet: `${testDirRel} contains a symbolic link`
+    });
+    return {
+      pass: false,
+      detail: `1 test-sandbox violation(s); first: ${testDirRel}:1 [forbidden_symlink] symbolic link in test path`,
+      violations,
+      filesScanned: 0
+    };
+  }
+
+  if (!fs.statSync(testRoot).isDirectory()) {
+    return {
+      pass: false,
+      detail: `${testDirRel} is not a directory`,
+      violations: [],
+      filesScanned: 0
+    };
+  }
+
+  const realTestRoot = fs.realpathSync(testRoot);
+  const filesToScan = [];
+  const queued = new Set();
+
+  function enqueueFile(absFile) {
+    const resolved = path.resolve(absFile);
+    if (!queued.has(resolved)) {
+      queued.add(resolved);
+      filesToScan.push(resolved);
+    }
+  }
+
+  function walkInitial(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const relFile = path.relative(absSubmission, full).replace(/\\/g, "/");
+      let lstat;
+      try {
+        lstat = fs.lstatSync(full);
+      } catch {
+        continue;
+      }
+      if (entry.isSymbolicLink() || lstat.isSymbolicLink()) {
+        violations.push({
+          file: relFile,
+          line: 1,
+          rule: "forbidden_symlink",
+          snippet: `symlink not allowed: ${relFile}`
+        });
+        continue;
+      }
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === ".git") continue;
+        walkInitial(full);
+      } else if (entry.isFile() && TEST_SANDBOX_EXTS.has(path.extname(entry.name).toLowerCase())) {
+        enqueueFile(full);
+      }
+    }
+  }
+
+  walkInitial(testRoot);
+
+  let filesScanned = 0;
+  for (let idx = 0; idx < filesToScan.length; idx++) {
+    const full = filesToScan[idx];
+    const relFile = path.relative(absSubmission, full).replace(/\\/g, "/");
+    if (!fs.existsSync(full)) continue;
+    if (fs.lstatSync(full).isSymbolicLink()) {
+      violations.push({
+        file: relFile,
+        line: 1,
+        rule: "forbidden_symlink",
+        snippet: `symlink not allowed: ${relFile}`
+      });
+      continue;
+    }
+
+    filesScanned += 1;
+    const raw = fs.readFileSync(full, "utf8");
+    const tokens = tokenizeJsForSandbox(raw);
+    const fileDir = path.dirname(full);
+
+    const record = (tok, rule, snippet) => {
+      violations.push({
+        file: relFile,
+        line: tok?.line ?? 1,
+        rule,
+        snippet: String(snippet ?? tok?.raw ?? "").trim().slice(0, 120)
+      });
+    };
+
+    const validateSpecifier = (specifier, tok, snippet) => {
+      const spec = String(specifier).trim();
+      const norm = spec.replace(/\\/g, "/");
+
+      if (!spec) {
+        record(tok, "disallowed_import", snippet);
+        return;
+      }
+      if (/^file:/i.test(norm)) {
+        record(tok, "forbidden_file_url", snippet);
+        return;
+      }
+      if (norm.startsWith("/") || /^[A-Za-z]:[\\/]/.test(spec) || spec.startsWith("\\")) {
+        record(tok, "forbidden_absolute_import", snippet);
+        return;
+      }
+      if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(norm) && !norm.startsWith("node:")) {
+        record(tok, "disallowed_import", snippet);
+        return;
+      }
+
+      if (norm.startsWith(".")) {
+        const resolved = path.resolve(fileDir, spec);
+        if (isAllowedRoomHarnessTarget(resolved, absSubmission)) {
+          if (fs.existsSync(resolved) && fs.lstatSync(resolved).isSymbolicLink()) {
+            record(tok, "forbidden_symlink", snippet);
+          }
+          return;
+        }
+        if (!isSubPath(resolved, testRoot)) {
+          record(tok, "forbidden_escape_import", snippet);
+          return;
+        }
+        const ext = path.extname(resolved).toLowerCase();
+        if (!TEST_SANDBOX_EXTS.has(ext)) {
+          record(tok, "forbidden_non_js_import", snippet);
+          return;
+        }
+        if (hasSymlinkInChain(testRoot, resolved)) {
+          record(tok, "forbidden_symlink", snippet);
+          return;
+        }
+        if (fs.existsSync(resolved)) {
+          const realTarget = fs.realpathSync(resolved);
+          if (!isSubPath(realTarget, realTestRoot)) {
+            record(tok, "forbidden_symlink", snippet);
+            return;
+          }
+          enqueueFile(resolved);
+        }
+        return;
+      }
+
+      // Bare specifier — strict allowlist
+      if (!allowedBare.has(norm)) {
+        record(tok, "disallowed_import", snippet);
+      }
+    };
+
+    const checkCallArgSingleString = (openParenTokenIdx, kwTok) => {
+      let depth = 0;
+      let closeIdx = -1;
+      for (let j = openParenTokenIdx; j < tokens.length; j++) {
+        const t = tokens[j];
+        if (t.type === "punct" && t.value === "(") depth += 1;
+        else if (t.type === "punct" && t.value === ")") {
+          depth -= 1;
+          if (depth === 0) {
+            closeIdx = j;
+            break;
+          }
+        }
+      }
+      if (closeIdx === -1) {
+        record(kwTok, "forbidden_dynamic_import", `${kwTok.value}(...)`);
+        return;
+      }
+      const argTokens = tokens.slice(openParenTokenIdx + 1, closeIdx);
+      const snippet = tokens.slice(openParenTokenIdx - 1, closeIdx + 1).map((t) => t.raw).join(" ");
+      if (argTokens.length === 1 && argTokens[0].type === "string") {
+        validateSpecifier(argTokens[0].value, kwTok, snippet);
+      } else {
+        record(kwTok, "forbidden_dynamic_import", snippet);
+      }
+    };
+
+    for (let ti = 0; ti < tokens.length; ti++) {
+      const tok = tokens[ti];
+      const prev = ti > 0 ? tokens[ti - 1] : null;
+      const next = ti + 1 < tokens.length ? tokens[ti + 1] : null;
+
+      // Reject any file:// URL literal
+      if ((tok.type === "string" || tok.type === "template") && /file:\/\//i.test(tok.value)) {
+        record(tok, "forbidden_file_url", tok.raw);
+        continue;
+      }
+
+      // 1. import statements, dynamic import(...), import.meta.resolve
+      if (tok.type === "ident" && tok.value === "import") {
+        if (next && next.type === "punct" && next.value === "(") {
+          checkCallArgSingleString(ti + 1, tok);
+          continue;
+        }
+        if (next && next.type === "punct" && next.value === ".") {
+          const t2 = tokens[ti + 2];
+          const t3 = tokens[ti + 3];
+          const t4 = tokens[ti + 4];
+          if (t2?.value === "meta" && t3?.value === "." && t4?.value === "resolve") {
+            record(tok, "forbidden_import_meta_resolve", "import.meta.resolve");
+          }
+          continue;
+        }
+        // Ignore property access like obj.import
+        if (prev && prev.type === "punct" && (prev.value === "." || prev.value === "?.")) {
+          continue;
+        }
+        // Side-effect import: `import"fs"` or `import "fs"`
+        if (next && next.type === "string") {
+          validateSpecifier(next.value, tok, `import ${next.raw}`);
+          continue;
+        }
+        if (next && next.type === "template") {
+          record(tok, "forbidden_dynamic_import", `import ${next.raw}`);
+          continue;
+        }
+        // Standard `import ... from "..."`
+        for (let j = ti + 1; j < tokens.length; j++) {
+          const tj = tokens[j];
+          if (tj.type === "punct" && tj.value === ";") break;
+          if (tj.type === "ident" && tj.value === "from") {
+            const specTok = tokens[j + 1];
+            if (specTok && specTok.type === "string") {
+              validateSpecifier(specTok.value, tok, `import ... from ${specTok.raw}`);
+            } else {
+              record(tok, "forbidden_dynamic_import", `import ... from ${specTok?.raw ?? ""}`);
+            }
+            break;
+          }
+        }
+        continue;
+      }
+
+      // 2. Re-export `export ... from "..."`
+      if (tok.type === "ident" && tok.value === "export" && !(prev?.type === "punct" && prev.value === ".")) {
+        for (let j = ti + 1; j < tokens.length; j++) {
+          const tj = tokens[j];
+          if (tj.type === "punct" && (tj.value === ";" || tj.value === "=")) break;
+          if (tj.type === "ident" && (tj.value === "function" || tj.value === "const" || tj.value === "let" || tj.value === "var" || tj.value === "class" || tj.value === "default")) {
+            break;
+          }
+          if (tj.type === "ident" && tj.value === "from") {
+            const specTok = tokens[j + 1];
+            if (specTok && specTok.type === "string") {
+              validateSpecifier(specTok.value, tok, `export ... from ${specTok.raw}`);
+            } else {
+              record(tok, "forbidden_dynamic_import", `export ... from ${specTok?.raw ?? ""}`);
+            }
+            break;
+          }
+        }
+        continue;
+      }
+
+      // 3. require(...)
+      if (tok.type === "ident" && tok.value === "require" && next?.type === "punct" && next.value === "(") {
+        checkCallArgSingleString(ti + 1, tok);
+        continue;
+      }
+
+      // 4. eval / Function / createRequire
+      if (tok.type === "ident" && (tok.value === "eval" || tok.value === "Function" || tok.value === "createRequire")) {
+        if (next?.type === "punct" && next.value === "(") {
+          record(tok, "forbidden_dynamic_code", `${tok.value}(`);
+          continue;
+        }
+      }
+
+      // 5. `process` access: ONLY `process.env.MOL_*` (or `process.env?.MOL_*`) is allowed
+      if (tok.type === "ident" && tok.value === "process") {
+        // Allow object key `{ process: ... }`
+        if (next?.type === "punct" && next.value === ":") continue;
+        // Allow non-global property access like `obj.process`, EXCEPT `globalThis.process` / `global.process`
+        if (prev?.type === "punct" && (prev.value === "." || prev.value === "?.")) {
+          const objTok = ti >= 2 ? tokens[ti - 2] : null;
+          if (objTok?.type !== "ident" || (objTok.value !== "globalThis" && objTok.value !== "global")) {
+            continue;
+          }
+        }
+        // Check exact pattern: process (. | ?.) env (. | ?.) MOL_...
+        const t1 = tokens[ti + 1];
+        const t2 = tokens[ti + 2];
+        const t3 = tokens[ti + 3];
+        const t4 = tokens[ti + 4];
+        const isAllowedEnv =
+          t1?.type === "punct" && (t1.value === "." || t1.value === "?.") &&
+          t2?.type === "ident" && t2.value === "env" &&
+          t3?.type === "punct" && (t3.value === "." || t3.value === "?.") &&
+          t4?.type === "ident" && /^MOL_[A-Z0-9_]+$/.test(t4.value);
+        if (!isAllowedEnv) {
+          const snippet = tokens.slice(ti, Math.min(tokens.length, ti + 5)).map((t) => t.raw).join("");
+          record(tok, "forbidden_process_access", snippet);
+        }
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    const first = violations[0];
+    return {
+      pass: false,
+      detail: `${violations.length} test-sandbox violation(s); first: ${first.file}:${first.line} [${first.rule}] ${first.snippet}`,
+      violations,
+      filesScanned
+    };
+  }
+
+  if (filesScanned === 0 && requireTests) {
+    return {
+      pass: false,
+      detail: `no regression test files found in ${testDirRel} (required by G-test-sandbox)`,
+      violations: [],
+      filesScanned: 0
+    };
+  }
+
+  return {
+    pass: true,
+    detail: `clean black-box regression tests (${filesScanned} file(s) scanned, 0 violations)`,
+    violations: [],
+    filesScanned
+  };
+}
+
+/**
+ * Evaluate static gates (G-report, G-decisions, G-test-sandbox, plus registered custom gates)
+ * and optional scope check.
  */
 export function evaluateStaticGates(submissionDir, spec, opts = {}) {
   const repoRoot = opts.repoRoot || DEFAULT_REPO_ROOT;
@@ -211,6 +780,19 @@ export function evaluateStaticGates(submissionDir, spec, opts = {}) {
     decisionsRes = validateDecisionsGate(submissionDir, spec, repoRoot);
     if (spec.gates.includes("G-decisions")) {
       staticGates["G-decisions"] = decisionsRes.gate;
+    }
+  }
+
+  if (spec.gates.includes("G-test-sandbox")) {
+    staticGates["G-test-sandbox"] = evaluateTestSandboxGate(submissionDir, {
+      testDir: spec.test_sandbox?.dir,
+      requireTests: spec.test_sandbox?.required !== false
+    });
+  }
+
+  for (const [gateId, evaluator] of CUSTOM_STATIC_GATES.entries()) {
+    if (spec.gates.includes(gateId)) {
+      staticGates[gateId] = evaluator(submissionDir, spec, opts);
     }
   }
 

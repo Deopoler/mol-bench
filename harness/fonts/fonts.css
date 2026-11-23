@@ -1,0 +1,43 @@
+/* MoL-Bench v0.2 Repo-Vendored Deterministic Fonts (OFL-1.1)
+ * Served locally from lobby/fonts/ (copied from harness/fonts/ by seed/prepare).
+ * Until font binaries are vendored into harness/fonts/, fallback system stacks apply.
+ */
+
+@font-face {
+  font-family: "Inter";
+  src: local("Inter"), url("./InterVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: local("Pretendard"), url("./PretendardVariable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Noto Sans JP";
+  src: local("Noto Sans JP"), url("./NotoSansJP-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Noto Serif";
+  src: local("Noto Serif"), url("./NotoSerif-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --mol-font-sans-latin: "Inter", system-ui, -apple-system, sans-serif;
+  --mol-font-sans-ko: "Pretendard", "Inter", "Malgun Gothic", sans-serif;
+  --mol-font-sans-ja: "Noto Sans JP", "Inter", "Yu Gothic", sans-serif;
+  --mol-font-serif: "Noto Serif", Georgia, "Times New Roman", serif;
+}

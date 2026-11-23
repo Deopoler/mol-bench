@@ -9,9 +9,10 @@ import { scoreSubmission } from "../src/score.mjs";
 
 function makeTmpWorkDir(prefix) {
   try {
+    fs.mkdirSync(path.join(process.cwd(), "work"), { recursive: true });
     return fs.mkdtempSync(path.join(process.cwd(), "work", prefix));
   } catch (err) {
-    if (err?.code === "EPERM" || err?.code === "EACCES") {
+    if (err?.code === "EPERM" || err?.code === "EACCES" || err?.code === "ENOENT") {
       return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
     }
     throw err;
@@ -60,7 +61,51 @@ test("rewriting a whole file fails rewrite and score gate forces change ratio to
 test("file comparison supplies out-of-scope files when git diff is unavailable", () => {
   const start = tree({ "src/keep.js": "same\n", "docs/old.txt": "old\n" });
   const sub = tree({ "src/keep.js": "same\n", "docs/new.txt": "new\n" });
-  const changed = compareAllFiles(start, sub);
-  assert.deepEqual(changed, ["docs/new.txt", "docs/old.txt"]);
-  assert.equal(checkScope(changed, ["src/**", "report.json"]).outOfScopeCount, 2);
+  try {
+    const changed = compareAllFiles(start, sub);
+    assert.deepEqual(changed, ["docs/new.txt", "docs/old.txt"]);
+    assert.equal(checkScope(changed, ["src/**", "report.json"]).outOfScopeCount, 2);
+  } finally {
+    fs.rmSync(start, { recursive: true, force: true });
+    fs.rmSync(sub, { recursive: true, force: true });
+  }
+});
+
+test("v0.2 excludeWorkspaceArtifacts ignores root harness files only and never hides nested edits", () => {
+  const start = tree({ "room/src/app.js": "const a = 1;\n" });
+  const sub = tree({
+    "room/src/app.js": "const a = 2;\n",
+    ".run.json": '{"run_id":"x"}\n',
+    "selfcheck.json": '{}\n',
+    ".bench-room": '{"room":"restoration","version":2}\n',
+    "preview/sheet_1.png": "png",
+    "work/tmp/out.json": "{}",
+    // Nested paths with artifact names MUST NOT be excluded (prevents hiding out-of-scope edits)
+    "src/work/hidden.js": "export const cheat = 1;\n",
+    "room/preview/hack.js": "export const hack = 1;\n",
+    "room/.run.json": '{"nested":true}\n',
+    "bench/tamper.js": "export const t = 1;\n"
+  });
+  try {
+    // v0.1 default behavior untouched
+    const v1Changed = compareAllFiles(start, sub);
+    assert.ok(v1Changed.includes(".run.json"));
+    assert.ok(v1Changed.includes("selfcheck.json"));
+    assert.ok(v1Changed.includes("preview/sheet_1.png"));
+    assert.ok(v1Changed.includes("work/tmp/out.json"));
+
+    // v0.2 excludes root harness artifacts only; nested work/preview/.run.json and bench/ stay visible
+    const v2Changed = compareAllFiles(start, sub, { excludeWorkspaceArtifacts: true });
+    assert.deepEqual(v2Changed, [
+      "bench/tamper.js",
+      "room/.run.json",
+      "room/preview/hack.js",
+      "room/src/app.js",
+      "src/work/hidden.js"
+    ]);
+    assert.equal(checkScope(v2Changed, ["room/src/**"]).outOfScopeCount, 4);
+  } finally {
+    fs.rmSync(start, { recursive: true, force: true });
+    fs.rmSync(sub, { recursive: true, force: true });
+  }
 });

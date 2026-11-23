@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import importlib
+import importlib.util
+import os
+import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Sequence
 
 from . import IMPLEMENTED_METRICS, color, lum, mask, ref, render, scene, shape, time_, visual
 from .io import load_image, load_json, load_mask, load_sequence_frames, resolve_path, save_json
 from .select import (
+    VALID_VARIANTS,
     AtFilter,
     aggregate_values,
     parse_at,
@@ -17,6 +22,142 @@ from .select import (
     select_sequences,
     validate_manifest_variants,
 )
+
+V2_EXTRA_VARIANTS: frozenset[str] = frozenset({
+    "lang_ja",
+    "high_contrast",
+    "zoom200",
+    "many_48",
+    "one_room",
+    "empty_state",
+    "prefers_contrast_more",
+})
+
+_PLUGIN_SKIP_STEMS = frozenset({"__init__", "__main__", "cli"})
+
+
+def _is_v2_spec(spec: dict[str, Any], spec_dir: Path | None = None) -> bool:
+    ver = spec.get("spec_version")
+    if isinstance(ver, str):
+        m = re.match(r"^v?(\d+)\.(\d+)", ver.strip())
+        if m:
+            major, minor = int(m.group(1)), int(m.group(2))
+            if major > 0 or minor >= 2:
+                return True
+    if spec_dir is not None and "rooms-v2" in spec_dir.parts:
+        return True
+    return False
+
+
+def _validate_manifest_variants_v2(
+    manifest: dict[str, Any],
+    spec: dict[str, Any] | None = None,
+) -> None:
+    extra: set[str] = set()
+    if isinstance(spec, dict):
+        for v in spec.get("extra_variants") or []:
+            if isinstance(v, str) and v:
+                extra.add(v)
+        for v in (spec.get("capture") or {}).get("variants") or []:
+            if isinstance(v, str) and v:
+                extra.add(v)
+    for v in manifest.get("extra_variants") or []:
+        if isinstance(v, str) and v:
+            extra.add(v)
+    allowed = VALID_VARIANTS | V2_EXTRA_VARIANTS | extra
+    for kind in ("samples", "sequences"):
+        for item in manifest.get(kind, []):
+            v = item.get("variant")
+            if v is not None and v not in allowed:
+                raise ValueError(
+                    f"Unknown variant {v!r} in {kind} entry {item.get('key', '<unknown>')}. "
+                    f"Allowed variants: {sorted(allowed)}"
+                )
+
+
+def _load_external_module(py_file: Path):
+    mod_name = f"_molmetrics_plugin_{py_file.stem}_{abs(hash(str(py_file.resolve())))}"
+    spec = importlib.util.spec_from_file_location(mod_name, py_file)
+    if spec is None or spec.loader is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _merge_plugin_registrations(
+    target: dict[str, Callable[[dict[str, Any]], Any]],
+    sources: dict[str, str],
+    local_reg: dict[str, Any],
+    source_label: str,
+) -> None:
+    for mid, fn in local_reg.items():
+        if not isinstance(mid, str) or not mid:
+            raise ValueError(f"Plugin {source_label} registered invalid metric id: {mid!r}")
+        if not callable(fn):
+            raise TypeError(f"Plugin {source_label} registered non-callable handler for {mid!r}")
+        if mid in IMPLEMENTED_METRICS:
+            raise ValueError(f"Plugin {source_label} cannot shadow built-in metric {mid!r}")
+        if mid in target:
+            raise ValueError(
+                f"Duplicate Python metric plugin {mid!r} in {source_label} (already registered by {sources[mid]})"
+            )
+        target[mid] = fn
+        sources[mid] = source_label
+
+
+def discover_plugins(extra_dirs: Sequence[str | Path] | None = None) -> dict[str, Callable[[dict[str, Any]], Any]]:
+    """Auto-discover Python metric plugins exporting `register(METRICS)`.
+
+    Scans `metrics/molmetrics/*.py` plus any directories in `MOLMETRICS_PLUGIN_DIRS`
+    (os.pathsep-delimited) and `extra_dirs`.
+    Raises ValueError if any plugin shadows a built-in metric or registers a duplicate metric id.
+    """
+    metrics: dict[str, Callable[[dict[str, Any]], Any]] = {}
+    sources: dict[str, str] = {}
+    pkg_dir = Path(__file__).resolve().parent
+
+    # 1. Built-in package directory
+    for py_file in sorted(pkg_dir.glob("*.py")):
+        stem = py_file.stem
+        if stem in _PLUGIN_SKIP_STEMS or stem.startswith("_"):
+            continue
+        mod = importlib.import_module(f"{__package__}.{stem}")
+        reg = getattr(mod, "register", None)
+        if callable(reg):
+            local_reg: dict[str, Any] = {}
+            reg(local_reg)
+            _merge_plugin_registrations(metrics, sources, local_reg, str(py_file))
+
+    # 2. Extra directories from env and explicit args (used by tests / external plugins)
+    search_dirs: list[Path] = []
+    env_dirs = os.environ.get("MOLMETRICS_PLUGIN_DIRS", "")
+    for raw_dir in env_dirs.split(os.pathsep):
+        raw_dir = raw_dir.strip()
+        if raw_dir:
+            search_dirs.append(Path(raw_dir))
+    for d in extra_dirs or []:
+        search_dirs.append(Path(d))
+
+    seen_dirs: set[Path] = set()
+    for d in search_dirs:
+        resolved_dir = d.resolve()
+        if resolved_dir in seen_dirs or resolved_dir == pkg_dir or not resolved_dir.is_dir():
+            continue
+        seen_dirs.add(resolved_dir)
+        for py_file in sorted(resolved_dir.glob("*.py")):
+            if py_file.stem.startswith("_"):
+                continue
+            mod = _load_external_module(py_file)
+            if mod is None:
+                continue
+            reg = getattr(mod, "register", None)
+            if callable(reg):
+                local_reg = {}
+                reg(local_reg)
+                _merge_plugin_registrations(metrics, sources, local_reg, str(py_file))
+
+    return metrics
 
 
 def extract_spec_metrics(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -466,16 +607,88 @@ def _compute_single_metric(
     }
 
 
+def _invoke_plugin_metric(
+    fn: Callable[[dict[str, Any]], Any],
+    metric_id: str,
+    metric_cfg: dict[str, Any],
+    manifest: dict[str, Any],
+    spec: dict[str, Any],
+    start_manifest: dict[str, Any] | None,
+    base_dirs: tuple[Path | None, ...],
+    start_dirs: tuple[Path | None, ...],
+    img_cache: dict[Path, Any] | None = None,
+) -> dict[str, Any] | None:
+    at_filter: AtFilter = parse_at(metric_cfg.get("at"))
+    agg = metric_cfg.get("agg", "median")
+    score_spec = metric_cfg.get("score")
+
+    def _load_cached(rel_or_abs: str | Path, dirs: tuple[Path | None, ...]):
+        resolved = resolve_path(rel_or_abs, *dirs)
+        if img_cache is not None and resolved in img_cache:
+            return img_cache[resolved]
+        arr = load_image(resolved)
+        if img_cache is not None and len(img_cache) < 200:
+            arr.setflags(write=False)
+            img_cache[resolved] = arr
+        return arr
+
+    def _load_img(sample_or_path: dict[str, Any] | str | Path):
+        p = sample_or_path["file"] if isinstance(sample_or_path, dict) else sample_or_path
+        return _load_cached(p, base_dirs)
+
+    def _load_start_img(sample_or_path: dict[str, Any] | str | Path):
+        p = sample_or_path["file"] if isinstance(sample_or_path, dict) else sample_or_path
+        return _load_cached(p, start_dirs)
+
+    def _resolve_m(mask_ref: str | Path, target_shape: tuple[int, int]):
+        return _resolve_mask(mask_ref, target_shape, base_dirs)
+
+    ctx: dict[str, Any] = {
+        "metric_id": metric_id,
+        "metric_cfg": metric_cfg,
+        "manifest": manifest,
+        "spec": spec,
+        "start_manifest": start_manifest,
+        "at_filter": at_filter,
+        "agg": agg,
+        "score_spec": score_spec,
+        "base_dirs": base_dirs,
+        "start_dirs": start_dirs,
+        "load_image": _load_img,
+        "load_start_image": _load_start_img,
+        "resolve_mask": _resolve_m,
+        "select_samples": select_samples,
+        "select_sequences": select_sequences,
+        "aggregate_values": aggregate_values,
+        "get_params": lambda seed: _get_params_for_seed(manifest, seed),
+    }
+    res = fn(ctx)
+    if res is None:
+        return None
+    if isinstance(res, list):
+        if not res:
+            return None
+        raw_val = aggregate_values([r["value"] for r in res], agg=agg, score_spec=score_spec)
+        return {
+            "raw": raw_val,
+            "samples": res,
+            "detail": {"agg": agg, "count": len(res)},
+        }
+    if isinstance(res, dict):
+        return res
+    raise TypeError(f"Plugin metric {metric_id!r} returned unsupported type: {type(res).__name__}")
+
+
 def compute_metrics(
     manifest_path: str | Path,
     spec_path: str | Path | None = None,
     renovation_start_path: str | Path | None = None,
     requested_metrics: list[str] | None = None,
+    plugin_dirs: Sequence[str | Path] | None = None,
 ) -> dict[str, Any]:
-    """Compute all implemented metrics specified by `spec_path` (or `requested_metrics`)."""
+    """Compute all implemented and plugin-registered metrics specified by `spec_path`."""
     m_path = Path(manifest_path)
     manifest = load_json(m_path)
-    validate_manifest_variants(manifest)
 
     spec: dict[str, Any] = {}
     spec_dir: Path | None = None
@@ -484,14 +697,27 @@ def compute_metrics(
         spec = load_json(s_path)
         spec_dir = s_path.parent
 
+    is_v2 = _is_v2_spec(spec, spec_dir)
+    if is_v2:
+        _validate_manifest_variants_v2(manifest, spec)
+    else:
+        validate_manifest_variants(manifest)
+
     start_manifest: dict[str, Any] | None = None
     start_dir: Path | None = None
     if renovation_start_path is not None:
         st_path = Path(renovation_start_path)
         start_manifest = load_json(st_path)
-        validate_manifest_variants(start_manifest)
+        if is_v2:
+            _validate_manifest_variants_v2(start_manifest, spec)
+        else:
+            validate_manifest_variants(start_manifest)
         start_dir = st_path.parent
 
+    # Only load plugin modules for v2 specs (or when explicit plugin dirs are configured),
+    # isolating v0.1 grading from any optional v2 plugin dependencies.
+    has_explicit_plugin_dirs = bool(plugin_dirs) or bool(os.environ.get("MOLMETRICS_PLUGIN_DIRS", "").strip())
+    plugins = discover_plugins(extra_dirs=plugin_dirs) if (is_v2 or has_explicit_plugin_dirs) else {}
     spec_entries = extract_spec_metrics(spec) if spec else []
     spec_by_id = {e["id"]: e for e in spec_entries}
 
@@ -500,13 +726,19 @@ def compute_metrics(
     elif spec_entries:
         target_ids = [e["id"] for e in spec_entries]
     else:
-        target_ids = sorted(IMPLEMENTED_METRICS)
+        target_ids = sorted(set(IMPLEMENTED_METRICS) | set(plugins.keys()))
 
     hidden_dir: Path | None = None
     if spec_dir is not None and spec.get("room"):
-        cand_hidden = spec_dir.parent.parent / "hidden" / str(spec["room"])
-        if cand_hidden.exists():
-            hidden_dir = cand_hidden
+        candidates = (
+            [spec_dir.parent.parent / "hidden-v2" / str(spec["room"]), spec_dir.parent.parent / "hidden" / str(spec["room"])]
+            if is_v2
+            else [spec_dir.parent.parent / "hidden" / str(spec["room"])]
+        )
+        for cand_hidden in candidates:
+            if cand_hidden.exists():
+                hidden_dir = cand_hidden
+                break
 
     base_dirs = (m_path.parent, spec_dir, hidden_dir, Path.cwd())
     start_dirs = (start_dir, m_path.parent, spec_dir, hidden_dir, Path.cwd())
@@ -516,13 +748,19 @@ def compute_metrics(
     img_cache: dict[Path, Any] = {}
 
     for mid in target_ids:
-        if mid not in IMPLEMENTED_METRICS:
+        cfg = spec_by_id.get(mid, {"id": mid})
+        if mid in plugins:
+            res = _invoke_plugin_metric(
+                plugins[mid], mid, cfg, manifest, spec, start_manifest, base_dirs, start_dirs, img_cache=img_cache
+            )
+        elif mid in IMPLEMENTED_METRICS:
+            res = _compute_single_metric(
+                mid, cfg, manifest, spec, start_manifest, base_dirs, start_dirs, img_cache=img_cache
+            )
+        else:
             skipped.append(mid)
             continue
-        cfg = spec_by_id.get(mid, {"id": mid})
-        res = _compute_single_metric(
-            mid, cfg, manifest, spec, start_manifest, base_dirs, start_dirs, img_cache=img_cache
-        )
+
         if res is None:
             skipped.append(mid)
         else:
@@ -556,6 +794,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Compute specific metric id (repeatable)",
     )
+    comp.add_argument(
+        "--plugin-dir",
+        action="append",
+        dest="plugin_dirs",
+        default=None,
+        help="Additional directory containing Python metric plugins exporting register(METRICS) (repeatable)",
+    )
     return parser
 
 
@@ -573,6 +818,7 @@ def main(argv: list[str] | None = None) -> int:
             spec_path=args.spec,
             renovation_start_path=args.renovation_start,
             requested_metrics=args.metrics,
+            plugin_dirs=args.plugin_dirs,
         )
         if args.out:
             save_json(args.out, result)

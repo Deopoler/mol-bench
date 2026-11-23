@@ -3,20 +3,35 @@ import path from "node:path";
 
 const EXCLUDED_DIRS = new Set(["tests", "public-tests", "node_modules", ".venv", "bench", "metrics", ".git", "out"]);
 const EXCLUDED_FILES = new Set(["report.json", "decisions.json"]);
+// v0.2 root-only harness artifacts (never excluded in nested paths so submissions cannot hide edits in src/work/ etc.)
+const ROOT_WORKSPACE_ARTIFACT_DIRS = new Set(["preview", "work"]);
+const ROOT_WORKSPACE_ARTIFACT_FILES = new Set([".run.json", "selfcheck.json", ".bench-room"]);
 const BINARY_EXTS = new Set([".png", ".glb", ".blend", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm", ".woff", ".woff2", ".ttf", ".otf", ".ico", ".pdf", ".zip"]);
 
-function included(rel) {
+function included(rel, excludeWorkspaceArtifacts = false) {
   const parts = rel.replace(/\\/g, "/").split("/");
-  return !parts.some((p) => EXCLUDED_DIRS.has(p)) && !EXCLUDED_FILES.has(parts.at(-1)) && !BINARY_EXTS.has(path.extname(rel).toLowerCase());
+  const baseName = parts.at(-1);
+  if (parts.some((p) => EXCLUDED_DIRS.has(p))) return false;
+  if (EXCLUDED_FILES.has(baseName)) return false;
+  if (excludeWorkspaceArtifacts) {
+    if (parts.length > 1 && ROOT_WORKSPACE_ARTIFACT_DIRS.has(parts[0])) return false;
+    if (parts.length === 1 && ROOT_WORKSPACE_ARTIFACT_FILES.has(baseName)) return false;
+  }
+  return !BINARY_EXTS.has(path.extname(rel).toLowerCase());
 }
 
-function walk(root, base = root, out = new Map()) {
+function walk(root, base = root, out = new Map(), excludeWorkspaceArtifacts = false) {
+  const isRoot = root === base;
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const full = path.join(root, entry.name);
     const rel = path.relative(base, full).replace(/\\/g, "/");
     if (entry.isDirectory()) {
-      if (!EXCLUDED_DIRS.has(entry.name)) walk(full, base, out);
-    } else if (entry.isFile() && included(rel)) out.set(rel, fs.readFileSync(full, "utf8").split(/\r?\n/));
+      if (EXCLUDED_DIRS.has(entry.name)) continue;
+      if (excludeWorkspaceArtifacts && isRoot && ROOT_WORKSPACE_ARTIFACT_DIRS.has(entry.name)) continue;
+      walk(full, base, out, excludeWorkspaceArtifacts);
+    } else if (entry.isFile() && included(rel, excludeWorkspaceArtifacts)) {
+      out.set(rel, fs.readFileSync(full, "utf8").split(/\r?\n/));
+    }
   }
   return out;
 }
@@ -49,10 +64,12 @@ export function lineDiff(a, b) {
   return { added: m, removed: n };
 }
 
-export function compareSourceTrees(startDir, submissionDir) {
+export function compareSourceTrees(startDir, submissionDir, opts = {}) {
+  const excludeWorkspaceArtifacts = Boolean(opts.excludeWorkspaceArtifacts);
   if (!startDir || !fs.existsSync(startDir) || !fs.statSync(startDir).isDirectory()) throw new Error(`start source directory unavailable: ${startDir || "not provided"}`);
   if (!submissionDir || !fs.existsSync(submissionDir) || !fs.statSync(submissionDir).isDirectory()) throw new Error(`submission directory unavailable: ${submissionDir || "not provided"}`);
-  const start = walk(startDir), submission = walk(submissionDir);
+  const start = walk(startDir, startDir, new Map(), excludeWorkspaceArtifacts);
+  const submission = walk(submissionDir, submissionDir, new Map(), excludeWorkspaceArtifacts);
   const files = [...new Set([...start.keys(), ...submission.keys()])].sort();
   const changedFiles = [];
   let added = 0, removed = 0, changedStartLines = 0, startLines = 0;
@@ -67,11 +84,15 @@ export function compareSourceTrees(startDir, submissionDir) {
   return { added, removed, changedStartLines, startLines, changedFiles };
 }
 
-export function compareAllFiles(startDir, submissionDir) {
+export function compareAllFiles(startDir, submissionDir, opts = {}) {
+  const excludeWorkspaceArtifacts = Boolean(opts.excludeWorkspaceArtifacts);
   if (!startDir || !fs.existsSync(startDir) || !fs.statSync(startDir).isDirectory()) throw new Error(`start source directory unavailable: ${startDir || "not provided"}`);
   const collect = (dir, base = dir, result = new Set()) => {
+    const isRoot = dir === base;
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       if (ent.name === ".git" || ent.name === "node_modules") continue;
+      if (excludeWorkspaceArtifacts && isRoot && ent.isDirectory() && ROOT_WORKSPACE_ARTIFACT_DIRS.has(ent.name)) continue;
+      if (excludeWorkspaceArtifacts && isRoot && ent.isFile() && ROOT_WORKSPACE_ARTIFACT_FILES.has(ent.name)) continue;
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) collect(full, base, result);
       else if (ent.isFile()) result.add(path.relative(base, full).replace(/\\/g, "/"));
@@ -82,8 +103,8 @@ export function compareAllFiles(startDir, submissionDir) {
   return [...new Set([...a, ...b])].filter((file) => a.has(file) !== b.has(file) || (a.has(file) && fs.readFileSync(path.join(startDir, file)).equals(fs.readFileSync(path.join(submissionDir, file)))) === false).sort();
 }
 
-export function computeDiffMetrics({ startDir, submissionDir, denominator }) {
-  const diff = compareSourceTrees(startDir, submissionDir);
+export function computeDiffMetrics({ startDir, submissionDir, denominator, excludeWorkspaceArtifacts = false }) {
+  const diff = compareSourceTrees(startDir, submissionDir, { excludeWorkspaceArtifacts });
   if (!(Number(denominator) > 0)) throw new Error("diff denominator unavailable or not positive");
   return {
     ...diff,
