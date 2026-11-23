@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "placeholder",
+  "license": "OFL-1.1",
+  "notes": "No OFL font binaries were available offline during WP-0a. Drop the pinned OFL-1.1 font files and license texts into harness/fonts/ and populate sha256 hashes before freezing v0.2 web rooms.",
+  "fonts": [
+    {
+      "family": "Pretendard",
+      "script": "ko",
+      "file": "PretendardVariable.woff2",
+      "weight": "100 900",
+      "style": "normal",
+      "license_file": "OFL-Pretendard.txt",
+      "source": "https://github.com/orioncactus/pretendard (SIL Open Font License 1.1)",
+      "sha256": null
+    },
+    {
+      "family": "Noto Sans JP",
+      "script": "ja",
+      "file": "NotoSansJP-Variable.woff2",
+      "weight": "100 900",
+      "style": "normal",
+      "license_file": "OFL-Noto.txt",
+      "source": "https://github.com/notofonts/noto-cjk (SIL Open Font License 1.1)",
+      "sha256": null
+    },
+    {
+      "family": "Inter",
+      "script": "latin",
+      "file": "InterVariable.woff2",
+      "weight": "100 900",
+      "style": "normal",
+      "license_file": "OFL-Inter.txt",
+      "source": "https://github.com/rsms/inter (SIL Open Font License 1.1)",
+      "sha256": null
+    },
+    {
+      "family": "Noto Serif",
+      "script": "editorial_serif",
+      "file": "NotoSerif-Variable.woff2",
+      "weight": "100 900",
+      "style": "normal",
+      "license_file": "OFL-Noto.txt",
+      "source": "https://github.com/notofonts/latin-greek-cyrillic (SIL Open Font License 1.1)",
+      "sha256": null
+    }
+  ]
+}

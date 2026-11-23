@@ -194,8 +194,226 @@ export function getGitChangedFiles(submissionDir, baseRef = "HEAD") {
   }
 }
 
+const TEST_SANDBOX_EXTS = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"]);
+const FORBIDDEN_BUILTIN_MODULES = new Set([
+  "fs",
+  "node:fs",
+  "fs/promises",
+  "node:fs/promises",
+  "child_process",
+  "node:child_process",
+  "vm",
+  "node:vm",
+  "module",
+  "node:module",
+  "worker_threads",
+  "node:worker_threads"
+]);
+
+function stripJsCommentsPreserveLines(source) {
+  let out = "";
+  let i = 0;
+  let state = "code"; // code | single | double | template | line_comment | block_comment
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (state === "code") {
+      if (ch === "/" && next === "/") {
+        state = "line_comment";
+        out += "  ";
+        i += 2;
+      } else if (ch === "/" && next === "*") {
+        state = "block_comment";
+        out += "  ";
+        i += 2;
+      } else if (ch === "'") {
+        state = "single";
+        out += ch;
+        i += 1;
+      } else if (ch === '"') {
+        state = "double";
+        out += ch;
+        i += 1;
+      } else if (ch === "`") {
+        state = "template";
+        out += ch;
+        i += 1;
+      } else {
+        out += ch;
+        i += 1;
+      }
+    } else if (state === "line_comment") {
+      if (ch === "\n") {
+        state = "code";
+        out += "\n";
+      } else {
+        out += " ";
+      }
+      i += 1;
+    } else if (state === "block_comment") {
+      if (ch === "*" && next === "/") {
+        state = "code";
+        out += "  ";
+        i += 2;
+      } else if (ch === "\n") {
+        out += "\n";
+        i += 1;
+      } else {
+        out += " ";
+        i += 1;
+      }
+    } else if (state === "single" || state === "double" || state === "template") {
+      const quote = state === "single" ? "'" : state === "double" ? '"' : "`";
+      if (ch === "\\" && next !== undefined) {
+        out += ch + next;
+        i += 2;
+      } else if (ch === quote) {
+        state = "code";
+        out += ch;
+        i += 1;
+      } else {
+        out += ch;
+        i += 1;
+      }
+    }
+  }
+  return out;
+}
+
+function isAllowedHarnessSpecifier(specifier, fileDir, submissionDir) {
+  const norm = specifier.replace(/\\/g, "/");
+  if (/\/testing\/room-harness\.mjs$/.test(norm)) return true;
+  if (norm.startsWith(".")) {
+    const resolved = path.resolve(fileDir, norm).replace(/\\/g, "/");
+    if (/\/(?:bench|harness\/src)\/testing\/room-harness\.mjs$/.test(resolved)) return true;
+    const testsRoot = path.resolve(submissionDir, "tests").replace(/\\/g, "/");
+    if (resolved === testsRoot || resolved.startsWith(`${testsRoot}/`)) return true;
+  }
+  return false;
+}
+
+function lineNumberAt(text, index) {
+  let line = 1;
+  for (let i = 0; i < index; i++) {
+    if (text[i] === "\n") line++;
+  }
+  return line;
+}
+
 /**
- * Evaluate static gates (G-report, G-decisions) and optional scope check.
+ * G-test-sandbox (v0.2 Restoration): static scan of black-box regression tests
+ * verifying they never import room/src/**, use fs/child_process/vm/module,
+ * escape tests/ (except room-harness.mjs), or run dynamic eval/Function.
+ */
+export function evaluateTestSandboxGate(submissionDir, opts = {}) {
+  const testDirRel = opts.testDir || "tests/regression";
+  const testRoot = path.resolve(submissionDir, testDirRel);
+  const violations = [];
+  let filesScanned = 0;
+
+  if (!fs.existsSync(testRoot) || !fs.statSync(testRoot).isDirectory()) {
+    return {
+      pass: true,
+      detail: `no regression test files in ${testDirRel} (0 violations)`,
+      violations: [],
+      filesScanned: 0
+    };
+  }
+
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === ".git") continue;
+        walk(full);
+      } else if (entry.isFile() && TEST_SANDBOX_EXTS.has(path.extname(entry.name).toLowerCase())) {
+        filesScanned += 1;
+        const relFile = path.relative(submissionDir, full).replace(/\\/g, "/");
+        const raw = fs.readFileSync(full, "utf8");
+        const code = stripJsCommentsPreserveLines(raw);
+        const fileDir = path.dirname(full);
+
+        const record = (index, rule, snippet) => {
+          violations.push({
+            file: relFile,
+            line: lineNumberAt(code, index),
+            rule,
+            snippet: String(snippet).trim().slice(0, 120)
+          });
+        };
+
+        // 1. Static import/export from "...", require("..."), dynamic import("...")
+        const specPatterns = [
+          /\b(?:import|export)\s+(?:[^'"]*?\s+from\s+)?["'`]([^"'`]+)["'`]/g,
+          /\bimport\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g,
+          /\brequire\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g
+        ];
+        for (const re of specPatterns) {
+          for (const m of code.matchAll(re)) {
+            const spec = m[1].trim();
+            const normSpec = spec.replace(/\\/g, "/");
+            if (FORBIDDEN_BUILTIN_MODULES.has(normSpec)) {
+              record(m.index, "forbidden_builtin_import", m[0]);
+              continue;
+            }
+            if (/(?:^|\/)room(?:\/|$)/.test(normSpec)) {
+              record(m.index, "forbidden_room_import", m[0]);
+              continue;
+            }
+            if (normSpec.startsWith("file://")) {
+              record(m.index, "forbidden_file_url", m[0]);
+              continue;
+            }
+            if (normSpec.startsWith(".") && !isAllowedHarnessSpecifier(normSpec, fileDir, submissionDir)) {
+              record(m.index, "forbidden_escape_import", m[0]);
+            }
+          }
+        }
+
+        // 2. Dynamic non-literal import(...) or require(...)
+        for (const m of code.matchAll(/\b(?:import|require)\s*\(\s*([^"'`\s)][^)]*)\)/g)) {
+          record(m.index, "forbidden_dynamic_import", m[0]);
+        }
+
+        // 3. Dynamic code execution / Node internals
+        const dynamicPatterns = [
+          { re: /\beval\s*\(/g, rule: "forbidden_dynamic_code" },
+          { re: /\bnew\s+Function\s*\(/g, rule: "forbidden_dynamic_code" },
+          { re: /\bcreateRequire\s*\(/g, rule: "forbidden_dynamic_code" },
+          { re: /\bprocess\s*\.\s*(?:binding|mainModule|_linkedBinding)\b/g, rule: "forbidden_dynamic_code" },
+          { re: /\b(?:fetch|new\s+URL)\s*\(\s*["'`]file:\/\//gi, rule: "forbidden_file_url" }
+        ];
+        for (const { re, rule } of dynamicPatterns) {
+          for (const m of code.matchAll(re)) {
+            record(m.index, rule, m[0]);
+          }
+        }
+      }
+    }
+  }
+
+  walk(testRoot);
+
+  if (violations.length > 0) {
+    const first = violations[0];
+    return {
+      pass: false,
+      detail: `${violations.length} test-sandbox violation(s); first: ${first.file}:${first.line} [${first.rule}] ${first.snippet}`,
+      violations,
+      filesScanned
+    };
+  }
+
+  return {
+    pass: true,
+    detail: `clean black-box regression tests (${filesScanned} file(s) scanned, 0 violations)`,
+    violations: [],
+    filesScanned
+  };
+}
+
+/**
+ * Evaluate static gates (G-report, G-decisions, G-test-sandbox) and optional scope check.
  */
 export function evaluateStaticGates(submissionDir, spec, opts = {}) {
   const repoRoot = opts.repoRoot || DEFAULT_REPO_ROOT;
@@ -212,6 +430,12 @@ export function evaluateStaticGates(submissionDir, spec, opts = {}) {
     if (spec.gates.includes("G-decisions")) {
       staticGates["G-decisions"] = decisionsRes.gate;
     }
+  }
+
+  if (spec.gates.includes("G-test-sandbox")) {
+    staticGates["G-test-sandbox"] = evaluateTestSandboxGate(submissionDir, {
+      testDir: spec.test_sandbox?.dir
+    });
   }
 
   let scopeCheck = null;

@@ -17,8 +17,34 @@ export const VALID_VARIANTS = Object.freeze([
   "long_title",
   "lang_en",
   "lang_ko",
-  "camera_drift"
+  "camera_drift",
+  // v0.2 standard variants
+  "lang_ja",
+  "high_contrast",
+  "zoom200",
+  "many_48",
+  "one_room",
+  "empty_state",
+  "prefers_contrast_more"
 ]);
+
+const CUSTOM_VARIANTS = new Set();
+
+export function registerVariants(names = []) {
+  if (!Array.isArray(names)) {
+    throw new Error("registerVariants expects an array of variant names");
+  }
+  for (const name of names) {
+    if (typeof name !== "string" || !/^[a-z0-9_]+$/.test(name)) {
+      throw new Error(`Invalid variant name: "${name}"`);
+    }
+    CUSTOM_VARIANTS.add(name);
+  }
+}
+
+export function isValidVariant(name) {
+  return VALID_VARIANTS.includes(name) || CUSTOM_VARIANTS.has(name);
+}
 
 export const VALID_SOURCES = Object.freeze(["python", "probe", "room", "harness", "test"]);
 
@@ -54,7 +80,7 @@ function makeFrameKey({ seed, t, viewport, scheme, variant, dpr }) {
   return dpr && dpr !== 1 ? `${base}_dpr${dpr}` : base;
 }
 
-function emitFrames(metric, ctx, opts = {}) {
+export function emitFrames(metric, ctx, opts = {}) {
   const viewports = opts.viewports ?? resolveViewports(metric, ctx);
   const timestamps = opts.timestamps ?? resolveTimestamps(metric, ctx);
   const schemes = opts.schemes ?? resolveSchemes(metric, ctx, opts.bothSchemes);
@@ -87,7 +113,7 @@ function emitFrames(metric, ctx, opts = {}) {
   return out;
 }
 
-function emitProbes(probeName, metric, ctx, opts = {}) {
+export function emitProbes(probeName, metric, ctx, opts = {}) {
   const viewports = opts.viewports ?? resolveViewports(metric, ctx);
   const schemes = opts.schemes ?? resolveSchemes(metric, ctx, opts.bothSchemes);
   const variants = opts.variants ?? resolveVariants(metric, opts.defaultVariants);
@@ -116,7 +142,7 @@ function emitProbes(probeName, metric, ctx, opts = {}) {
   return out;
 }
 
-function emitResizeSteps(metric, ctx, defaultDpr = 1) {
+export function emitResizeSteps(metric, ctx, defaultDpr = 1) {
   const parsed = metric.parsedAt;
   const resizeStep = parsed?.steps?.find((s) => s.kind === "resize_sequence");
   const viewports = resizeStep?.viewports ?? ["1440x900", "768x1024", "1440x900"];
@@ -136,7 +162,7 @@ function emitResizeSteps(metric, ctx, defaultDpr = 1) {
   return out;
 }
 
-function emitSequence(tag, metric, ctx, opts = {}) {
+export function emitSequence(tag, metric, ctx, opts = {}) {
   const viewports = resolveViewports(metric, ctx);
   const schemes = resolveSchemes(metric, ctx);
   const variants = opts.variants ?? resolveVariants(metric, opts.defaultVariants);
@@ -430,17 +456,27 @@ const DEFINITIONS = {
   // tests.* / diff.* / rootcause.* / decision.* / report.* / bugs.*
   "tests.hidden": {
     source: "test",
-    needs: (m, c) => [{
-      kind: "test",
-      path: c.hidden ? `hidden/${c.spec.room}/tests` : `rooms/${c.spec.room}/seed/public-tests`
-    }]
+    needs: (m, c) => {
+      const isV2 = c.version === 2 || String(c.spec?.spec_version || "").startsWith("0.2");
+      const hiddenBase = isV2 ? "hidden-v2" : "hidden";
+      const roomsBase = isV2 ? "rooms-v2" : "rooms";
+      return [{
+        kind: "test",
+        path: c.hidden ? `${hiddenBase}/${c.spec.room}/tests` : `${roomsBase}/${c.spec.room}/seed/public-tests`
+      }];
+    }
   },
   "tests.preservation": {
     source: "test",
-    needs: (m, c) => [{
-      kind: "test",
-      path: c.hidden ? `hidden/${c.spec.room}/tests` : `rooms/${c.spec.room}/seed/public-tests`
-    }]
+    needs: (m, c) => {
+      const isV2 = c.version === 2 || String(c.spec?.spec_version || "").startsWith("0.2");
+      const hiddenBase = isV2 ? "hidden-v2" : "hidden";
+      const roomsBase = isV2 ? "rooms-v2" : "rooms";
+      return [{
+        kind: "test",
+        path: c.hidden ? `${hiddenBase}/${c.spec.room}/tests` : `${roomsBase}/${c.spec.room}/seed/public-tests`
+      }];
+    }
   },
   "tests.redgreen": { source: "test", needs: none },
   "rootcause.accuracy": { source: "harness", needs: none },
@@ -551,13 +587,59 @@ const DEFINITIONS = {
   }
 };
 
+const PLUGIN_DEFINITIONS = new Map();
+
+/**
+ * Register custom metric descriptors (frozen M1 Extension Protocol).
+ * Does not mutate built-in v0.1 DEFINITIONS.
+ * @param {Record<string, { source: string, needs: (metric: object, ctx: object) => Array<object> }>} defs
+ * @param {{ replace?: boolean }} opts
+ */
+export function registerMetrics(defs, { replace = false } = {}) {
+  if (!defs || typeof defs !== "object") {
+    throw new Error("registerMetrics expects an object mapping metricId -> { source, needs }");
+  }
+  const registered = [];
+  for (const [id, def] of Object.entries(defs)) {
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error("Metric id must be a non-empty string");
+    }
+    if (!def || typeof def !== "object") {
+      throw new Error(`Invalid metric definition for "${id}"`);
+    }
+    if (!VALID_SOURCES.includes(def.source)) {
+      throw new Error(`Invalid metric source "${def.source}" for "${id}" (expected one of: ${VALID_SOURCES.join(", ")})`);
+    }
+    const needsFn = def.needs ?? none;
+    if (typeof needsFn !== "function") {
+      throw new Error(`Metric "${id}" needs must be a function`);
+    }
+    if (!replace && (Object.hasOwn(DEFINITIONS, id) || PLUGIN_DEFINITIONS.has(id))) {
+      throw new Error(`Metric "${id}" is already registered (pass { replace: true } to override)`);
+    }
+    PLUGIN_DEFINITIONS.set(id, { source: def.source, needs: needsFn });
+    registered.push(id);
+  }
+  return registered;
+}
+
+export function unregisterMetrics(ids = []) {
+  for (const id of ids) {
+    PLUGIN_DEFINITIONS.delete(id);
+  }
+}
+
 export function hasMetric(id) {
+  if (PLUGIN_DEFINITIONS.has(id)) return true;
   if (Object.hasOwn(DEFINITIONS, id)) return true;
   if (typeof id === "string" && id.startsWith("request.") && id.length > "request.".length) return true;
   return false;
 }
 
 export function getMetricDef(id) {
+  if (PLUGIN_DEFINITIONS.has(id)) {
+    return { id, ...PLUGIN_DEFINITIONS.get(id) };
+  }
   if (Object.hasOwn(DEFINITIONS, id)) {
     return { id, ...DEFINITIONS[id] };
   }
@@ -568,5 +650,5 @@ export function getMetricDef(id) {
 }
 
 export function listMetricIds() {
-  return Object.keys(DEFINITIONS);
+  return [...new Set([...Object.keys(DEFINITIONS), ...PLUGIN_DEFINITIONS.keys()])];
 }

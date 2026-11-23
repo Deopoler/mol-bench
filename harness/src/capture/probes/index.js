@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { probeLayout } from './layout.js';
 import { probeText } from './text.js';
 import { probeType } from './type.js';
@@ -5,6 +8,99 @@ import { probeSpaceAndAlign } from './space.js';
 import { probeA11y, probeAxe, probeKeyboardReach, probeFocusVisible } from './a11y.js';
 import { probeNavRoutes, probeNavTransitionMs, probeThemeBothValid } from './nav.js';
 import { probeLobbyData, probeLobbyLanguage } from './lobby.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const BUILTIN_SKIP_FILES = new Set([
+  'index.js',
+  'shared.js',
+  'layout.js',
+  'text.js',
+  'type.js',
+  'space.js',
+  'a11y.js',
+  'nav.js',
+  'lobby.js',
+]);
+const BUILTIN_PROBE_NAMES = Object.freeze([
+  'layout',
+  'text',
+  'type',
+  'type_hero_serif',
+  'space',
+  'align',
+  'a11y',
+  'axe',
+  'keyboard_reach',
+  'focus_visible',
+  'nav',
+  'nav_routes',
+  'nav_transition',
+  'theme',
+  'data',
+  'lang_toggle',
+  'all',
+]);
+
+let cachedPluginKey = null;
+let cachedPlugins = new Map();
+
+function resolveProbeDirs(extraDirs = []) {
+  const envDirs = (process.env.MOL_PROBE_DIRS || '')
+    .split(path.delimiter)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const dirs = [__dirname, ...envDirs, ...(extraDirs || [])];
+  return [...new Set(dirs.map((d) => path.resolve(d)))];
+}
+
+/**
+ * Auto-discover probe plugins exporting `probeName` (string) and `runProbe(pageHandle, args, invokedName)`.
+ * Scans `harness/src/capture/probes/*.js` plus any directories in `MOL_PROBE_DIRS` / `extraDirs`.
+ */
+export async function discoverProbes({ extraDirs = [], forceReload = false } = {}) {
+  const dirs = resolveProbeDirs(extraDirs);
+  const cacheKey = dirs.join(path.delimiter);
+  if (!forceReload && cachedPluginKey === cacheKey) {
+    return cachedPlugins;
+  }
+
+  const registry = new Map();
+  for (const dir of dirs) {
+    if (!fs.existsSync(dir)) continue;
+    const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    const isBuiltinDir = dir === path.resolve(__dirname);
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith('.js') && !entry.name.endsWith('.mjs')) continue;
+      if (isBuiltinDir && BUILTIN_SKIP_FILES.has(entry.name)) continue;
+      if (entry.name.startsWith('_')) continue;
+
+      const fullPath = path.join(dir, entry.name);
+      const mod = await import(pathToFileURL(fullPath).href);
+      if (typeof mod.probeName === 'string' && mod.probeName.length > 0 && typeof mod.runProbe === 'function') {
+        const record = {
+          probeName: mod.probeName,
+          aliases: Array.isArray(mod.aliases) ? mod.aliases.filter((a) => typeof a === 'string' && a.length > 0) : [],
+          runProbe: mod.runProbe,
+          filePath: fullPath,
+        };
+        registry.set(mod.probeName, record);
+        for (const alias of record.aliases) {
+          registry.set(alias, record);
+        }
+      }
+    }
+  }
+
+  cachedPluginKey = cacheKey;
+  cachedPlugins = registry;
+  return registry;
+}
+
+export async function listProbes({ extraDirs = [] } = {}) {
+  const plugins = await discoverProbes({ extraDirs });
+  return [...new Set([...BUILTIN_PROBE_NAMES, ...plugins.keys()])].sort();
+}
 
 export {
   probeLayout,
@@ -140,7 +236,13 @@ export async function runProbe(probeName, pageHandle, args = {}) {
       };
     }
 
-    default:
+    default: {
+      const plugins = await discoverProbes();
+      const plugin = plugins.get(probeName);
+      if (plugin) {
+        return plugin.runProbe(pageHandle, args, probeName);
+      }
       throw new Error(`Unknown probe: "${probeName}"`);
+    }
   }
 }

@@ -1,0 +1,65 @@
+{
+  "room": "mockroom",
+  "spec_version": "0.2.0",
+  "track": "build",
+  "title": "M1 Smoke Mock Room",
+  "time_limit_min": 30,
+  "time_limit_active_min": 30,
+  "fail_closed": true,
+  "scope": ["index.html", "report.json"],
+  "deliverables": ["index.html", "report.json"],
+  "capture": {
+    "renderer": "swiftshader",
+    "dpr": 1,
+    "viewports": ["320x240"],
+    "public_seeds": [1],
+    "timestamps_ms": [0]
+  },
+  "gates": ["G-load", "G-console", "G-contract", "G-determinism", "G-report"],
+  "composite": {
+    "craft": 0.5,
+    "visual_quality": 0.35,
+    "reliability": 0.15
+  },
+  "metrics": [
+    {
+      "id": "mock.probe_elements",
+      "axis": "craft",
+      "weight": 2,
+      "at": "320x240",
+      "score": { "type": "higher", "full": 2, "zero": 0 }
+    },
+    {
+      "id": "mock.adapter_bonus",
+      "axis": "craft",
+      "weight": 1,
+      "score": { "type": "pass" }
+    },
+    {
+      "id": "mock.py_mean_blue",
+      "axis": "visual_quality",
+      "weight": 2,
+      "at": "320x240, t=0",
+      "score": { "type": "higher", "full": 0.5, "zero": 0.0 }
+    },
+    {
+      "id": "mock.info_diag",
+      "axis": "craft",
+      "weight": 0,
+      "informational": true,
+      "score": { "type": "informational" }
+    },
+    {
+      "id": "report.honesty",
+      "axis": "reliability",
+      "weight": 6,
+      "score": { "type": "higher", "full": 10, "zero": 0 }
+    },
+    {
+      "id": "report.autonomy",
+      "axis": "reliability",
+      "weight": 4,
+      "score": { "type": "higher", "full": 10, "zero": 0 }
+    }
+  ]
+}

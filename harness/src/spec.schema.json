@@ -25,7 +25,17 @@
     "title": { "type": "string", "minLength": 1 },
     "brief": { "type": "string" },
     "start": { "type": "string" },
+    "fail_closed": { "type": "boolean" },
+    "completeness_metric": { "type": "string", "minLength": 1 },
     "time_limit_min": { "type": "number", "exclusiveMinimum": 0 },
+    "time_limit_active_min": { "type": "number", "exclusiveMinimum": 0 },
+    "test_sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "minLength": 1 }
+      }
+    },
     "load_timeout_ms": { "type": "number", "exclusiveMinimum": 0 },
     "max_raster_asset_kb": { "type": "number", "minimum": 0 },
     "max_raster_total_kb": { "type": "number", "minimum": 0 },
@@ -79,7 +89,7 @@
         "elements": { "type": "array", "items": { "type": "string" } },
         "allowed_to_change": { "type": "array", "items": { "type": "string" } },
         "compare_at": { "type": "array", "items": { "type": "string" } },
-        "color_schemes": { "type": "array", "items": { "enum": ["light", "dark"] } },
+        "color_schemes": { "type": "array", "items": { "enum": ["light", "dark", "high_contrast"] } },
         "language": { "type": "string" }
       }
     },
@@ -98,7 +108,18 @@
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "kind": {
-            "enum": ["vague_aesthetic", "bug_report", "concrete", "concrete_local", "preserve", "conflicting"]
+            "enum": [
+              "vague_aesthetic",
+              "bug_report",
+              "concrete",
+              "concrete_local",
+              "preserve",
+              "conflicting",
+              "kinematic",
+              "cascading",
+              "lod_bake",
+              "backward_compat"
+            ]
           },
           "text": { "$ref": "#/$defs/bilingualText" },
           "weight": { "type": "number", "exclusiveMinimum": 0 },
@@ -135,11 +156,11 @@
         "dpr": { "type": "number", "exclusiveMinimum": 0 },
         "viewports": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^\\d+x\\d+$" }
+          "items": { "type": "string", "pattern": "^\\d+x\\d+(?:@zoom\\d+)?$" }
         },
         "color_schemes": {
           "type": "array",
-          "items": { "enum": ["light", "dark"] }
+          "items": { "enum": ["light", "dark", "high_contrast"] }
         },
         "virtual_time": { "type": "string" },
         "public_seeds": {
@@ -200,7 +221,8 @@
       "required": ["en", "ko"],
       "properties": {
         "en": { "type": "string" },
-        "ko": { "type": "string" }
+        "ko": { "type": "string" },
+        "ja": { "type": "string" }
       }
     },
     "bandTuple": {
@@ -250,7 +272,7 @@
         },
         {
           "properties": {
-            "type": { "enum": ["pass", "ratio"] }
+            "type": { "enum": ["pass", "ratio", "informational"] }
           },
           "additionalProperties": false
         }
@@ -261,11 +283,12 @@
       "required": ["id", "weight", "score"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "weight": { "type": "number", "exclusiveMinimum": 0 },
+        "weight": { "type": "number", "minimum": 0 },
         "score": { "$ref": "#/$defs/scoreSpec" },
         "at": { "type": "string" },
         "agg": { "enum": ["median", "mean", "worst"] },
         "calibrate": { "type": "boolean" },
+        "informational": { "type": "boolean" },
         "notes": { "type": "string" },
         "mask": { "type": "string" },
         "checks": { "type": "array", "items": { "type": "string" } }

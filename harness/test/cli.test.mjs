@@ -7,6 +7,10 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { gradeSubmission, generatePreviewContactSheets } from "../src/cli.mjs";
+import { unregisterMetrics } from "../src/registry.mjs";
+import { openRoom } from "../src/testing/room-harness.mjs";
+import { discoverProbes, listProbes } from "../src/capture/probes/index.js";
+import { getFontManifest, verifyVendoredFonts, copyFontsTo } from "../fonts/loader.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -208,5 +212,164 @@ test("gradeSubmission captures web renovation start version for relative, mask.e
     assert.ok(res.composite > 8, `expected composite > 8, got ${res.composite}`);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("harness/fonts placeholder manifest and loader API work offline", () => {
+  const manifest = getFontManifest();
+  assert.equal(manifest.license, "OFL-1.1");
+  assert.ok(Array.isArray(manifest.fonts) && manifest.fonts.length >= 4);
+  const status = verifyVendoredFonts();
+  assert.equal(typeof status.complete, "boolean");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-fonts-"));
+  try {
+    const copied = copyFontsTo(tmpDir);
+    assert.ok(copied.includes("fonts.css"));
+    assert.ok(copied.includes("manifest.json"));
+    assert.equal(fs.existsSync(path.join(tmpDir, "fonts.css")), true);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("room-harness openRoom provides black-box BenchRoom lifecycle, resize, screenshot, and rafSweep", { timeout: 60_000 }, async () => {
+  const subDir = path.join(__dirname, "fixtures", "v2", "submission");
+  const room = await openRoom({ targetDir: subDir, viewport: "320x240", seed: 7 });
+  try {
+    await room.setSeed(11);
+    await room.seek(250);
+    await room.renderFrame();
+    const st1 = await room.state();
+    assert.equal(st1.seed, 11);
+    assert.equal(st1.t, 250);
+    assert.equal(st1.mounted, true);
+
+    const stats = await room.stats();
+    assert.equal(stats.drawCalls, 1);
+
+    const shot = await room.screenshot();
+    assert.ok(Buffer.isBuffer(shot) && shot.length > 100);
+
+    const sz = await room.resize("400x300");
+    assert.deepEqual(sz, { width: 400, height: 300 });
+    const stResize = await room.state();
+    assert.equal(stResize.width, 400);
+    assert.equal(stResize.height, 300);
+
+    await room.unmount();
+    assert.equal((await room.state()).mounted, false);
+    await room.mount("#stage");
+    assert.equal((await room.state()).mounted, true);
+
+    const sweep = await room.rafSweep({ durationMs: 200, hz: 30, startClockMs: 0 });
+    assert.ok(sweep.frames >= 5);
+    assert.ok(sweep.state.rafTicks >= 5);
+    assert.deepEqual(room.consoleErrors(), []);
+  } finally {
+    await room.close();
+  }
+});
+
+test("M1 smoke test: mock v2 adapter + mock probe + mock python metric grade end-to-end without editing WP-0a files", { timeout: 90_000 }, async () => {
+  const v2Root = path.join(__dirname, "fixtures", "v2");
+  const probeDir = path.join(v2Root, "probes");
+  const pyDir = path.join(v2Root, "pymetrics");
+  const adapterDir = path.join(v2Root, "adapters");
+  const specPath = path.join(v2Root, "rooms-v2", "mockroom", "spec.json");
+  const subDir = path.join(v2Root, "submission");
+  const tmpWork = fs.mkdtempSync(path.join(os.tmpdir(), "mol-m1-smoke-"));
+
+  const prevProbeEnv = process.env.MOL_PROBE_DIRS;
+  const prevPyEnv = process.env.MOLMETRICS_PLUGIN_DIRS;
+  process.env.MOL_PROBE_DIRS = probeDir;
+  process.env.MOLMETRICS_PLUGIN_DIRS = pyDir;
+
+  try {
+    // Verify probe auto-discovery picks up mock_probe without editing probes/index.js
+    const discovered = await discoverProbes({ forceReload: true });
+    assert.equal(discovered.has("mock_probe"), true);
+    assert.equal(discovered.has("mock.probe_elements"), true);
+    const probeNames = await listProbes();
+    assert.ok(probeNames.includes("mock_probe"));
+
+    // End-to-end grade using mock v2 adapter + mock probe + mock python metric
+    const res = await gradeSubmission({
+      room: specPath,
+      submissionDir: subDir,
+      version: 2,
+      adapterDir,
+      workDir: tmpWork,
+      repoRoot: REPO_ROOT
+    });
+
+    assert.equal(res.room, "mockroom");
+    assert.equal(res.spec_version, "0.2.0");
+    assert.equal(res.bench_version, "0.2.0");
+    assert.equal(res.gates["G-load"].pass, true);
+    assert.equal(res.gates["G-contract"].pass, true);
+    assert.equal(res.gates["G-determinism"].pass, true);
+    assert.equal(res.gates["G-report"].pass, true);
+
+    assert.equal(res.metrics["mock.probe_elements"].raw, 2);
+    assert.equal(res.metrics["mock.probe_elements"].score, 10);
+    assert.equal(res.metrics["mock.adapter_bonus"].raw, true);
+    assert.equal(res.metrics["mock.adapter_bonus"].score, 10);
+    assert.ok(res.metrics["mock.py_mean_blue"].raw > 0.7, `expected blue mean > 0.7, got ${res.metrics["mock.py_mean_blue"].raw}`);
+    assert.equal(res.metrics["mock.py_mean_blue"].score, 10);
+    assert.equal(res.metrics["mock.info_diag"].informational, true);
+    assert.equal(res.metrics["mock.info_diag"].score, null);
+    assert.equal(res.axes.craft, 10);
+    assert.equal(res.axes.visual_quality, 10);
+    assert.equal(res.axes.reliability, 10);
+    assert.equal(res.composite, 10);
+    assert.ok(!res.warnings || !res.warnings.some((w) => w.includes("missing_required_metric")));
+
+    // Toolchain provenance stamp recorded on v2 results
+    assert.ok(res.toolchain && typeof res.toolchain === "object");
+    assert.equal(res.toolchain.node_version, process.version);
+    assert.ok(typeof res.toolchain.python_version === "string" && res.toolchain.python_version.length > 0);
+    assert.ok(typeof res.toolchain.chromium_version === "string" && res.toolchain.chromium_version.includes("playwright-core"));
+    assert.equal(res.toolchain.os_platform, `${process.platform}-${process.arch}`);
+
+    // Fail-closed end-to-end check: removing python plugin drops mock.py_mean_blue -> fails closed to 0
+    delete process.env.MOLMETRICS_PLUGIN_DIRS;
+    const tmpWork2 = fs.mkdtempSync(path.join(os.tmpdir(), "mol-m1-failclosed-"));
+    try {
+      const fcRes = await gradeSubmission({
+        room: specPath,
+        submissionDir: subDir,
+        version: 2,
+        adapterDir,
+        workDir: tmpWork2,
+        repoRoot: REPO_ROOT
+      });
+      assert.equal(fcRes.metrics["mock.py_mean_blue"].score, 0);
+      assert.equal(fcRes.metrics["mock.py_mean_blue"].missing, true);
+      assert.equal(fcRes.axes.visual_quality, 0);
+      assert.equal(fcRes.composite, 6.5);
+      assert.ok(fcRes.warnings.includes("missing_required_metric: mock.py_mean_blue"));
+    } finally {
+      fs.rmSync(tmpWork2, { recursive: true, force: true });
+    }
+
+    // v0.1 invariance check: v0.1 result keeps bench_version 0.1.0, omits toolchain, preserves null-drop
+    const v1Res = await gradeSubmission({
+      room: "aurora",
+      submissionDir: MOCK_AURORA,
+      noCapture: true,
+      noPython: true,
+      repoRoot: REPO_ROOT
+    });
+    assert.equal(v1Res.bench_version, "0.1.0");
+    assert.equal("toolchain" in v1Res, false);
+    assert.equal(v1Res.axes.reliability, 10);
+  } finally {
+    if (prevProbeEnv === undefined) delete process.env.MOL_PROBE_DIRS;
+    else process.env.MOL_PROBE_DIRS = prevProbeEnv;
+    if (prevPyEnv === undefined) delete process.env.MOLMETRICS_PLUGIN_DIRS;
+    else process.env.MOLMETRICS_PLUGIN_DIRS = prevPyEnv;
+    await discoverProbes({ forceReload: true });
+    unregisterMetrics(["mock.probe_elements", "mock.py_mean_blue", "mock.adapter_bonus", "mock.info_diag"]);
+    fs.rmSync(tmpWork, { recursive: true, force: true });
   }
 });

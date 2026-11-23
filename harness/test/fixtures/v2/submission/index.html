@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Mock v2 Room</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: rgb(16, 64, 210);
+      color: #ffffff;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div data-mock-item="1">Item 1</div>
+    <div data-mock-item="2">Item 2</div>
+  </div>
+  <script>
+    let currentSeed = 1;
+    let currentTime = 0;
+    let mounted = true;
+    let rafTicks = 0;
+    let running = false;
+
+    function tick() {
+      if (!running) return;
+      rafTicks += 1;
+      requestAnimationFrame(tick);
+    }
+
+    window.__bench = {
+      version: 1,
+      ready: Promise.resolve(),
+      setSeed(s) { currentSeed = Number(s); },
+      seek(t) { currentTime = Number(t); running = false; },
+      resume() {
+        if (!running) {
+          running = true;
+          requestAnimationFrame(tick);
+        }
+      },
+      async renderFrame() {
+        await new Promise((r) => requestAnimationFrame(r));
+      },
+      mount(el) {
+        mounted = true;
+        if (el && !el.querySelector("[data-mock-item]")) {
+          const d = document.createElement("div");
+          d.setAttribute("data-mock-item", "remounted");
+          el.appendChild(d);
+        }
+      },
+      unmount() {
+        mounted = false;
+      },
+      state() {
+        return { seed: currentSeed, t: currentTime, mounted, rafTicks, width: window.innerWidth, height: window.innerHeight };
+      },
+      stats() {
+        return { drawCalls: 1, triangles: 2 };
+      }
+    };
+  </script>
+</body>
+</html>

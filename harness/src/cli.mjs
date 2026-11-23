@@ -6,8 +6,9 @@ import zlib from "node:zlib";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
-import { loadSpec, buildPlan } from "./spec.mjs";
-import { scoreSubmission, scoreMetric, round1 } from "./score.mjs";
+import { loadSpec, buildPlan, parseVersion, resolveVersionPaths } from "./spec.mjs";
+import { scoreSubmission, scoreMetric, round1, isV2Spec } from "./score.mjs";
+import { registerMetrics } from "./registry.mjs";
 import { evaluateStaticGates, combineGates, getGitChangedFiles, evaluateAliveGate } from "./gates.mjs";
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "./report.mjs";
 import { compareSourceTrees, compareAllFiles, countPatchLines, computeDiffMetrics } from "./diffmetrics.mjs";
@@ -53,16 +54,99 @@ function findPythonExecutable(repoRoot = REPO_ROOT) {
   return "python";
 }
 
-async function loadRoomAdapter(room) {
-  const adapterPath = path.join(__dirname, "rooms", `${room}.mjs`);
-  if (fs.existsSync(adapterPath)) {
-    return import(pathToFileURL(adapterPath).href);
+export async function loadRoomAdapter(room, { version = 1, repoRoot = REPO_ROOT, adapterDir = null } = {}) {
+  const v = parseVersion(version);
+  const envDirs = (process.env.MOL_ADAPTER_DIRS || "")
+    .split(path.delimiter)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const defaultDirs =
+    v === 2
+      ? [path.join(__dirname, "rooms-v2"), path.join(repoRoot, "harness", "src", "rooms-v2")]
+      : [path.join(__dirname, "rooms"), path.join(repoRoot, "harness", "src", "rooms")];
+  const candidateDirs = [
+    ...(adapterDir ? [path.resolve(adapterDir)] : []),
+    ...envDirs.map((d) => path.resolve(d)),
+    ...defaultDirs.map((d) => path.resolve(d))
+  ];
+
+  let loaded = null;
+  for (const dir of [...new Set(candidateDirs)]) {
+    const adapterPath = path.join(dir, `${room}.mjs`);
+    if (fs.existsSync(adapterPath)) {
+      loaded = await import(pathToFileURL(adapterPath).href);
+      break;
+    }
   }
-  const tplPath = path.join(__dirname, "rooms", "_template.mjs");
-  if (fs.existsSync(tplPath)) {
-    return import(pathToFileURL(tplPath).href);
+  if (!loaded) {
+    const tplPath = path.join(__dirname, "rooms", "_template.mjs");
+    if (fs.existsSync(tplPath)) {
+      loaded = await import(pathToFileURL(tplPath).href);
+    }
   }
-  return null;
+  if (loaded && typeof loaded.registerMetrics === "function") {
+    const defs = loaded.registerMetrics();
+    if (defs && typeof defs === "object") {
+      registerMetrics(defs, { replace: true });
+    }
+  }
+  return loaded;
+}
+
+const _toolchainCache = new Map();
+
+function readPlaywrightChromiumInfo(repoRoot) {
+  const cacheKey = `pw:${repoRoot}`;
+  if (_toolchainCache.has(cacheKey)) return _toolchainCache.get(cacheKey);
+  let info = null;
+  try {
+    const pwCoreDir = path.join(repoRoot, "node_modules", "playwright-core");
+    const pkgPath = path.join(pwCoreDir, "package.json");
+    const browsersPath = path.join(pwCoreDir, "browsers.json");
+    const pkgVer = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath, "utf8")).version : null;
+    let rev = null;
+    if (fs.existsSync(browsersPath)) {
+      const browsers = JSON.parse(fs.readFileSync(browsersPath, "utf8")).browsers || [];
+      const chromium = browsers.find((b) => b.name === "chromium");
+      if (chromium?.revision) rev = chromium.revision;
+    }
+    if (pkgVer && rev) info = `playwright-core@${pkgVer} (chromium rev ${rev})`;
+    else if (pkgVer) info = `playwright-core@${pkgVer}`;
+  } catch {
+    info = null;
+  }
+  _toolchainCache.set(cacheKey, info);
+  return info;
+}
+
+function readPythonVersion(repoRoot) {
+  const cacheKey = `py:${repoRoot}`;
+  if (_toolchainCache.has(cacheKey)) return _toolchainCache.get(cacheKey);
+  let ver = null;
+  try {
+    const py = findPythonExecutable(repoRoot);
+    ver = execFileSync(py, ["--version"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }).trim().replace(/^Python\s+/i, "");
+  } catch {
+    ver = null;
+  }
+  _toolchainCache.set(cacheKey, ver);
+  return ver;
+}
+
+export function collectToolchainInfo({ repoRoot = REPO_ROOT, captureRes = null, noCapture = false, noPython = false } = {}) {
+  const capTc = captureRes?.toolchain || {};
+  return {
+    chromium_version: capTc.chromium_version ?? readPlaywrightChromiumInfo(repoRoot),
+    swiftshader_renderer: capTc.swiftshader_renderer ?? (noCapture ? null : "Google SwiftShader (ANGLE)"),
+    blender_version: capTc.blender_version ?? null,
+    node_version: process.version,
+    python_version: noPython ? null : readPythonVersion(repoRoot),
+    os_platform: `${process.platform}-${process.arch}`
+  };
 }
 
 function runPythonMetrics(manifestPath, specPath, outPath, repoRoot = REPO_ROOT, renovationStartPath = null) {
@@ -231,6 +315,8 @@ export async function gradeSubmission({
   room,
   submissionDir,
   renovation = null,
+  version = null,
+  adapterDir = null,
   hidden = false,
   noCapture = false,
   noPython = false,
@@ -247,7 +333,28 @@ export async function gradeSubmission({
     throw new Error(`Submission directory does not exist: ${resolvedSub}`);
   }
 
-  const spec = loadSpec(room, { renovation, lenient, repoRoot });
+  let adapterRoomName = room;
+  let inferredVersion = version !== null && version !== undefined ? parseVersion(version) : 1;
+  if (typeof room === "string" && room.endsWith(".json")) {
+    const directPath = fs.existsSync(room) ? path.resolve(room) : path.resolve(repoRoot, room);
+    if (fs.existsSync(directPath)) {
+      try {
+        const peek = JSON.parse(fs.readFileSync(directPath, "utf8"));
+        if (typeof peek.room === "string" && peek.room.length > 0) adapterRoomName = peek.room;
+        if ((version === null || version === undefined) && isV2Spec(peek)) inferredVersion = 2;
+      } catch {
+        // loadSpec will report the parse error
+      }
+    }
+  }
+
+  // Load room adapter before loadSpec so adapter.registerMetrics() populates registry.mjs.
+  const adapter = await loadRoomAdapter(adapterRoomName, { version: inferredVersion, repoRoot, adapterDir });
+  const spec = loadSpec(room, { renovation, lenient, version: inferredVersion, repoRoot });
+  const effectiveVersion = spec._version ?? inferredVersion;
+  const versionPaths = resolveVersionPaths(effectiveVersion, repoRoot);
+  const isV2 = effectiveVersion === 2 || isV2Spec(spec);
+
   const runId = `${spec.room}${spec.renovation ? `_${spec.renovation}` : ""}_${Date.now()}`;
   let resolvedWorkDir = workDir ? path.resolve(workDir) : path.join(repoRoot, "work", runId, spec.room);
   // Sandboxed agents (e.g. agy) may be unable to create folders in their workspace; fall back to the OS temp dir.
@@ -258,11 +365,11 @@ export async function gradeSubmission({
     fs.mkdirSync(resolvedWorkDir, { recursive: true });
   }
 
-  // Load hidden seeds/timestamps if --hidden and hidden/<room>/grade.json exists
+  // Load hidden seeds/timestamps if --hidden and <hiddenDir>/<room>/grade.json exists
   let seeds = spec.capture?.public_seeds ?? [1];
   let timestamps = spec.capture?.public_timestamps_ms ?? spec.capture?.timestamps_ms ?? [0];
   if (hidden) {
-    const hiddenGradePath = path.join(repoRoot, "hidden", spec.room, "grade.json");
+    const hiddenGradePath = path.join(versionPaths.hiddenDir, spec.room, "grade.json");
     if (fs.existsSync(hiddenGradePath)) {
       const hg = JSON.parse(fs.readFileSync(hiddenGradePath, "utf8"));
       if (Array.isArray(hg.seeds)) seeds = hg.seeds;
@@ -270,22 +377,22 @@ export async function gradeSubmission({
     }
   }
 
-  const plan = buildPlan(spec, { seeds, timestamps, hidden, renovation });
+  const plan = buildPlan(spec, { seeds, timestamps, hidden, renovation, version: effectiveVersion });
   plan.perf.enabled = Boolean(perf);
 
   // Static gates
-  const defaultStart = spec.track === "renovation" ? path.join(repoRoot, "rooms", spec.room, "anchors", "a5") : null;
+  const defaultStart = spec.track === "renovation" ? path.join(versionPaths.roomsDir, spec.room, "anchors", "a5") : null;
   const startDir = start ? path.resolve(start) : defaultStart;
   let sourceComparison = null;
   let comparisonError = null;
   if (startDir) {
-    try { sourceComparison = compareSourceTrees(startDir, resolvedSub); }
+    try { sourceComparison = compareSourceTrees(startDir, resolvedSub, { excludeWorkspaceArtifacts: isV2 }); }
     catch (err) { comparisonError = err.message; }
   }
   const gitChanged = spec.track === "renovation" ? getGitChangedFiles(resolvedSub) : null;
   let changedFiles = gitChanged;
   if (!Array.isArray(changedFiles) && startDir) {
-    try { changedFiles = compareAllFiles(startDir, resolvedSub); } catch (err) { comparisonError ||= err.message; }
+    try { changedFiles = compareAllFiles(startDir, resolvedSub, { excludeWorkspaceArtifacts: isV2 }); } catch (err) { comparisonError ||= err.message; }
   }
   const staticRes = evaluateStaticGates(resolvedSub, spec, { repoRoot, changedFiles });
 
@@ -305,15 +412,17 @@ export async function gradeSubmission({
       if (!startDir) throw new Error("no start directory; pass --start <dir>");
       let denominator;
       if (spec.track === "renovation") {
-        const patchPath = path.join(repoRoot, "rooms", spec.room, "renovation", `${spec.renovation}.min-diff.patch`);
+        let patchPath = path.join(versionPaths.roomsDir, spec.room, "renovation", `${spec.renovation}.min-diff.patch`);
+        if (!fs.existsSync(patchPath) && isV2) {
+          patchPath = path.join(versionPaths.roomsDir, spec.room, "renovation", "chain", `${spec.renovation}.min-diff.patch`);
+        }
         if (!fs.existsSync(patchPath)) throw new Error(`minimal diff patch unavailable: ${patchPath}`);
         denominator = countPatchLines(patchPath);
       } else {
-        const adapter = await loadRoomAdapter(spec.room);
         if (typeof adapter?.diffDenominator !== "function") throw new Error("room adapter does not provide diffDenominator(ctx)");
-        denominator = await adapter.diffDenominator({ spec, submissionDir: resolvedSub, startDir });
+        denominator = await adapter.diffDenominator({ spec, submissionDir: resolvedSub, startDir, repoRoot, version: effectiveVersion });
       }
-      const diff = computeDiffMetrics({ startDir, submissionDir: resolvedSub, denominator });
+      const diff = computeDiffMetrics({ startDir, submissionDir: resolvedSub, denominator, excludeWorkspaceArtifacts: isV2 });
       if (spec.metrics.some((m) => m.id === "diff.change_ratio")) rawMetrics["diff.change_ratio"] = diff.change_ratio;
       if (spec.metrics.some((m) => m.id === "diff.rewrite")) rawMetrics["diff.rewrite"] = diff.rewrite;
     } catch (err) {
@@ -327,7 +436,6 @@ export async function gradeSubmission({
 
   let captureGates = {};
   let captureRes = null;
-  const adapter = await loadRoomAdapter(spec.room);
 
   if (!noCapture) {
     const isBlenderRoom = String(spec.contract || spec._baseSpec?.contract || "").includes("blender");
@@ -484,6 +592,7 @@ export async function gradeSubmission({
     await adapter.extraMetrics(
       {
         room: spec.room,
+        version: effectiveVersion,
         submissionDir: resolvedSub,
         workDir: resolvedWorkDir,
         repoRoot,
@@ -521,7 +630,7 @@ export async function gradeSubmission({
   }
 
   // First pass score to get public-seed metric scores & request scores for honesty evaluation
-  const preScored = scoreSubmission(spec, rawMetrics, { gates });
+  const preScored = scoreSubmission(spec, rawMetrics, { gates, failClosed: false });
   const publicMetricScores = {};
   const publicMetricValues = {};
   for (const [id, m] of Object.entries(preScored.metrics)) {
@@ -564,7 +673,8 @@ export async function gradeSubmission({
     rawMetrics["report.autonomy"] = autonomyRes.score;
   }
 
-  const finalScored = scoreSubmission(spec, rawMetrics, { gates });
+  // partialEval is strictly derived from harness CLI flags (--no-capture / --no-python), never submission files.
+  const finalScored = scoreSubmission(spec, rawMetrics, { gates, partialEval: Boolean(noCapture || noPython) });
   const allWarnings = [...(spec.warnings || []), ...(finalScored.warnings || []), ...(rawMetrics._diffError ? [`Diff scoring error: ${rawMetrics._diffError}`] : [])];
 
   const result = {
@@ -572,7 +682,7 @@ export async function gradeSubmission({
     ...(spec.renovation ? { renovation: spec.renovation } : {}),
     track: spec.track,
     spec_version: spec.spec_version,
-    bench_version: BENCH_VERSION,
+    bench_version: isV2 ? "0.2.0" : BENCH_VERSION,
     submission: resolvedSub,
     seeds: hidden ? "hidden" : "public",
     gates: finalScored.gates,
@@ -584,6 +694,7 @@ export async function gradeSubmission({
     completeness_multiplier: finalScored.completeness_multiplier,
     taste: null,
     efficiency: { wall_min: null },
+    ...(isV2 ? { toolchain: collectToolchainInfo({ repoRoot, captureRes, noCapture, noPython }) } : {}),
     ...(autonomyRes.invalid ? { invalid: true, invalid_reason: autonomyRes.outcome } : {}),
     ...(allWarnings.length > 0 ? { warnings: allWarnings } : {})
   };
@@ -602,19 +713,21 @@ function readBenchRoomFile(dir) {
       runMeta = null;
     }
   }
+  const runVersion = runMeta?.version ?? (runMeta?.bench_version ? parseVersion(runMeta.bench_version) : null);
   if (!fs.existsSync(file)) {
     if (runMeta?.room) {
-      return { room: runMeta.room, renovation: runMeta.renovation ?? null };
+      return { room: runMeta.room, renovation: runMeta.renovation ?? null, version: runVersion };
     }
     throw new Error(`Missing .bench-room file in ${dir}. Create .bench-room containing the room name (e.g. "aurora").`);
   }
   const raw = fs.readFileSync(file, "utf8").trim();
   if (raw.startsWith("{")) {
     const parsed = JSON.parse(raw);
-    return { room: parsed.room, renovation: parsed.renovation ?? runMeta?.renovation ?? null };
+    const parsedVersion = parsed.version !== undefined ? parseVersion(parsed.version) : (parsed.bench_version ? parseVersion(parsed.bench_version) : runVersion);
+    return { room: parsed.room, renovation: parsed.renovation ?? runMeta?.renovation ?? null, version: parsedVersion };
   }
   const parts = raw.split(/\s+/);
-  return { room: parts[0], renovation: parts[1] ?? runMeta?.renovation ?? null };
+  return { room: parts[0], renovation: parts[1] ?? runMeta?.renovation ?? null, version: runVersion };
 }
 
 function formatSelfcheckTable(result) {
@@ -720,26 +833,31 @@ export function generatePreviewContactSheets(manifestPath, outDir, opts = {}) {
   return written;
 }
 
-function parseAttackThreshold(attackEntry) {
-  const m = String(attackEntry).match(/composite\s*<=\s*(\d+(?:\.\d+)?)/i);
-  return m ? Number(m[1]) : 4;
+function parseAttackThreshold(attackEntry, defaultThreshold = 4) {
+  const m = String(attackEntry).match(/composite\s*<=?\s*(\d+(?:\.\d+)?)/i);
+  return m ? Number(m[1]) : defaultThreshold;
 }
 
 async function runCalibrate(room, flags) {
   const renovation = flags.renovation ?? null;
+  const version = flags.version !== undefined ? parseVersion(flags.version) : 1;
+  const versionPaths = resolveVersionPaths(version, REPO_ROOT);
   const lenient = Boolean(flags.lenient);
   const noCapture = Boolean(flags["no-capture"]);
   const noPython = Boolean(flags["no-python"]);
-  const spec = loadSpec(room, { renovation, lenient, repoRoot: REPO_ROOT });
+  await loadRoomAdapter(room, { version, repoRoot: REPO_ROOT });
+  const spec = loadSpec(room, { renovation, lenient, version, repoRoot: REPO_ROOT });
 
+  const roomBase = path.join(versionPaths.roomsDir, room);
   const candidates = [
-    { label: "null", dir: path.join(REPO_ROOT, "rooms", room, "seed") },
-    { label: "a5", dir: path.join(REPO_ROOT, "rooms", room, "anchors", "a5") },
-    { label: "a8", dir: path.join(REPO_ROOT, "rooms", room, "anchors", "a8") }
+    { label: "null", dir: path.join(roomBase, "seed") },
+    { label: "a5", dir: path.join(roomBase, "anchors", "a5") },
+    { label: "a8", dir: path.join(roomBase, "anchors", "a8") }
   ];
 
-  const attacksDir = path.join(REPO_ROOT, "rooms", room, "attacks");
+  const attacksDir = path.join(roomBase, "attacks");
   const attackSpecs = spec.attacks || [];
+  const defaultAttackThresh = version === 2 ? 3.0 : 4;
   if (fs.existsSync(attacksDir)) {
     for (const entry of fs.readdirSync(attacksDir)) {
       const full = path.join(attacksDir, entry);
@@ -748,7 +866,7 @@ async function runCalibrate(room, flags) {
         candidates.push({
           label: `attack:${entry}`,
           dir: full,
-          threshold: parseAttackThreshold(specLine)
+          threshold: parseAttackThreshold(specLine, defaultAttackThresh)
         });
       }
     }
@@ -765,6 +883,7 @@ async function runCalibrate(room, flags) {
       room,
       submissionDir: c.dir,
       renovation,
+      version,
       hidden: Boolean(flags.hidden),
       noCapture,
       noPython,
@@ -841,10 +960,10 @@ async function main() {
   if (!cmd || cmd === "--help" || cmd === "-h") {
     console.log(
       "Usage:\n" +
-        "  bench grade <room> <dir> [--renovation r1] [--start <dir>] [--hidden] [--out f] [--no-capture] [--no-python] [--perf] [--lenient]\n" +
-        "  bench selfcheck [--dir <dir>] [--renovation r1] [--no-capture] [--no-python] [--lenient]\n" +
+        "  bench grade <room> <dir> [--version 1|2] [--renovation r1] [--start <dir>] [--hidden] [--out f] [--no-capture] [--no-python] [--perf] [--lenient]\n" +
+        "  bench selfcheck [--dir <dir>] [--version 1|2] [--renovation r1] [--no-capture] [--no-python] [--lenient]\n" +
         "  bench preview [--manifest <path>] [--out <dir>] [--room <room>]\n" +
-        "  bench calibrate <room> [--renovation r1] [--no-capture] [--no-python] [--lenient]"
+        "  bench calibrate <room> [--version 1|2] [--renovation r1] [--hidden] [--no-capture] [--no-python] [--lenient]"
     );
     return;
   }
@@ -858,6 +977,7 @@ async function main() {
       room,
       submissionDir: dir,
       renovation: flags.renovation ?? null,
+      version: flags.version ?? null,
       hidden: Boolean(flags.hidden),
       noCapture: Boolean(flags["no-capture"]),
       noPython: Boolean(flags["no-python"]),
@@ -882,11 +1002,12 @@ async function main() {
 
   if (cmd === "selfcheck") {
     const dir = path.resolve(flags.dir || process.cwd());
-    const { room, renovation } = readBenchRoomFile(dir);
+    const { room, renovation, version: benchRoomVersion } = readBenchRoomFile(dir);
     const result = await gradeSubmission({
       room,
       submissionDir: dir,
       renovation: flags.renovation ?? renovation,
+      version: flags.version ?? benchRoomVersion ?? null,
       hidden: false, // selfcheck never touches hidden/
       noCapture: Boolean(flags["no-capture"]),
       noPython: Boolean(flags["no-python"]),

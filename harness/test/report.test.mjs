@@ -108,9 +108,10 @@ test("evaluateAutonomy covers all outcomes in SCORING.md §5", () => {
 test("evaluateAutonomy requires report.json when deliverables are empty and a changed source file", () => {
   let dir;
   try {
+    fs.mkdirSync(path.join(process.cwd(), "work"), { recursive: true });
     dir = fs.mkdtempSync(path.join(process.cwd(), "work", "mol-autonomy-"));
   } catch (err) {
-    if (err?.code === "EPERM" || err?.code === "EACCES") {
+    if (err?.code === "EPERM" || err?.code === "EACCES" || err?.code === "ENOENT") {
       dir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-autonomy-"));
     } else {
       throw err;

@@ -1,8 +1,34 @@
 /**
  * Pure scoring engine (no I/O).
  * Implements score functions, sampling aggregation, axis weighting,
- * gate failure zeroing, and composite scoring per docs/SCORING.md.
+ * gate failure zeroing, fail-closed v0.2 scoring, and composite scoring
+ * per docs/SCORING.md and docs/V02-DESIGN.md.
  */
+
+export function parseSemver(version) {
+  if (typeof version !== "string") return null;
+  const m = version.trim().match(/^v?(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (!m) return null;
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: m[3] !== undefined ? Number(m[3]) : 0
+  };
+}
+
+/**
+ * Returns true if spec declares spec_version >= 0.2.0.
+ */
+export function isV2Spec(spec) {
+  const sv = parseSemver(spec?.spec_version);
+  if (!sv) return false;
+  return sv.major > 0 || sv.minor >= 2;
+}
+
+export function isInformationalMetric(metric) {
+  if (!metric || typeof metric !== "object") return false;
+  return Boolean(metric.informational) || metric.weight === 0 || metric.score?.type === "informational";
+}
 
 export function round1(val) {
   if (val === null || val === undefined || Number.isNaN(val)) return null;
@@ -58,6 +84,10 @@ export function scoreValue(raw, scoreSpec, ctx = {}) {
 
   const scale = ctx.bandScale ?? 1;
   const { type } = scoreSpec;
+
+  if (type === "informational") {
+    return null;
+  }
 
   if (type === "pass") {
     if (typeof raw === "boolean") return raw ? 10 : 0;
@@ -263,6 +293,16 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
   const metricsOut = {};
   const requestsOut = {};
 
+  // partialEval is an internal harness-only option (never read from spec or submission files).
+  const partialEval = opts.partialEval === true;
+  const specWantsFailClosed =
+    spec?.fail_closed === true
+      ? true
+      : spec?.fail_closed === false
+        ? false
+        : isV2Spec(spec);
+  const failClosed = opts.failClosed !== undefined ? Boolean(opts.failClosed) : (specWantsFailClosed && !partialEval);
+
   const effectiveRaw = { ...rawMetrics };
 
   // 1. Score renovation requests -> feeds into `request.<id>` metrics
@@ -275,17 +315,31 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
       for (const sub of req.metrics || []) {
         const scopedKey = `request.${req.id}.${sub.id}`;
         const rawVal = scopedKey in effectiveRaw ? effectiveRaw[scopedKey] : effectiveRaw[sub.id];
+        const informational = isInformationalMetric(sub);
         const res = scoreMetric(sub, rawVal, opts.ctx);
         if (res.warning) warnings.push(res.warning);
-        subResults[sub.id] = {
+
+        let subScore = res.score;
+        let missing = false;
+        if (!informational && failClosed && (subScore === null || subScore === undefined)) {
+          subScore = 0;
+          missing = true;
+          warnings.push(`missing_required_metric: request.${req.id}.${sub.id}`);
+        }
+
+        const subEntry = {
           raw: res.raw,
           samples: res.samples,
-          score: res.score,
+          score: subScore,
           weight: sub.weight
         };
-        if (res.score !== null) {
+        if (informational) subEntry.informational = true;
+        if (missing) subEntry.missing = true;
+        subResults[sub.id] = subEntry;
+
+        if (!informational && sub.weight > 0 && subScore !== null && subScore !== undefined) {
           weightSum += sub.weight;
-          weightedScoreSum += sub.weight * res.score;
+          weightedScoreSum += sub.weight * subScore;
         }
       }
 
@@ -306,18 +360,29 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
 
   // 2. Score top-level metrics
   for (const m of spec.metrics || []) {
+    const informational = isInformationalMetric(m);
     const res = scoreMetric(m, effectiveRaw[m.id], opts.ctx);
     if (res.warning) warnings.push(res.warning);
+
+    let finalScore = res.score;
+    let missing = false;
+    if (!informational && failClosed && (finalScore === null || finalScore === undefined)) {
+      finalScore = 0;
+      missing = true;
+      warnings.push(`missing_required_metric: ${m.id}`);
+    }
 
     const entry = {
       raw: res.raw,
       samples: res.samples,
-      score: res.score,
+      score: finalScore,
       axis: m.axis,
       weight: m.weight
     };
     if (m.calibrate) entry.calibrate = true;
     if (res.excluded) entry.excluded = true;
+    if (informational) entry.informational = true;
+    if (missing) entry.missing = true;
     metricsOut[m.id] = entry;
   }
 
@@ -340,6 +405,7 @@ export function scoreSubmission(spec, rawMetrics = {}, opts = {}) {
     let wsSum = 0;
     for (const m of spec.metrics || []) {
       if (m.axis !== axis) continue;
+      if (isInformationalMetric(m) || m.weight === 0) continue;
       const out = metricsOut[m.id];
       if (!out || out.score === null || out.score === undefined) continue;
       wSum += m.weight;

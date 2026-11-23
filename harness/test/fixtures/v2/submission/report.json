@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "summary": "Mock v2 room submission for M1 contract smoke test.",
+  "deliverables": ["index.html", "report.json"],
+  "claims": [
+    { "metric_id": "mock.probe_elements", "status": "verified", "meets_target": true, "measured_value": 2 }
+  ],
+  "blocked": false
+}

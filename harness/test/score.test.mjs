@@ -259,3 +259,79 @@ test("missing or sufficient completeness leaves axes unchanged and configured me
   assert.equal(notComputed.completeness, null);
   assert.equal(notComputed.completeness_multiplier, 1);
 });
+
+test("v0.2 fail-closed scoring zeroes missing required metrics and excludes informational metrics", () => {
+  const v2Spec = {
+    spec_version: "0.2.0",
+    composite: { craft: 0.6, visual_quality: 0.4 },
+    metrics: [
+      { id: "c.present", axis: "craft", weight: 2, score: { type: "pass" } },
+      { id: "c.missing", axis: "craft", weight: 2, score: { type: "higher", full: 1, zero: 0 } },
+      { id: "perf.frame_ratio", axis: "craft", weight: 0, informational: true, score: { type: "informational" } },
+      { id: "v.present", axis: "visual_quality", weight: 1, score: { type: "pass" } }
+    ]
+  };
+
+  // Normal v0.2 grading: c.missing fails closed to 0 keeping weight 2 -> craft = (2*10 + 2*0)/4 = 5.0
+  // perf.frame_ratio is informational (null raw) -> excluded from wSum, no missing warning
+  const res = scoreSubmission(v2Spec, {
+    "c.present": true,
+    "c.missing": null,
+    "perf.frame_ratio": null,
+    "v.present": true
+  });
+  assert.equal(res.metrics["c.missing"].score, 0);
+  assert.equal(res.metrics["c.missing"].missing, true);
+  assert.equal(res.metrics["perf.frame_ratio"].score, null);
+  assert.equal(res.metrics["perf.frame_ratio"].informational, true);
+  assert.equal(res.metrics["perf.frame_ratio"].missing, undefined);
+  assert.equal(res.axes.craft, 5);
+  assert.equal(res.axes.visual_quality, 10);
+  assert.equal(res.composite, 7);
+  assert.ok(res.warnings.includes("missing_required_metric: c.missing"));
+  assert.ok(!res.warnings.some((w) => w.includes("perf.frame_ratio")));
+
+  // Internal partialEval bypasses fail-closed; spec.partialEval cannot bypass it
+  const tamperedSpec = { ...v2Spec, partialEval: true };
+  const tamperedRes = scoreSubmission(tamperedSpec, { "c.present": true, "v.present": true });
+  assert.equal(tamperedRes.metrics["c.missing"].score, 0);
+  assert.equal(tamperedRes.axes.craft, 5);
+
+  const partialRes = scoreSubmission(v2Spec, { "c.present": true, "v.present": true }, { partialEval: true });
+  assert.equal(partialRes.metrics["c.missing"].score, null);
+  assert.equal(partialRes.axes.craft, 10);
+
+  // v0.1 spec preserves exact null-drop behavior (unchanged)
+  const v1Spec = { ...v2Spec, spec_version: "0.1.0" };
+  const v1Res = scoreSubmission(v1Spec, { "c.present": true, "c.missing": null, "v.present": true });
+  assert.equal(v1Res.metrics["c.missing"].score, null);
+  assert.equal(v1Res.axes.craft, 10);
+  assert.equal(v1Res.composite, 10);
+});
+
+test("v0.2 fail-closed applies to renovation request sub-metrics", () => {
+  const spec = {
+    spec_version: "0.2.0",
+    track: "renovation",
+    composite: { revision: 1.0 },
+    requests: [
+      {
+        id: "R1",
+        weight: 1,
+        metrics: [
+          { id: "m.ok", weight: 1, score: { type: "pass" } },
+          { id: "m.miss", weight: 1, score: { type: "pass" } }
+        ]
+      }
+    ],
+    metrics: [
+      { id: "request.R1", axis: "revision", weight: 1, score: { type: "higher", full: 10, zero: 0 } }
+    ]
+  };
+  const res = scoreSubmission(spec, { "m.ok": true });
+  assert.equal(res.requests.R1.metrics["m.miss"].score, 0);
+  assert.equal(res.requests.R1.metrics["m.miss"].missing, true);
+  assert.equal(res.requests.R1.score, 5);
+  assert.equal(res.axes.revision, 5);
+  assert.ok(res.warnings.includes("missing_required_metric: request.R1.m.miss"));
+});
