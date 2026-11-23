@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MoL-Bench DOM Calibration Scene (BCR)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; background: #f6f4ef; color: #161513; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .chip { padding: 8px 14px; border: 1px solid #ccc; background: #fff; border-radius: 999px; cursor: pointer; }
+    .chip.active { background: #161513; color: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .card { padding: 12px; background: #fff; border: 1px solid #dfd8cb; border-radius: 8px; }
+    .card.hidden { display: none; }
+    .title { font-weight: 700; margin: 0 0 6px; font-size: 1rem; }
+    .meta { font-size: 0.85rem; color: #5c574f; }
+  </style>
+</head>
+<body>
+  <header data-bench="header">
+    <h1 data-bench="hero-title">DOM Calibration Fixture</h1>
+  </header>
+  <div class="toolbar">
+    <input id="search" data-bench="search-input" type="search" placeholder="Search…" />
+    <div data-bench="filter-bar">
+      <button type="button" class="chip active" data-cat="all">All</button>
+      <button type="button" class="chip" data-cat="light">Light</button>
+      <button type="button" class="chip" data-cat="sound">Sound</button>
+      <button type="button" class="chip" data-cat="kinetic">Kinetic</button>
+      <button type="button" class="chip" data-cat="archive">Archive</button>
+    </div>
+    <select id="sort" data-bench="sort-select">
+      <option value="default">Default</option>
+      <option value="title">Title</option>
+      <option value="duration">Duration</option>
+    </select>
+  </div>
+  <main id="grid" class="grid"></main>
+
+  <script>
+    (function () {
+      const CATS = ['light', 'sound', 'kinetic', 'archive'];
+      const ITEMS = Array.from({ length: 48 }, (_, i) => ({
+        id: 'cal-' + i,
+        idx: i,
+        category: CATS[i % CATS.length],
+        title: 'Exhibition ' + String(i + 1).padStart(2, '0') + ' — ' + CATS[i % CATS.length],
+        duration: 5 + ((i * 7) % 45),
+      }));
+
+      const grid = document.getElementById('grid');
+      const searchEl = document.getElementById('search');
+      const sortEl = document.getElementById('sort');
+      const chips = Array.from(document.querySelectorAll('.chip'));
+
+      const cardMap = new Map();
+      const frag = document.createDocumentFragment();
+      for (const item of ITEMS) {
+        const el = document.createElement('article');
+        el.className = 'card';
+        el.setAttribute('data-bench', 'room-card');
+        el.setAttribute('data-id', item.id);
+        el.innerHTML = `<h3 class="title">${item.title}</h3><div class="meta">${item.category} · ${item.duration} min</div>`;
+        cardMap.set(item.id, el);
+        frag.appendChild(el);
+      }
+      grid.appendChild(frag);
+
+      let activeCat = 'all';
+      let query = '';
+      let sortBy = 'default';
+
+      function applyFilterAndSort() {
+        const q = query.trim().toLowerCase();
+        const visible = [];
+        for (const item of ITEMS) {
+          const matchCat = activeCat === 'all' || item.category === activeCat;
+          const matchQ = !q || item.title.toLowerCase().includes(q) || item.category.includes(q);
+          const el = cardMap.get(item.id);
+          if (matchCat && matchQ) {
+            el.classList.remove('hidden');
+            visible.push(item);
+          } else {
+            el.classList.add('hidden');
+          }
+        }
+        visible.sort((a, b) => {
+          if (sortBy === 'title') return a.title.localeCompare(b.title);
+          if (sortBy === 'duration') return a.duration - b.duration;
+          return a.idx - b.idx;
+        });
+        for (const item of visible) {
+          grid.appendChild(cardMap.get(item.id));
+        }
+      }
+
+      searchEl.addEventListener('input', () => {
+        query = searchEl.value;
+        applyFilterAndSort();
+      });
+      sortEl.addEventListener('change', () => {
+        sortBy = sortEl.value;
+        applyFilterAndSort();
+      });
+      for (const ch of chips) {
+        ch.addEventListener('click', () => {
+          activeCat = ch.getAttribute('data-cat') || 'all';
+          for (const c of chips) c.classList.toggle('active', c === ch);
+          applyFilterAndSort();
+        });
+      }
+
+      window.__benchCal = {
+        runStep(stepIdx) {
+          const cats = ['all', 'light', 'sound', 'kinetic', 'archive'];
+          const sorts = ['default', 'title', 'duration'];
+          activeCat = cats[stepIdx % cats.length];
+          sortBy = sorts[stepIdx % sorts.length];
+          query = stepIdx % 3 === 0 ? '1' : '';
+          searchEl.value = query;
+          sortEl.value = sortBy;
+          for (const c of chips) c.classList.toggle('active', c.getAttribute('data-cat') === activeCat);
+          applyFilterAndSort();
+        },
+      };
+
+      window.__bench = {
+        version: 1,
+        ready: Promise.resolve(),
+        setSeed() {},
+        seek() {},
+        resume() {},
+        async renderFrame() {
+          await new Promise((r) => requestAnimationFrame(r));
+        },
+        state() {
+          return { scene: 'dom_cal', cat: activeCat, sort: sortBy, query };
+        },
+        stats() {
+          return { drawCalls: 0, triangles: 0 };
+        },
+      };
+    })();
+  </script>
+</body>
+</html>

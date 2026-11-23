@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { loadSpec } from "../harness/src/spec.mjs";
+import { loadSpec, parseVersion, resolveVersionPaths } from "../harness/src/spec.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..");
@@ -32,7 +32,7 @@ function parseArgs(argv) {
   return { positional, flags };
 }
 
-function copyTreeFiltered(srcDir, dstDir, shouldInclude) {
+function copyTreeFiltered(srcDir, dstDir, shouldInclude, rootBase = srcDir) {
   if (!fs.existsSync(srcDir)) {
     throw new Error(`Source directory does not exist: ${srcDir}`);
   }
@@ -41,17 +41,13 @@ function copyTreeFiltered(srcDir, dstDir, shouldInclude) {
   for (const entry of entries) {
     const srcPath = path.join(srcDir, entry.name);
     const dstPath = path.join(dstDir, entry.name);
-    if (!shouldInclude(srcPath, entry)) continue;
-    if (entry.isDirectory()) {
-      copyTreeFiltered(srcPath, dstPath, shouldInclude);
-    } else if (entry.isSymbolicLink()) {
-      const real = fs.realpathSync(srcPath);
-      const stat = fs.statSync(real);
-      if (stat.isDirectory()) {
-        copyTreeFiltered(real, dstPath, shouldInclude);
-      } else {
-        fs.copyFileSync(real, dstPath);
-      }
+    const st = fs.lstatSync(srcPath);
+    if (st.isSymbolicLink()) {
+      throw new Error(`Symlink not allowed in source tree: ${srcPath}`);
+    }
+    if (!shouldInclude(srcPath, entry, rootBase)) continue;
+    if (st.isDirectory()) {
+      copyTreeFiltered(srcPath, dstPath, shouldInclude, rootBase);
     } else {
       fs.copyFileSync(srcPath, dstPath);
     }
@@ -85,11 +81,14 @@ function copyHeavyDir(srcDir, dstDir) {
   fs.cpSync(srcDir, dstDir, { recursive: true });
 }
 
-function resolvePromptPath(repoRoot, room, renovation, runDir) {
+function resolvePromptPath(repoRoot, room, renovation, runDir, versionPaths = null) {
+  const roomsDir = versionPaths?.roomsDir || path.join(repoRoot, "rooms");
   if (renovation) {
     const candidates = [
-      path.join(repoRoot, "rooms", room, "renovation", `${renovation}-prompt.md`),
-      path.join(repoRoot, "rooms", room, "renovation", `${renovation}.md`)
+      path.join(roomsDir, room, "renovation", `${renovation}-prompt.md`),
+      path.join(roomsDir, room, "renovation", `${renovation}.md`),
+      path.join(roomsDir, room, "renovation", "chain", `${renovation}-prompt.md`),
+      path.join(roomsDir, room, "renovation", "chain", `${renovation}.md`)
     ];
     for (const c of candidates) {
       if (fs.existsSync(c)) return c;
@@ -102,7 +101,7 @@ function resolvePromptPath(repoRoot, room, renovation, runDir) {
     if (fs.existsSync(generatedPrompt)) return generatedPrompt;
   }
 
-  const promptPath = path.join(repoRoot, "rooms", room, "prompt.md");
+  const promptPath = path.join(roomsDir, room, "prompt.md");
   if (fs.existsSync(promptPath)) return promptPath;
   throw new Error(`Room prompt not found: ${promptPath}`);
 }
@@ -114,7 +113,13 @@ function isInsideDir(targetPath, parentDir) {
 
 export function verifyNoHiddenReachable(runDir, repoRoot) {
   const hiddenRoot = path.resolve(repoRoot, "hidden");
-  const badDirect = [path.join(runDir, "hidden"), path.join(runDir, "bench", "hidden")];
+  const hiddenV2Root = path.resolve(repoRoot, "hidden-v2");
+  const badDirect = [
+    path.join(runDir, "hidden"),
+    path.join(runDir, "hidden-v2"),
+    path.join(runDir, "bench", "hidden"),
+    path.join(runDir, "bench", "hidden-v2")
+  ];
   for (const p of badDirect) {
     if (fs.existsSync(p)) {
       throw new Error(`Hidden directory leaked into run folder: ${p}`);
@@ -125,12 +130,13 @@ export function verifyNoHiddenReachable(runDir, repoRoot) {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
-      if (!inHeavyDir && entry.name.toLowerCase() === "hidden") {
+      const lower = entry.name.toLowerCase();
+      if (!inHeavyDir && (lower === "hidden" || lower === "hidden-v2")) {
         throw new Error(`Hidden file/directory reachable in run folder: ${fullPath}`);
       }
       if (entry.isSymbolicLink()) {
         const resolved = fs.realpathSync(fullPath);
-        if (isInsideDir(resolved, hiddenRoot) || !isInsideDir(resolved, runDir)) {
+        if (isInsideDir(resolved, hiddenRoot) || isInsideDir(resolved, hiddenV2Root) || !isInsideDir(resolved, runDir)) {
           throw new Error(`Symlink escapes run folder or reaches hidden/: ${fullPath} -> ${resolved}`);
         }
       }
@@ -170,15 +176,18 @@ function writeSanitizedSpec(src, dst) {
   fs.writeFileSync(dst, JSON.stringify(sanitizeSpec(spec), null, 2));
 }
 
-function copyRoomSpecIntoBench(repoRoot, runDir, room, renovation) {
+function copyRoomSpecIntoBench(repoRoot, runDir, room, renovation, versionPaths = null) {
+  const roomsDir = versionPaths?.roomsDir || path.join(repoRoot, "rooms");
   const specDstDir = path.join(runDir, "bench", "_spec", room);
   fs.mkdirSync(specDstDir, { recursive: true });
-  const baseSpecSrc = path.join(repoRoot, "rooms", room, "spec.json");
+  const baseSpecSrc = path.join(roomsDir, room, "spec.json");
   if (fs.existsSync(baseSpecSrc)) {
     writeSanitizedSpec(baseSpecSrc, path.join(specDstDir, "spec.json"));
   }
   if (renovation) {
-    const renSrc = path.join(repoRoot, "rooms", room, "renovation", `${renovation}.json`);
+    const primaryRen = path.join(roomsDir, room, "renovation", `${renovation}.json`);
+    const chainRen = path.join(roomsDir, room, "renovation", "chain", `${renovation}.json`);
+    const renSrc = fs.existsSync(primaryRen) ? primaryRen : chainRen;
     if (fs.existsSync(renSrc)) {
       const renDstDir = path.join(specDstDir, "renovation");
       fs.mkdirSync(renDstDir, { recursive: true });
@@ -187,19 +196,30 @@ function copyRoomSpecIntoBench(repoRoot, runDir, room, renovation) {
   }
 }
 
+const EXCLUDED_START_DIRS = new Set([
+  ".git", "node_modules", ".venv", "bench", "metrics", "work", "preview", "__pycache__", ".pytest_cache", "hidden", "hidden-v2"
+]);
+
 export function prepareRun({
   room,
   runId,
   renovation = null,
+  version = 1,
   seed = null,
+  startDir = null,
+  chainRound = null,
+  parentRunId = null,
   root = process.env.MOLBENCH_RUNS || DEFAULT_RUNS_ROOT,
   repoRoot = DEFAULT_REPO_ROOT
 }) {
   if (!room) throw new Error("Missing required <room> argument.");
   if (!runId) throw new Error("Missing required --run-id <id> argument.");
 
+  const v = parseVersion(version);
   const resolvedRepoRoot = path.resolve(repoRoot);
-  const spec = loadSpec(room, { renovation, repoRoot: resolvedRepoRoot });
+  const versionPaths = resolveVersionPaths(v, resolvedRepoRoot);
+  const roomsDir = versionPaths.roomsDir;
+  const spec = loadSpec(room, { renovation, version: v, repoRoot: resolvedRepoRoot });
   const track = spec.track || (renovation ? "renovation" : "build");
 
   let effectiveSeed = seed;
@@ -219,20 +239,34 @@ export function prepareRun({
   fs.mkdirSync(runDir, { recursive: true });
 
   try {
-    // 1. Copy room seed / renovation start / restoration variant
-    if (renovation) {
-      const a5Dir = path.join(resolvedRepoRoot, "rooms", room, "anchors", "a5");
+    // 1. Copy room seed / renovation start / restoration variant / chain handoff startDir
+    if (startDir) {
+      const resolvedStart = path.resolve(startDir);
+      if (!fs.existsSync(resolvedStart)) {
+        throw new Error(`Start directory does not exist: ${resolvedStart}`);
+      }
+      copyTreeFiltered(resolvedStart, runDir, (srcPath, entry) => {
+        const rel = path.relative(resolvedStart, srcPath).replace(/\\/g, "/");
+        const parts = rel.split("/");
+        const lower = entry.name.toLowerCase();
+        if (lower === "hidden" || lower === "hidden-v2") return false;
+        if (parts.length === 1 && EXCLUDED_START_DIRS.has(entry.name)) return false;
+        if (rel === "report.json" || rel === "decisions.json" || rel === "selfcheck.json" || rel === ".run.json" || rel === ".bench-room") return false;
+        return true;
+      });
+    } else if (renovation) {
+      const a5Dir = path.join(roomsDir, room, "anchors", "a5");
       if (!fs.existsSync(a5Dir)) {
         throw new Error(`Renovation start anchor not found: ${a5Dir}`);
       }
       copyTreeFiltered(a5Dir, runDir, (srcPath, entry) => {
         const rel = path.relative(a5Dir, srcPath).replace(/\\/g, "/");
-        if (entry.name === ".git") return false;
+        if (entry.name === ".git" || entry.name.toLowerCase() === "hidden" || entry.name.toLowerCase() === "hidden-v2") return false;
         if (rel === "report.json" || rel === "decisions.json" || rel === "selfcheck.json") return false;
         return true;
       });
     } else if (room === "restoration") {
-      const buildVariantScript = path.join(resolvedRepoRoot, "rooms", "restoration", "build-variant.mjs");
+      const buildVariantScript = path.join(roomsDir, "restoration", "build-variant.mjs");
       if (fs.existsSync(buildVariantScript)) {
         const stdout = execFileSync(
           process.execPath,
@@ -241,25 +275,25 @@ export function prepareRun({
         ).trim();
         const entriesNow = fs.readdirSync(runDir);
         if (entriesNow.length === 0 && stdout && fs.existsSync(stdout) && fs.statSync(stdout).isDirectory()) {
-          copyTreeFiltered(stdout, runDir, (_p, entry) => entry.name !== ".git");
+          copyTreeFiltered(stdout, runDir, (_p, entry) => entry.name !== ".git" && entry.name.toLowerCase() !== "hidden" && entry.name.toLowerCase() !== "hidden-v2");
         }
       } else {
-        const fallbackSeedDir = path.join(resolvedRepoRoot, "rooms", "restoration", "seed");
+        const fallbackSeedDir = path.join(roomsDir, "restoration", "seed");
         if (!fs.existsSync(fallbackSeedDir)) {
           throw new Error(`Restoration variant builder not found: ${buildVariantScript}`);
         }
-        copyTreeFiltered(fallbackSeedDir, runDir, (_p, entry) => entry.name !== ".git");
+        copyTreeFiltered(fallbackSeedDir, runDir, (_p, entry) => entry.name !== ".git" && entry.name.toLowerCase() !== "hidden" && entry.name.toLowerCase() !== "hidden-v2");
       }
     } else {
-      const seedDir = path.join(resolvedRepoRoot, "rooms", room, "seed");
+      const seedDir = path.join(roomsDir, room, "seed");
       if (!fs.existsSync(seedDir)) {
         throw new Error(`Room seed directory not found: ${seedDir}`);
       }
-      copyTreeFiltered(seedDir, runDir, (_p, entry) => entry.name !== ".git");
+      copyTreeFiltered(seedDir, runDir, (_p, entry) => entry.name !== ".git" && entry.name.toLowerCase() !== "hidden" && entry.name.toLowerCase() !== "hidden-v2");
     }
 
     // 2. PROMPT.md
-    const promptSrc = resolvePromptPath(resolvedRepoRoot, room, renovation, runDir);
+    const promptSrc = resolvePromptPath(resolvedRepoRoot, room, renovation, runDir, versionPaths);
     const promptDst = path.join(runDir, "PROMPT.md");
     if (path.resolve(promptSrc) !== path.resolve(promptDst)) {
       fs.copyFileSync(promptSrc, promptDst);
@@ -269,20 +303,23 @@ export function prepareRun({
     const harnessSrcDir = path.join(resolvedRepoRoot, "harness", "src");
     const benchDstDir = path.join(runDir, "bench");
     copyTreeFiltered(harnessSrcDir, benchDstDir, (srcPath, entry) => {
-      if (entry.name.toLowerCase() === "hidden") return false;
+      const lower = entry.name.toLowerCase();
+      if (lower === "hidden" || lower === "hidden-v2") return false;
       if (entry.name === ".git" || entry.name === "__pycache__" || entry.name.endsWith(".pyc")) return false;
       const rel = path.relative(harnessSrcDir, srcPath).replace(/\\/g, "/");
-      if (rel.split("/").some((seg) => seg.toLowerCase() === "hidden")) return false;
+      if (rel.split("/").some((seg) => seg.toLowerCase() === "hidden" || seg.toLowerCase() === "hidden-v2")) return false;
       return true;
     });
-    copyRoomSpecIntoBench(resolvedRepoRoot, runDir, room, renovation);
+    copyRoomSpecIntoBench(resolvedRepoRoot, runDir, room, renovation, versionPaths);
 
     // 3b. Blender tooling used by `bench selfcheck` in Blender rooms (no hidden data inside).
     for (const rel of [path.join("harness", "blender"), "metrics3d"]) {
       const src = path.join(resolvedRepoRoot, rel);
       if (!fs.existsSync(src)) continue;
-      copyTreeFiltered(src, path.join(runDir, rel), (srcPath, entry) =>
-        !(entry.name.toLowerCase() === "hidden" || entry.name === "__pycache__" || entry.name.endsWith(".pyc")));
+      copyTreeFiltered(src, path.join(runDir, rel), (_srcPath, entry) => {
+        const lower = entry.name.toLowerCase();
+        return !(lower === "hidden" || lower === "hidden-v2" || entry.name === "__pycache__" || entry.name.endsWith(".pyc"));
+      });
     }
 
     // 4. metrics/, contract/, schemas/
@@ -310,22 +347,36 @@ export function prepareRun({
     copyHeavyDir(path.join(resolvedRepoRoot, "node_modules"), path.join(runDir, "node_modules"));
     copyHeavyDir(path.join(resolvedRepoRoot, ".venv"), path.join(runDir, ".venv"));
 
-    // 6. .run.json
+    // 6. .run.json and (for v2) .bench-room
     const runMeta = {
       run_id: runId,
       room,
       track,
       ...(renovation ? { renovation } : {}),
+      ...(v === 2 ? { version: 2, bench_version: versionPaths.benchVersion } : {}),
+      ...(chainRound !== null ? { chain_round: chainRound } : {}),
+      ...(parentRunId ? { parent_run_id: parentRunId } : {}),
       seed: effectiveSeed ?? null,
+      ...(spec.time_limit_active_min !== undefined ? { time_limit_active_min: spec.time_limit_active_min } : {}),
       created_at: new Date().toISOString()
     };
     fs.writeFileSync(path.join(runDir, ".run.json"), JSON.stringify(runMeta, null, 2) + "\n", "utf8");
+    if (v === 2) {
+      const benchRoomObj = {
+        room,
+        ...(renovation ? { renovation } : {}),
+        version: 2,
+        bench_version: versionPaths.benchVersion
+      };
+      fs.writeFileSync(path.join(runDir, ".bench-room"), JSON.stringify(benchRoomObj, null, 2) + "\n", "utf8");
+    }
 
     // 7. Verify no hidden files or symlinks are reachable
     verifyNoHiddenReachable(runDir, resolvedRepoRoot);
 
     // 8. git init + neutral initial commit (ignore heavy vendor folders so diffs stay clean and fast)
     execFileSync("git", ["init"], { cwd: runDir, stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: runDir, stdio: ["ignore", "pipe", "pipe"] });
     const excludeFile = path.join(runDir, ".git", "info", "exclude");
     fs.mkdirSync(path.dirname(excludeFile), { recursive: true });
     fs.writeFileSync(
@@ -350,7 +401,7 @@ function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2));
   if (flags.help || flags.h || positional.length === 0) {
     console.log(
-      "Usage: node runner/prepare.mjs <room> --run-id <id> [--renovation r1] [--seed N] [--root <dir>]"
+      "Usage: node runner/prepare.mjs <room> --run-id <id> [--version 1|2] [--renovation r1] [--seed N] [--root <dir>]"
     );
     return;
   }
@@ -359,7 +410,9 @@ function main() {
     room,
     runId: flags["run-id"],
     renovation: flags.renovation ?? null,
+    version: flags.version ?? 1,
     seed: flags.seed ?? null,
+    startDir: flags["start-dir"] ?? null,
     root: flags.root || process.env.MOLBENCH_RUNS || DEFAULT_RUNS_ROOT,
     repoRoot: flags["repo-root"] || DEFAULT_REPO_ROOT
   });

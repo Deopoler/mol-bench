@@ -148,6 +148,13 @@ export async function runTests(testPaths, {
             },
             collectGarbageAndHeap: () => handle.collectGarbageAndHeap(),
             getListenerCount: () => handle.getListenerCount(),
+            setRootFontZoom: (pct) => handle.setRootFontZoom(pct),
+            setCpuThrottling: (rate) => handle.setCpuThrottling(rate),
+            getWebGLMetrics: () => handle.getWebGLMetrics(),
+            resetWebGLFrameMetrics: () => handle.resetWebGLFrameMetrics(),
+            getDomMetrics: () => handle.getDomMetrics(),
+            resetDomMetrics: (opts) => handle.resetDomMetrics(opts),
+            getTransferBytes: () => handle.getTransferBytes(),
           },
         };
 

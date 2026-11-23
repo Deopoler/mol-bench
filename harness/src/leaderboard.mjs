@@ -56,7 +56,14 @@ export function loadResultFiles(resultsDir) {
   const results = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-    if (entry.name === "data.json" || entry.name === "leaderboard.json") continue;
+    if (
+      entry.name === "data.json" ||
+      entry.name === "data-v2.json" ||
+      entry.name === "leaderboard.json" ||
+      entry.name === "efficiency-baselines.json"
+    ) {
+      continue;
+    }
     const fullPath = path.join(resultsDir, entry.name);
     try {
       const parsed = JSON.parse(fs.readFileSync(fullPath, "utf8"));
@@ -124,10 +131,45 @@ function summarizeGates(gates = {}) {
   };
 }
 
+function inferProviderGroupFromRun(r) {
+  if (r?.efficiency?.provider_group) return r.efficiency.provider_group;
+  const m = String(r?.model || "").toLowerCase();
+  const src = String(r?.efficiency?.cli_source || r?.efficiency?.tokens?.source || "").toLowerCase();
+  if (m.includes("argon")) return "argon";
+  if (m.includes("gemini") || m.includes("neon") || m.includes("hydrogen") || m.includes("flash") || src === "agy") {
+    return "gemini";
+  }
+  if (m.includes("claude") || m.includes("haiku") || m.includes("sonnet") || m.includes("opus") || src === "claude") {
+    return "claude";
+  }
+  if (m.includes("codex") || m.includes("gpt") || src === "codex") return "codex";
+  return src || "unknown";
+}
+
+function medianNum(nums) {
+  const valid = nums.filter((n) => typeof n === "number" && Number.isFinite(n)).sort((a, b) => a - b);
+  if (valid.length === 0) return null;
+  const mid = Math.floor(valid.length / 2);
+  return valid.length % 2 === 1 ? valid[mid] : (valid[mid - 1] + valid[mid]) / 2;
+}
+
+function loadEfficiencyBaselines(resultsDir) {
+  if (!resultsDir) return null;
+  const p = path.join(resultsDir, "efficiency-baselines.json");
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 export function buildLeaderboardData(loadedResults, opts = {}) {
   const resultsDir = opts.resultsDir ? path.resolve(opts.resultsDir) : null;
   const siteDir = opts.siteDir ? path.resolve(opts.siteDir) : null;
   const copyPreviews = Boolean(opts.copyPreviews && siteDir);
+  const version = opts.version === 2 || opts.version === "2" || opts.version === "0.2.0" ? 2 : 1;
+  const baselines = version === 2 ? loadEfficiencyBaselines(resultsDir) : null;
 
   const runs = loadedResults.map(({ file, data: r }) => {
     const runId = r.run_id || path.basename(file, ".json");
@@ -180,6 +222,12 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     const wallMin = r.efficiency?.wall_min ?? null;
     const status = r.status || null;
     const reason = r.reason || null;
+    const tokOut = r.efficiency?.tokens?.output ?? r.efficiency?.tokens_out ?? null;
+    const tokReas = r.efficiency?.tokens?.reasoning ?? null;
+    const tokOutReas = tokOut !== null || tokReas !== null ? (tokOut || 0) + (tokReas || 0) : null;
+    const tokCacheRead = r.efficiency?.tokens?.cache_read ?? null;
+    const providerGroup = inferProviderGroupFromRun(r);
+    const cliSource = r.efficiency?.cli_source || r.efficiency?.tokens?.source || null;
 
     return {
       run_id: runId,
@@ -188,6 +236,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       renovation: r.renovation || null,
       room_key: roomKey,
       track: r.track || (r.renovation ? "renovation" : "build"),
+      bench_version: r.bench_version || (version === 2 ? "0.2.0" : "0.1.0"),
       seed: r.seed ?? null,
       seeds: r.seeds || "public",
       status,
@@ -198,15 +247,27 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       axes_raw: axesRaw,
       reliability: axes.reliability,
       taste: round1(r.taste ?? null),
+      rounds_completed: r.rounds_completed || null,
+      toolchain: r.toolchain || null,
+      partial_eval: Boolean(r.partial_eval),
       efficiency: {
+        provider_group: providerGroup,
+        cli_source: cliSource,
         active_min: activeMin,
         wall_min: wallMin,
+        time_limit_active_min: r.efficiency?.time_limit_active_min ?? null,
+        timed_out_active: Boolean(r.efficiency?.timed_out_active),
         tokens_in: r.efficiency?.tokens?.input ?? r.efficiency?.tokens_in ?? null,
-        tokens_out: r.efficiency?.tokens?.output ?? r.efficiency?.tokens_out ?? null,
+        tokens_out: tokOut,
+        tokens_reasoning: tokReas,
+        tokens_out_reas: tokOutReas,
+        tokens_cache_read: tokCacheRead,
         tokens_total: r.efficiency?.tokens?.total ?? null,
         tokens: r.efficiency?.tokens ?? null,
+        provider_tok_ratio: r.efficiency?.provider_tok_ratio ?? null,
         usd: r.efficiency?.usd ?? null
       },
+      pareto_within_provider: false,
       gates: gateSummary,
       gates_detail: r.gates || {},
       leakage_flagged: Boolean(r.leakage?.flagged),
@@ -220,12 +281,82 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     };
   });
 
-  // Sort helper: composite_raw desc (nulls last), reliability desc, active_min (fallback wall_min) asc, run_id asc
+  const isFailedRun = (r) => r.status === "no-submission" || r.status === "collect-error";
+
+  // For v2: compute empirical provider_tok_ratio fallback & within-provider Pareto frontier per (room_key, provider_group)
+  if (version === 2) {
+    const byRoomProvider = new Map();
+    for (const r of runs) {
+      if (r.invalid || isFailedRun(r) || r.composite_raw === null) continue;
+      const key = `${r.room_key}::${r.efficiency.provider_group}`;
+      if (!byRoomProvider.has(key)) byRoomProvider.set(key, []);
+      byRoomProvider.get(key).push(r);
+    }
+
+    for (const r of runs) {
+      if (r.efficiency.provider_tok_ratio === null && r.efficiency.tokens_out_reas !== null) {
+        const bTrack = baselines?.tracks?.[r.room_key] ?? baselines?.[r.room_key];
+        const bEntry = bTrack?.[r.efficiency.provider_group];
+        let denom = typeof bEntry === "number" ? bEntry : bEntry?.out_reas_median ?? bEntry?.median_out_reas ?? bEntry?.out_reas ?? null;
+        if (!(typeof denom === "number" && denom > 0)) {
+          const peers = byRoomProvider.get(`${r.room_key}::${r.efficiency.provider_group}`) || [];
+          denom = medianNum(peers.map((p) => p.efficiency.tokens_out_reas));
+        }
+        if (typeof denom === "number" && denom > 0) {
+          r.efficiency.provider_tok_ratio = Number((r.efficiency.tokens_out_reas / denom).toFixed(4));
+        }
+      }
+    }
+
+    for (const peers of byRoomProvider.values()) {
+      for (const a of peers) {
+        if (a.efficiency.tokens_out_reas === null) continue;
+        const dominated = peers.some(
+          (b) =>
+            b !== a &&
+            b.efficiency.tokens_out_reas !== null &&
+            b.composite_raw >= a.composite_raw &&
+            b.efficiency.tokens_out_reas <= a.efficiency.tokens_out_reas &&
+            (b.composite_raw > a.composite_raw || b.efficiency.tokens_out_reas < a.efficiency.tokens_out_reas)
+        );
+        if (!dominated) {
+          a.pareto_within_provider = true;
+        }
+      }
+    }
+  }
+
+  // Sort helper:
+  // - v1: composite_raw desc, reliability desc, active_min asc, run_id asc (preserved verbatim)
+  // - v2: strict weak ordering — quantize composite_raw into 0.05 buckets, then reliability desc ->
+  //       within-provider normalized token ratio asc -> provider_group asc -> tokens_out_reas asc -> run_id asc.
+  const v2Bucket = (val) => (val === null || val === undefined || !Number.isFinite(val))
+    ? -Infinity
+    : Math.floor((val + 1e-9) / 0.05);
+
   const compareRuns = (a, b) => {
     const ac = a.composite_raw;
     const bc = b.composite_raw;
     if (ac === null && bc !== null) return 1;
     if (ac !== null && bc === null) return -1;
+    if (version === 2) {
+      const ab = v2Bucket(ac);
+      const bb = v2Bucket(bc);
+      if (bb !== ab) return bb - ab;
+      const ar = a.axes_raw.reliability ?? -1;
+      const br = b.axes_raw.reliability ?? -1;
+      if (br !== ar) return br - ar;
+      const atr = a.efficiency.provider_tok_ratio ?? Infinity;
+      const btr = b.efficiency.provider_tok_ratio ?? Infinity;
+      if (atr !== btr) return atr - btr;
+      const apg = a.efficiency.provider_group || "unknown";
+      const bpg = b.efficiency.provider_group || "unknown";
+      if (apg !== bpg) return apg.localeCompare(bpg);
+      const at = a.efficiency.tokens_out_reas ?? Infinity;
+      const bt = b.efficiency.tokens_out_reas ?? Infinity;
+      if (at !== bt) return at - bt;
+      return a.run_id.localeCompare(b.run_id);
+    }
     if (ac !== null && bc !== null && bc !== ac) return bc - ac;
     const ar = a.axes_raw.reliability ?? -1;
     const br = b.axes_raw.reliability ?? -1;
@@ -235,8 +366,6 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     if (aw !== bw) return aw - bw;
     return a.run_id.localeCompare(b.run_id);
   };
-
-  const isFailedRun = (r) => r.status === "no-submission" || r.status === "collect-error";
 
   // Group runs by room_key
   const roomsMap = new Map();
@@ -282,6 +411,8 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     const roomRels = [];
     const roomActives = [];
     const roomWalls = [];
+    const roomOutReas = [];
+    const roomTokRatios = [];
     const roomScores = {};
 
     for (const [roomKey, rList] of byRoom.entries()) {
@@ -292,6 +423,8 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       const rlMean = meanOf(rList.map((x) => x.axes_raw.reliability));
       const aMean = meanOf(rList.map((x) => x.efficiency.active_min ?? x.efficiency.wall_min));
       const wMean = meanOf(rList.map((x) => x.efficiency.wall_min));
+      const orMean = meanOf(rList.map((x) => x.efficiency.tokens_out_reas));
+      const trMean = meanOf(rList.map((x) => x.efficiency.provider_tok_ratio));
 
       if (cMean !== null) roomComposites.push(cMean);
       if (crMean !== null) roomCrafts.push(crMean);
@@ -300,6 +433,8 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       if (rlMean !== null) roomRels.push(rlMean);
       if (aMean !== null) roomActives.push(aMean);
       if (wMean !== null) roomWalls.push(wMean);
+      if (orMean !== null) roomOutReas.push(orMean);
+      if (trMean !== null) roomTokRatios.push(trMean);
 
       roomScores[roomKey] = {
         composite: round1(cMean),
@@ -314,9 +449,14 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     const relRaw = meanOf(roomRels);
     const activeMean = meanOf(roomActives);
     const wallMean = meanOf(roomWalls);
+    const outReasMean = meanOf(roomOutReas);
+    const tokRatioMean = meanOf(roomTokRatios);
+    const repRun = validRuns[0] || modelRuns[0];
 
     overall.push({
       model,
+      provider_group: repRun?.efficiency?.provider_group || inferProviderGroupFromRun({ model }),
+      cli_source: repRun?.efficiency?.cli_source || null,
       composite: round1(compRaw),
       composite_raw: compRaw,
       axes: {
@@ -328,6 +468,9 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       reliability: round1(relRaw),
       avg_active_min: activeMean !== null ? Number(activeMean.toFixed(2)) : null,
       avg_wall_min: wallMean !== null ? Number(wallMean.toFixed(2)) : null,
+      avg_out_reas: outReasMean !== null ? Math.round(outReasMean) : null,
+      avg_tok_ratio: tokRatioMean !== null ? Number(tokRatioMean.toFixed(2)) : null,
+      pareto_count: validRuns.filter((r) => r.pareto_within_provider).length,
       rooms_count: byRoom.size,
       runs_count: validRuns.length,
       failed_count: modelRuns.filter(isFailedRun).length,
@@ -340,6 +483,24 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
   overall.sort((a, b) => {
     if (a.composite_raw === null && b.composite_raw !== null) return 1;
     if (a.composite_raw !== null && b.composite_raw === null) return -1;
+    if (version === 2) {
+      const ab = v2Bucket(a.composite_raw);
+      const bb = v2Bucket(b.composite_raw);
+      if (bb !== ab) return bb - ab;
+      const ar = a.axes.reliability ?? -1;
+      const br = b.axes.reliability ?? -1;
+      if (br !== ar) return br - ar;
+      const atr = a.avg_tok_ratio ?? Infinity;
+      const btr = b.avg_tok_ratio ?? Infinity;
+      if (atr !== btr) return atr - btr;
+      const apg = a.provider_group || "unknown";
+      const bpg = b.provider_group || "unknown";
+      if (apg !== bpg) return apg.localeCompare(bpg);
+      const at = a.avg_out_reas ?? Infinity;
+      const bt = b.avg_out_reas ?? Infinity;
+      if (at !== bt) return at - bt;
+      return a.model.localeCompare(b.model);
+    }
     if (a.composite_raw !== null && b.composite_raw !== null && b.composite_raw !== a.composite_raw) {
       return b.composite_raw - a.composite_raw;
     }
@@ -358,6 +519,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
   const generatedAt = runTimestamps.length > 0 ? new Date(Math.max(...runTimestamps)).toISOString() : "—";
 
   return {
+    version: version === 2 ? "0.2.0" : "0.1.0",
     generated_at: generatedAt,
     summary: {
       total_runs: runs.length,
@@ -371,9 +533,10 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
   };
 }
 
-export function formatLeaderboardMarkdown(data) {
+export function formatLeaderboardMarkdown(data, opts = {}) {
+  const isV2 = opts.version === 2 || data.version === "0.2.0";
   const lines = [];
-  lines.push("# MoL-Bench Leaderboard");
+  lines.push(isV2 ? "# MoL-Bench v0.2 Leaderboard" : "# MoL-Bench Leaderboard");
   lines.push("");
   lines.push(
     `Generated: ${data.generated_at} | Models: ${data.summary.models_count} | Rooms: ${data.summary.rooms_count} | Runs: ${data.summary.total_runs} | [Gallery](../site/gallery/)`
@@ -384,6 +547,26 @@ export function formatLeaderboardMarkdown(data) {
 
   if (data.overall.length === 0) {
     lines.push("_No graded results found._");
+    lines.push("");
+  } else if (isV2) {
+    lines.push(
+      "| Rank | Model | Provider | CLI | Composite | Craft | Visual Quality | Revision | Reliability | Active (min) | Avg Out+Reas | Tok Ratio | Rooms | Runs |"
+    );
+    lines.push("|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+    data.overall.forEach((row, idx) => {
+      const rank = row.composite === null ? "—" : idx + 1;
+      const activeVal = row.avg_active_min ?? row.avg_wall_min;
+      const active = activeVal === null || activeVal === undefined ? "—" : activeVal.toFixed(1);
+      const outReas = formatTok(row.avg_out_reas);
+      const tokRatio = row.avg_tok_ratio !== null && row.avg_tok_ratio !== undefined ? `${row.avg_tok_ratio.toFixed(2)}×` : "—";
+      lines.push(
+        `| ${rank} | ${row.model} | ${row.provider_group || "—"} | ${row.cli_source || "—"} | ${formatNum(row.composite)} | ${formatNum(row.axes.craft)} | ${formatNum(
+          row.axes.visual_quality
+        )} | ${formatNum(row.axes.revision)} | ${formatNum(row.reliability)} | ${active} | ${outReas} | ${tokRatio} | ${row.rooms_count} | ${
+          row.runs_count
+        } |`
+      );
+    });
     lines.push("");
   } else {
     lines.push(
@@ -417,17 +600,31 @@ export function formatLeaderboardMarkdown(data) {
       const roomObj = data.rooms[roomKey];
       lines.push(`### ${roomKey} (${roomObj.track})`);
       lines.push("");
-      lines.push(
-        "| Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Active (min) | Output tok | Total tok | Gates | Previews | Flags |"
-      );
-      lines.push("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|");
+      if (isV2) {
+        lines.push(
+          "| Rank | Run ID | Model | Provider | CLI | Composite | Craft | Visual Quality | Revision | Reliability | Active (min) | Out+Reas | Tok Ratio | Cache Read | Total tok | Pareto | Gates | Previews | Flags |"
+        );
+        lines.push("|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|");
+      } else {
+        lines.push(
+          "| Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Active (min) | Output tok | Total tok | Gates | Previews | Flags |"
+        );
+        lines.push("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|");
+      }
       roomObj.runs.forEach((run, idx) => {
         const isFailed = run.status === "no-submission" || run.status === "collect-error";
         const rank = isFailed || run.composite === null ? "—" : idx + 1;
         const activeVal = run.efficiency.active_min ?? run.efficiency.wall_min;
         const active = activeVal === null || activeVal === undefined ? "—" : Number(activeVal).toFixed(1);
         const outTok = formatTok(run.efficiency.tokens_out);
+        const outReas = formatTok(run.efficiency.tokens_out_reas);
+        const cacheRead = formatTok(run.efficiency.tokens_cache_read);
         const totTok = formatTok(run.efficiency.tokens_total);
+        const tokRatio =
+          run.efficiency.provider_tok_ratio !== null && run.efficiency.provider_tok_ratio !== undefined
+            ? `${Number(run.efficiency.provider_tok_ratio).toFixed(2)}×`
+            : "—";
+        const pareto = run.pareto_within_provider ? "Pareto" : "—";
         const gates = isFailed && run.gates.evaluated === 0 ? "failed" : `${run.gates.passed}/${run.gates.evaluated}`;
         const viewMd = `[View](../gallery/runs/${run.run_id}/)`;
         const previews =
@@ -440,14 +637,30 @@ export function formatLeaderboardMarkdown(data) {
         if (isFailed) flags.push(run.reason ? `${run.status}:${run.reason}` : run.status);
         if (run.invalid) flags.push(`invalid:${run.invalid_reason || "yes"}`);
         if (run.leakage_flagged) flags.push("possible_leakage");
+        if (run.partial_eval) flags.push("partial_eval");
+        if (run.rounds_completed) flags.push(`rounds:${run.rounds_completed}`);
         if (run.gates.failed.length > 0) flags.push(`fail:${run.gates.failed.join(",")}`);
-        lines.push(
-          `| ${rank} | ${run.run_id} | ${run.model} | ${formatNum(run.composite)} | ${formatNum(
-            run.axes.craft
-          )} | ${formatNum(run.axes.visual_quality)} | ${formatNum(run.axes.revision)} | ${formatNum(
-            run.reliability
-          )} | ${active} | ${outTok} | ${totTok} | ${gates} | ${previews} | ${flags.length > 0 ? flags.join("; ") : "—"} |`
-        );
+        if (isV2) {
+          lines.push(
+            `| ${rank} | ${run.run_id} | ${run.model} | ${run.efficiency.provider_group || "—"} | ${
+              run.efficiency.cli_source || "—"
+            } | ${formatNum(run.composite)} | ${formatNum(run.axes.craft)} | ${formatNum(
+              run.axes.visual_quality
+            )} | ${formatNum(run.axes.revision)} | ${formatNum(
+              run.reliability
+            )} | ${active} | ${outReas} | ${tokRatio} | ${cacheRead} | ${totTok} | ${pareto} | ${gates} | ${previews} | ${
+              flags.length > 0 ? flags.join("; ") : "—"
+            } |`
+          );
+        } else {
+          lines.push(
+            `| ${rank} | ${run.run_id} | ${run.model} | ${formatNum(run.composite)} | ${formatNum(
+              run.axes.craft
+            )} | ${formatNum(run.axes.visual_quality)} | ${formatNum(run.axes.revision)} | ${formatNum(
+              run.reliability
+            )} | ${active} | ${outTok} | ${totTok} | ${gates} | ${previews} | ${flags.length > 0 ? flags.join("; ") : "—"} |`
+          );
+        }
       });
       lines.push("");
     }
@@ -456,8 +669,14 @@ export function formatLeaderboardMarkdown(data) {
   return lines.join("\n");
 }
 
-export function buildLeaderboardHtml(data) {
-  const safeJson = JSON.stringify(data).replace(/</g, "\\u003c");
+export function buildLeaderboardHtml(dataOrDatasets, opts = {}) {
+  const isBundle = Boolean(dataOrDatasets && (dataOrDatasets.v1 || dataOrDatasets.v2));
+  const v1Data = isBundle ? (dataOrDatasets.v1 || null) : (dataOrDatasets?.version === "0.2.0" ? null : dataOrDatasets);
+  const v2Data = isBundle ? (dataOrDatasets.v2 || null) : (dataOrDatasets?.version === "0.2.0" ? dataOrDatasets : null);
+  const defaultVer = opts.defaultVersion || (isBundle ? (dataOrDatasets.defaultVersion || (v2Data?.runs?.length ? "v2" : "v1")) : (v2Data ? "v2" : "v1"));
+  const activeData = defaultVer === "v2" ? (v2Data || v1Data) : (v1Data || v2Data);
+  const safeJson = JSON.stringify(activeData).replace(/</g, "\\u003c");
+  const safeDatasetsJson = JSON.stringify({ v1: v1Data, v2: v2Data, defaultVersion: defaultVer }).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -566,6 +785,32 @@ export function buildLeaderboardHtml(data) {
       transition: border-color 0.15s ease, background 0.15s ease;
     }
     .btn:hover { border-color: var(--accent); }
+    .version-switch {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 999px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .ver-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .ver-btn.active {
+      background: var(--accent);
+      color: #ffffff;
+    }
+    html[data-theme="dark"] .ver-btn.active {
+      color: #101216;
+    }
     .kpis {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -782,6 +1027,10 @@ export function buildLeaderboardHtml(data) {
         <p class="subtitle" id="meta-line">Loading results…</p>
       </div>
       <div class="controls">
+        <div class="version-switch" id="version-switch" role="tablist" aria-label="Benchmark Version">
+          <button class="ver-btn" id="ver-btn-v2" data-ver="v2" type="button">v0.2</button>
+          <button class="ver-btn" id="ver-btn-v1" data-ver="v1" type="button">v0.1</button>
+        </div>
         <a class="btn" href="../gallery/" style="text-decoration:none">Gallery</a>
         <button class="btn" id="theme-toggle" type="button">Toggle Theme</button>
       </div>
@@ -815,6 +1064,7 @@ export function buildLeaderboardHtml(data) {
 
   <script>
     window.__LEADERBOARD_DATA__ = ${safeJson};
+    window.__LEADERBOARD_DATASETS__ = ${safeDatasetsJson};
   </script>
   <script>
     (function () {
@@ -854,8 +1104,24 @@ export function buildLeaderboardHtml(data) {
         return String(n);
       };
 
+      const emptyDataset = (verLabel) => ({
+        version: verLabel === "v2" ? "0.2.0" : "0.1.0",
+        generated_at: "—",
+        summary: { total_runs: 0, valid_runs: 0, models_count: 0, rooms_count: 0 },
+        overall: [],
+        rooms: {},
+        runs: []
+      });
+
+      const datasets = window.__LEADERBOARD_DATASETS__ || {
+        v1: window.__LEADERBOARD_DATA__,
+        v2: null,
+        defaultVersion: "v1"
+      };
+
       let state = {
-        data: window.__LEADERBOARD_DATA__,
+        activeVersion: datasets.defaultVersion === "v2" ? "v2" : "v1",
+        data: (datasets.defaultVersion === "v2" ? datasets.v2 : datasets.v1) || window.__LEADERBOARD_DATA__ || emptyDataset("v1"),
         room: "ALL",
         query: "",
         sortBy: "composite_raw",
@@ -863,13 +1129,37 @@ export function buildLeaderboardHtml(data) {
         expanded: new Set()
       };
 
+      function isV2View() {
+        return state.activeVersion === "v2" || state.data?.version === "0.2.0";
+      }
+
+      function setVersion(ver) {
+        state.activeVersion = ver === "v2" ? "v2" : "v1";
+        state.data = datasets[state.activeVersion] || emptyDataset(state.activeVersion);
+        state.room = "ALL";
+        state.expanded.clear();
+        renderAll();
+      }
+
+      function renderVersionSwitch() {
+        const b2 = document.getElementById("ver-btn-v2");
+        const b1 = document.getElementById("ver-btn-v1");
+        if (b2) b2.classList.toggle("active", state.activeVersion === "v2");
+        if (b1) b1.classList.toggle("active", state.activeVersion === "v1");
+      }
+
+      document.getElementById("ver-btn-v2")?.addEventListener("click", () => setVersion("v2"));
+      document.getElementById("ver-btn-v1")?.addEventListener("click", () => setVersion("v1"));
+
       function renderAll() {
+        renderVersionSwitch();
         const data = state.data;
         if (!data) return;
 
+        const verTag = isV2View() ? "v0.2" : "v0.1";
         document.getElementById("meta-line").textContent =
-          data.summary.models_count + " models · " + data.summary.rooms_count + " rooms · " + data.summary.total_runs + " runs";
-        document.getElementById("generated-at").textContent = "Generated: " + data.generated_at;
+          verTag + " · " + data.summary.models_count + " models · " + data.summary.rooms_count + " rooms · " + data.summary.total_runs + " runs";
+        document.getElementById("generated-at").textContent = "Generated (" + verTag + "): " + data.generated_at;
 
         const topComposite = data.overall.length > 0 && data.overall[0].composite !== null ? fmt(data.overall[0].composite) : "—";
         document.getElementById("kpis").innerHTML = [
@@ -892,9 +1182,10 @@ export function buildLeaderboardHtml(data) {
       function renderOverall(data) {
         const wrap = document.getElementById("overall-wrap");
         if (!data.overall || data.overall.length === 0) {
-          wrap.innerHTML = '<div class="empty">No graded runs yet. Run <code>node runner/collect.mjs</code> and <code>node harness/src/leaderboard.mjs</code>.</div>';
+          wrap.innerHTML = '<div class="empty">No graded ' + (isV2View() ? "v0.2" : "v0.1") + ' runs yet. Run <code>node runner/collect.mjs</code> and <code>node harness/src/leaderboard.mjs</code>.</div>';
           return;
         }
+        const v2 = isV2View();
         const rows = data.overall
           .map((m, idx) => {
             const rankStr = m.composite === null ? "—" : "#" + (idx + 1);
@@ -902,19 +1193,23 @@ export function buildLeaderboardHtml(data) {
             const roomBadges = Object.entries(m.room_scores || {})
               .map(([rk, rs]) => '<span class="badge neutral">' + esc(rk) + ": " + esc(fmt(rs.composite)) + "</span>")
               .join(" ");
+            const paretoBadge = v2 && m.pareto_count > 0 ? ' <span class="badge ok">Pareto×' + esc(m.pareto_count) + "</span>" : "";
             return (
               '<tr class="main-row">' +
               '<td class="rank">' + rankStr + "</td>" +
               "<td><strong>" + esc(m.model) + "</strong>" +
+              paretoBadge +
               (m.failed_count > 0 && m.runs_count === 0 ? ' <span class="badge bad">failed:' + m.failed_count + "</span>" : "") +
               (m.leakage_count > 0 ? ' <span class="badge bad">leakage:' + m.leakage_count + "</span>" : "") +
               "</td>" +
+              (v2 ? '<td><span class="badge neutral">' + esc(m.provider_group || "—") + '</span></td><td>' + esc(m.cli_source || "—") + "</td>" : "") +
               '<td class="num"><span class="score-pill">' + esc(fmt(m.composite)) + "</span></td>" +
               '<td class="num">' + esc(fmt(m.axes.craft)) + "</td>" +
               '<td class="num">' + esc(fmt(m.axes.visual_quality)) + "</td>" +
               '<td class="num">' + esc(fmt(m.axes.revision)) + "</td>" +
               '<td class="num">' + esc(fmt(m.reliability)) + "</td>" +
               '<td class="num">' + esc(fmt(activeVal)) + "</td>" +
+              (v2 ? '<td class="num">' + esc(fmtTok(m.avg_out_reas)) + '</td><td class="num">' + esc(m.avg_tok_ratio !== null && m.avg_tok_ratio !== undefined ? m.avg_tok_ratio.toFixed(2) + "×" : "—") + "</td>" : "") +
               '<td class="num">' + esc(m.rooms_count) + "</td>" +
               '<td class="num">' + esc(m.runs_count) + "</td>" +
               "<td>" + (roomBadges || "—") + "</td>" +
@@ -925,7 +1220,11 @@ export function buildLeaderboardHtml(data) {
 
         wrap.innerHTML =
           "<table><thead><tr>" +
-          "<th>Rank</th><th>Model</th><th class=num>Composite</th><th class=num>Craft</th><th class=num>Visual Quality</th><th class=num>Revision</th><th class=num>Reliability</th><th class=num>Avg Active (min)</th><th class=num>Rooms</th><th class=num>Runs</th><th>Room Breakdown</th>" +
+          "<th>Rank</th><th>Model</th>" +
+          (v2 ? "<th>Provider</th><th>CLI</th>" : "") +
+          "<th class=num>Composite</th><th class=num>Craft</th><th class=num>Visual Quality</th><th class=num>Revision</th><th class=num>Reliability</th><th class=num>Avg Active (min)</th>" +
+          (v2 ? "<th class=num>Out+Reas</th><th class=num>Tok Ratio</th>" : "") +
+          "<th class=num>Rooms</th><th class=num>Runs</th><th>Room Breakdown</th>" +
           "</tr></thead><tbody>" +
           rows +
           "</tbody></table>";
@@ -959,6 +1258,9 @@ export function buildLeaderboardHtml(data) {
         if (key === "active_min") return (run.efficiency?.active_min ?? run.efficiency?.wall_min) ?? null;
         if (key === "wall_min") return run.efficiency?.wall_min ?? null;
         if (key === "tokens_out") return run.efficiency?.tokens_out ?? null;
+        if (key === "tokens_out_reas") return run.efficiency?.tokens_out_reas ?? null;
+        if (key === "tokens_cache_read") return run.efficiency?.tokens_cache_read ?? null;
+        if (key === "provider_tok_ratio") return run.efficiency?.provider_tok_ratio ?? null;
         if (key === "tokens_total") return run.efficiency?.tokens_total ?? null;
         return run[key] ?? null;
       }
@@ -972,7 +1274,8 @@ export function buildLeaderboardHtml(data) {
               (r) =>
                 r.model.toLowerCase().includes(q) ||
                 r.run_id.toLowerCase().includes(q) ||
-                r.room_key.toLowerCase().includes(q)
+                r.room_key.toLowerCase().includes(q) ||
+                String(r.efficiency?.provider_group || "").toLowerCase().includes(q)
             )
           : [...baseList];
 
@@ -993,23 +1296,46 @@ export function buildLeaderboardHtml(data) {
           return;
         }
 
-        const headers = [
-          ["Rank", null, false],
-          ["Run ID", "run_id", false],
-          ["Room", "room_key", false],
-          ["Model", "model", false],
-          ["Composite", "composite_raw", true],
-          ["Craft", "craft", true],
-          ["VQ", "visual_quality", true],
-          ["Revision", "revision", true],
-          ["Reliability", "reliability", true],
-          ["Active (min)", "active_min", true],
-          ["Output tok", "tokens_out", true],
-          ["Total tok", "tokens_total", true],
-          ["Gates", null, false],
-          ["Preview", null, false],
-          ["Flags", null, false]
-        ];
+        const v2 = isV2View();
+        const headers = v2
+          ? [
+              ["Rank", null, false],
+              ["Run ID", "run_id", false],
+              ["Room", "room_key", false],
+              ["Model", "model", false],
+              ["Provider", null, false],
+              ["CLI", null, false],
+              ["Composite", "composite_raw", true],
+              ["Craft", "craft", true],
+              ["VQ", "visual_quality", true],
+              ["Revision", "revision", true],
+              ["Reliability", "reliability", true],
+              ["Active (min)", "active_min", true],
+              ["Out+Reas", "tokens_out_reas", true],
+              ["Tok Ratio", "provider_tok_ratio", true],
+              ["Cache Read", "tokens_cache_read", true],
+              ["Total tok", "tokens_total", true],
+              ["Gates", null, false],
+              ["Preview", null, false],
+              ["Flags", null, false]
+            ]
+          : [
+              ["Rank", null, false],
+              ["Run ID", "run_id", false],
+              ["Room", "room_key", false],
+              ["Model", "model", false],
+              ["Composite", "composite_raw", true],
+              ["Craft", "craft", true],
+              ["VQ", "visual_quality", true],
+              ["Revision", "revision", true],
+              ["Reliability", "reliability", true],
+              ["Active (min)", "active_min", true],
+              ["Output tok", "tokens_out", true],
+              ["Total tok", "tokens_total", true],
+              ["Gates", null, false],
+              ["Preview", null, false],
+              ["Flags", null, false]
+            ];
 
         const thead =
           "<thead><tr>" +
@@ -1054,25 +1380,41 @@ export function buildLeaderboardHtml(data) {
                   "</div>";
 
             const flags = [];
+            if (v2 && run.pareto_within_provider) flags.push('<span class="badge ok">Pareto</span>');
+            if (v2 && run.rounds_completed) flags.push('<span class="badge neutral">' + esc(run.rounds_completed) + "</span>");
+            if (v2 && run.partial_eval) flags.push('<span class="badge warn">partial_eval</span>');
             if (isFailed) flags.push('<span class="badge bad">' + esc(run.status) + "</span>");
             if (run.invalid) flags.push('<span class="badge warn">invalid</span>');
             if (run.leakage_flagged) flags.push('<span class="badge bad">leakage</span>');
             if (flags.length === 0) flags.push('<span class="badge ok">clean</span>');
 
             const isExpanded = state.expanded.has(run.run_id);
+            const tokRatioStr =
+              run.efficiency?.provider_tok_ratio !== null && run.efficiency?.provider_tok_ratio !== undefined
+                ? Number(run.efficiency.provider_tok_ratio).toFixed(2) + "×"
+                : "—";
+
             let html =
               '<tr class="main-row" data-run="' + esc(run.run_id) + '" style="cursor:pointer">' +
               '<td class="rank">' + rankStr + "</td>" +
               '<td class="mono">' + esc(run.run_id) + "</td>" +
               '<td><span class="badge neutral">' + esc(run.room_key) + "</span></td>" +
               "<td>" + esc(run.model) + "</td>" +
+              (v2
+                ? '<td><span class="badge neutral">' + esc(run.efficiency?.provider_group || "—") + '</span></td>' +
+                  '<td class="mono">' + esc(run.efficiency?.cli_source || "—") + "</td>"
+                : "") +
               '<td class="num"><span class="score-pill">' + esc(fmt(run.composite)) + "</span></td>" +
               '<td class="num">' + esc(fmt(run.axes.craft)) + "</td>" +
               '<td class="num">' + esc(fmt(run.axes.visual_quality)) + "</td>" +
               '<td class="num">' + esc(fmt(run.axes.revision)) + "</td>" +
               '<td class="num">' + esc(fmt(run.reliability)) + "</td>" +
               '<td class="num">' + esc(fmt(activeVal)) + "</td>" +
-              '<td class="num">' + esc(fmtTok(run.efficiency.tokens_out)) + "</td>" +
+              (v2
+                ? '<td class="num">' + esc(fmtTok(run.efficiency?.tokens_out_reas)) + "</td>" +
+                  '<td class="num">' + esc(tokRatioStr) + "</td>" +
+                  '<td class="num">' + esc(fmtTok(run.efficiency?.tokens_cache_read)) + "</td>"
+                : '<td class="num">' + esc(fmtTok(run.efficiency.tokens_out)) + "</td>") +
               '<td class="num">' + esc(fmtTok(run.efficiency.tokens_total)) + "</td>" +
               "<td>" + gateBadge + "</td>" +
               "<td>" + previewHtml + "</td>" +
@@ -1106,18 +1448,29 @@ export function buildLeaderboardHtml(data) {
                     "</div>"
                   : "<div>No preview contact sheets attached.</div>";
 
+              const tcHtml = run.toolchain
+                ? "<div>Toolchain: <span class=mono>" +
+                  esc([run.toolchain.node_version, run.toolchain.python_version, run.toolchain.swiftshader_renderer].filter(Boolean).join(" · ")) +
+                  "</span></div>"
+                : "";
+
               html +=
-                '<tr class="detail-row"><td colspan="15"><div class="detail-grid">' +
+                '<tr class="detail-row"><td colspan="' + (v2 ? "19" : "15") + '"><div class="detail-grid">' +
                 '<div class="detail-box"><h4>Metadata & Efficiency</h4>' +
                 "<div>Run ID: <span class=mono>" + esc(run.run_id) + "</span></div>" +
                 (run.status ? "<div>Status: <span class=mono>" + esc(run.status) + "</span></div>" : "") +
                 (run.reason ? "<div>Reason: " + esc(run.reason) + "</div>" : "") +
+                (v2 ? "<div>Provider / CLI: " + esc((run.efficiency?.provider_group || "—") + " / " + (run.efficiency?.cli_source || "—")) + "</div>" : "") +
+                (run.rounds_completed ? "<div>Chain Rounds: " + esc(run.rounds_completed) + "</div>" : "") +
                 "<div>Seeds: " + esc(run.seeds) + (run.seed !== null ? " (seed=" + esc(run.seed) + ")" : "") + "</div>" +
                 "<div>Active min: " + esc(fmt(activeVal, 2)) + "</div>" +
                 "<div>Wall min: " + esc(fmt(run.efficiency.wall_min, 2)) + "</div>" +
                 "<div>Output tok: " + esc(fmtTok(run.efficiency.tokens_out)) + "</div>" +
+                (v2 ? "<div>Out+Reas tok: " + esc(fmtTok(run.efficiency.tokens_out_reas)) + " (" + esc(tokRatioStr) + ")</div>" : "") +
+                (v2 ? "<div>Cache Read tok: " + esc(fmtTok(run.efficiency.tokens_cache_read)) + "</div>" : "") +
                 "<div>Total tok: " + esc(fmtTok(run.efficiency.tokens_total)) + "</div>" +
                 "<div>Taste: " + esc(run.taste === null ? "null (human only)" : fmt(run.taste)) + "</div>" +
+                tcHtml +
                 (isFailed ? "" : "<div>Live View: <a class='preview-link' href='../gallery/runs/" + esc(run.run_id) + "/' target='_blank' rel='noopener'>Open in Gallery ↗</a></div>") +
                 (run.diff_file ? "<div>Diff: <span class=mono>" + esc(run.diff_file) + "</span></div>" : "") +
                 "</div>" +
@@ -1138,7 +1491,10 @@ export function buildLeaderboardHtml(data) {
               state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
             } else {
               state.sortBy = key;
-              state.sortDir = key === "active_min" || key === "wall_min" || key === "model" || key === "run_id" ? "asc" : "desc";
+              state.sortDir =
+                key === "active_min" || key === "wall_min" || key === "model" || key === "run_id" || key === "provider_tok_ratio"
+                  ? "asc"
+                  : "desc";
             }
             renderRuns(state.data);
           });
@@ -1162,17 +1518,17 @@ export function buildLeaderboardHtml(data) {
 
       renderAll();
 
-      fetch("./data.json")
-        .then((res) => (res.ok ? res.json() : null))
-        .then((fresh) => {
-          if (fresh && fresh.runs) {
-            state.data = fresh;
-            renderAll();
-          }
-        })
-        .catch(() => {
-          // Offline / file:// fallback uses embedded window.__LEADERBOARD_DATA__
-        });
+      Promise.all([
+        fetch("./data.json").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch("./data-v2.json").then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      ]).then(([freshV1, freshV2]) => {
+        if (freshV1 && freshV1.runs) datasets.v1 = freshV1;
+        if (freshV2 && freshV2.runs) datasets.v2 = freshV2;
+        if (datasets[state.activeVersion]) {
+          state.data = datasets[state.activeVersion];
+          renderAll();
+        }
+      });
     })();
   </script>
 </body>
@@ -1182,42 +1538,91 @@ export function buildLeaderboardHtml(data) {
 
 export function generateLeaderboard({
   resultsDir = path.join(DEFAULT_REPO_ROOT, "results"),
+  resultsV2Dir = null,
   outMdPath = null,
-  siteDir = path.join(DEFAULT_REPO_ROOT, "site", "leaderboard")
+  outV2MdPath = null,
+  siteDir = path.join(DEFAULT_REPO_ROOT, "site", "leaderboard"),
+  version = null,
+  writeV1Md = true,
+  writeV2Md = true
 } = {}) {
   const resolvedResultsDir = path.resolve(resultsDir);
   const resolvedSiteDir = path.resolve(siteDir);
   const resolvedMdPath = outMdPath ? path.resolve(outMdPath) : path.join(resolvedResultsDir, "leaderboard.md");
+  const effectiveVersion = version === 2 || version === "2" ? 2 : 1;
 
-  const loaded = loadResultFiles(resolvedResultsDir);
-  const data = buildLeaderboardData(loaded, {
+  const loadedV1 = loadResultFiles(resolvedResultsDir);
+  const data = buildLeaderboardData(loadedV1, {
     resultsDir: resolvedResultsDir,
     siteDir: resolvedSiteDir,
-    copyPreviews: true
+    copyPreviews: true,
+    version: effectiveVersion
   });
 
-  const md = formatLeaderboardMarkdown(data);
-  try {
-    fs.mkdirSync(path.dirname(resolvedMdPath), { recursive: true });
-    fs.writeFileSync(resolvedMdPath, md, "utf8");
-  } catch {
-    // Read-only filesystem fallback
+  if (writeV1Md) {
+    const md = formatLeaderboardMarkdown(data, { version: effectiveVersion });
+    try {
+      fs.mkdirSync(path.dirname(resolvedMdPath), { recursive: true });
+      fs.writeFileSync(resolvedMdPath, md, "utf8");
+    } catch {
+      // Read-only filesystem fallback
+    }
+  }
+
+  let dataV2 = null;
+  let resolvedV2MdPath = null;
+  const resolvedResultsV2Dir = resultsV2Dir ? path.resolve(resultsV2Dir) : null;
+  if (resolvedResultsV2Dir) {
+    const loadedV2 = loadResultFiles(resolvedResultsV2Dir);
+    dataV2 = buildLeaderboardData(loadedV2, {
+      resultsDir: resolvedResultsV2Dir,
+      siteDir: resolvedSiteDir,
+      copyPreviews: true,
+      version: 2
+    });
+    resolvedV2MdPath = outV2MdPath ? path.resolve(outV2MdPath) : path.join(resolvedResultsV2Dir, "leaderboard.md");
+    if (writeV2Md && (fs.existsSync(resolvedResultsV2Dir) || loadedV2.length > 0)) {
+      const mdV2 = formatLeaderboardMarkdown(dataV2, { version: 2 });
+      try {
+        fs.mkdirSync(path.dirname(resolvedV2MdPath), { recursive: true });
+        fs.writeFileSync(resolvedV2MdPath, mdV2, "utf8");
+      } catch {
+        // Read-only filesystem fallback
+      }
+    }
   }
 
   const dataJsonPath = path.join(resolvedSiteDir, "data.json");
+  const dataV2JsonPath = path.join(resolvedSiteDir, "data-v2.json");
   const indexHtmlPath = path.join(resolvedSiteDir, "index.html");
+  const defaultHtmlVer =
+    effectiveVersion === 2
+      ? "v2"
+      : (dataV2 && dataV2.runs.length > 0 && version === null ? "v2" : "v1");
   try {
     fs.mkdirSync(resolvedSiteDir, { recursive: true });
     fs.writeFileSync(dataJsonPath, JSON.stringify(data, null, 2) + "\n", "utf8");
-    fs.writeFileSync(indexHtmlPath, buildLeaderboardHtml(data), "utf8");
+    if (dataV2) {
+      fs.writeFileSync(dataV2JsonPath, JSON.stringify(dataV2, null, 2) + "\n", "utf8");
+      fs.writeFileSync(
+        indexHtmlPath,
+        buildLeaderboardHtml({ v1: data, v2: dataV2, defaultVersion: defaultHtmlVer }),
+        "utf8"
+      );
+    } else {
+      fs.writeFileSync(indexHtmlPath, buildLeaderboardHtml(data), "utf8");
+    }
   } catch {
     // Read-only filesystem fallback
   }
 
   return {
     data,
+    dataV2,
     markdownPath: resolvedMdPath,
+    markdownV2Path: resolvedV2MdPath,
     dataJsonPath,
+    dataV2JsonPath: dataV2 ? dataV2JsonPath : null,
     indexHtmlPath
   };
 }
@@ -1225,21 +1630,37 @@ export function generateLeaderboard({
 function main() {
   const flags = parseArgs(process.argv.slice(2));
   if (flags.help || flags.h) {
-    console.log("Usage: node harness/src/leaderboard.mjs [--results <dir>] [--out-md <file>] [--site-dir <dir>]");
+    console.log(
+      "Usage: node harness/src/leaderboard.mjs [--version 1|2|all] [--results <dir>] [--results-v2 <dir>] [--out-md <file>] [--site-dir <dir>]"
+    );
     return;
   }
+  const vFlag = flags.version ? String(flags.version) : "default";
+  const resultsDir = flags.results || path.join(DEFAULT_REPO_ROOT, "results");
+  const resultsV2Dir = flags["results-v2"] || path.join(DEFAULT_REPO_ROOT, "results-v2");
+  // Per V02-DESIGN §2.4: results/leaderboard.md stays untouched unless --version 1, --all, or explicit --results is passed.
+  const writeV1Md = Boolean(flags.results || flags.all || vFlag === "1" || vFlag === "all");
+  const writeV2Md = Boolean(flags["results-v2"] || flags.all || vFlag === "2" || vFlag === "all" || vFlag === "default");
+
   const out = generateLeaderboard({
-    resultsDir: flags.results || path.join(DEFAULT_REPO_ROOT, "results"),
+    resultsDir,
+    resultsV2Dir: vFlag === "1" ? null : resultsV2Dir,
     outMdPath: flags["out-md"] || null,
-    siteDir: flags["site-dir"] || path.join(DEFAULT_REPO_ROOT, "site", "leaderboard")
+    siteDir: flags["site-dir"] || path.join(DEFAULT_REPO_ROOT, "site", "leaderboard"),
+    version: vFlag === "2" ? 2 : null,
+    writeV1Md,
+    writeV2Md
   });
   console.log(
     JSON.stringify(
       {
         runs: out.data.summary.total_runs,
+        runs_v2: out.dataV2 ? out.dataV2.summary.total_runs : 0,
         models: out.data.summary.models_count,
-        markdown: out.markdownPath,
+        markdown: writeV1Md ? out.markdownPath : null,
+        markdownV2: out.markdownV2Path,
         dataJson: out.dataJsonPath,
+        dataV2Json: out.dataV2JsonPath,
         indexHtml: out.indexHtmlPath
       },
       null,

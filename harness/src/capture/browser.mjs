@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,17 +40,33 @@ async function getHostScript() {
 }
 
 /**
- * Parse "WxH" string into { width, height }.
+ * Parse "WxH" or "WxH@zoomNNN" string into { width, height, zoomPercent }.
  */
-export function parseViewport(vp) {
+export function parseViewportSpec(vp) {
   if (vp && typeof vp === 'object' && typeof vp.width === 'number' && typeof vp.height === 'number') {
-    return { width: vp.width, height: vp.height };
+    return {
+      width: vp.width,
+      height: vp.height,
+      zoomPercent: typeof vp.zoomPercent === 'number' ? vp.zoomPercent : null,
+    };
   }
-  const m = /^(\d+)x(\d+)$/i.exec(String(vp || '1440x900').trim());
+  const m = /^(\d+)x(\d+)(?:@zoom(\d+))?$/i.exec(String(vp || '1440x900').trim());
   if (!m) {
     throw new Error(`Invalid viewport string: "${vp}"`);
   }
-  return { width: Number(m[1]), height: Number(m[2]) };
+  return {
+    width: Number(m[1]),
+    height: Number(m[2]),
+    zoomPercent: m[3] ? Number(m[3]) : null,
+  };
+}
+
+/**
+ * Parse "WxH" or "WxH@zoomNNN" string into { width, height }.
+ */
+export function parseViewport(vp) {
+  const { width, height } = parseViewportSpec(vp);
+  return { width, height };
 }
 
 function isUrlAllowed(rawUrl, origin) {
@@ -102,20 +119,29 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
     viewport = '1440x900',
     dpr = 1,
     colorScheme = 'light',
+    contrast = 'no-preference',
     reducedMotion = 'no-preference',
     locale = null,
+    rootFontZoom = null,
     seed = 1,
     params = {},
     blockExternal = true,
+    blockWorkers = false,
     localResolver = null,
     waitForReady = true,
     loadTimeoutMs = 15000,
   } = {}) {
-    const vp = parseViewport(viewport);
+    const vpSpec = parseViewportSpec(viewport);
+    const vp = { width: vpSpec.width, height: vpSpec.height };
+    const effectiveContrast = contrast === 'more' || colorScheme === 'high_contrast' ? 'more' : 'no-preference';
+    const effectiveColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
+    const effectiveZoom = rootFontZoom !== null && rootFontZoom !== undefined ? Number(rootFontZoom) : vpSpec.zoomPercent;
+
     const contextOptions = {
       viewport: vp,
       deviceScaleFactor: Number(dpr) || 1,
-      colorScheme: colorScheme === 'dark' ? 'dark' : 'light',
+      colorScheme: effectiveColorScheme,
+      contrast: effectiveContrast,
       reducedMotion: reducedMotion === 'reduce' ? 'reduce' : 'no-preference',
     };
     if (locale) {
@@ -134,6 +160,37 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
     const consoleLogs = [];
     const networkLogs = [];
     const fontResponses = [];
+    let attachedIframeCount = 0;
+    let blockedWorkerRequests = 0;
+    let cdpTransferBytes = 0;
+    let localFulfilledBytes = 0;
+    const cdpRequestUrls = new Map();
+
+    page.on('frameattached', (frame) => {
+      if (frame !== page.mainFrame()) {
+        attachedIframeCount += 1;
+      }
+    });
+
+    try {
+      await cdp.send('Network.enable');
+      cdp.on('Network.requestWillBeSent', (ev) => {
+        if (ev?.requestId && ev?.request?.url) {
+          cdpRequestUrls.set(ev.requestId, ev.request.url);
+        }
+      });
+      cdp.on('Network.loadingFinished', (ev) => {
+        const len = Number(ev?.encodedDataLength || 0);
+        if (len > 0) {
+          const reqUrl = cdpRequestUrls.get(ev.requestId) || '';
+          if (!origin || isUrlAllowed(reqUrl, origin)) {
+            cdpTransferBytes += len;
+          }
+        }
+      });
+    } catch {
+      // ignore if Network domain unavailable
+    }
 
     page.on('console', (msg) => {
       consoleLogs.push({ type: msg.type(), text: msg.text() });
@@ -142,34 +199,64 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       consoleLogs.push({ type: 'pageerror', text: String(err?.stack || err?.message || err) });
     });
 
-    if (origin && (blockExternal || localResolver)) {
+    if ((origin && (blockExternal || localResolver)) || blockWorkers) {
       await page.route('**/*', async (route) => {
         const req = route.request();
         const reqUrl = req.url();
-        const allowed = isUrlAllowed(reqUrl, origin);
+        const resType = req.resourceType();
+        if (blockWorkers && (resType === 'worker' || resType === 'shared_worker')) {
+          blockedWorkerRequests += 1;
+          await route.abort('blockedbyclient');
+          return;
+        }
+        const allowed = origin ? isUrlAllowed(reqUrl, origin) : true;
         if (!allowed && blockExternal) {
           networkLogs.push({
             url: reqUrl,
             method: req.method(),
-            resourceType: req.resourceType(),
+            resourceType: resType,
             allowed: false,
             blocked: true,
           });
           await route.abort('blockedbyclient');
           return;
         }
-        if (allowed && localResolver && reqUrl.startsWith(origin)) {
+        if (allowed && localResolver && origin && reqUrl.startsWith(origin)) {
           const resolved = await localResolver(reqUrl);
+          if (resolved.body && typeof resolved.body.length === 'number') {
+            localFulfilledBytes += resolved.body.length;
+          }
           await route.fulfill({
             status: resolved.status,
             contentType: resolved.contentType,
             headers: {
               'Cache-Control': 'no-store',
               'X-Content-Type-Options': 'nosniff',
+              ...(blockWorkers && resType === 'document' ? { 'Content-Security-Policy': "worker-src 'none'" } : {}),
             },
             body: resolved.body,
           });
           return;
+        }
+        if (blockWorkers && resType === 'document') {
+          try {
+            const fetched = await route.fetch();
+            const existingHeaders = fetched.headers();
+            const existingCsp = existingHeaders['content-security-policy'] || '';
+            const mergedCsp = existingCsp
+              ? `${existingCsp}; worker-src 'none'`
+              : "worker-src 'none'";
+            await route.fulfill({
+              response: fetched,
+              headers: {
+                ...existingHeaders,
+                'content-security-policy': mergedCsp,
+              },
+            });
+            return;
+          } catch {
+            // fallback to continue
+          }
         }
         await route.continue();
       });
@@ -207,11 +294,27 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
 
     // Inject initial config + host.js before any page script executes
     const hostScript = await getHostScript();
-    const initConfig = { seed, params: params || {}, locale: locale || null };
+    const controlSecret = crypto.randomBytes(24).toString('hex');
+    const packCtrl = (payload = null) => `${controlSecret}\n${JSON.stringify(payload ?? null)}`;
+    const initConfig = { seed, params: params || {}, locale: locale || null, controlSecret, requireSecret: true, disableWebGpu: true };
     await page.addInitScript((cfg) => {
       window.__BENCH_HOST_INIT__ = cfg;
     }, initConfig);
     await page.addInitScript({ content: hostScript });
+    if (effectiveZoom && Number.isFinite(effectiveZoom) && effectiveZoom !== 100) {
+      const rootPx = Math.round((16 * effectiveZoom) / 100);
+      await page.addInitScript((px) => {
+        const apply = () => {
+          if (document.documentElement) {
+            document.documentElement.style.setProperty('font-size', `${px}px`, 'important');
+          }
+        };
+        apply();
+        if (typeof document !== 'undefined') {
+          document.addEventListener('DOMContentLoaded', apply, { once: true });
+        }
+      }, rootPx);
+    }
 
     let loadResult = { pass: true, detail: '' };
 
@@ -220,6 +323,7 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       context,
       page,
       cdp,
+      controlSecret,
       consoleLogs,
       networkLogs,
       fontResponses,
@@ -230,6 +334,9 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       async goto(targetUrl, { waitForBench = waitForReady, timeoutMs = loadTimeoutMs } = {}) {
         try {
           await page.goto(targetUrl, { waitUntil: 'load', timeout: timeoutMs });
+          if (effectiveZoom && Number.isFinite(effectiveZoom) && effectiveZoom !== 100) {
+            await handle.setRootFontZoom(effectiveZoom);
+          }
           if (waitForBench) {
             await handle.waitForBenchReady(timeoutMs);
           }
@@ -318,16 +425,25 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
         return size;
       },
 
-      async emulate({ reducedMotion: rm, colorScheme: cs, locale: loc } = {}) {
+      async emulate({ reducedMotion: rm, colorScheme: cs, contrast: ct, locale: loc, rootFontZoom: zoom } = {}) {
         const mediaOpts = {};
         if (rm !== undefined) {
           mediaOpts.reducedMotion = rm === 'reduce' || rm === true ? 'reduce' : 'no-preference';
         }
         if (cs !== undefined) {
           mediaOpts.colorScheme = cs === 'dark' ? 'dark' : 'light';
+          if (cs === 'high_contrast' && ct === undefined) {
+            mediaOpts.contrast = 'more';
+          }
+        }
+        if (ct !== undefined) {
+          mediaOpts.contrast = ct === 'more' || ct === true ? 'more' : 'no-preference';
         }
         if (Object.keys(mediaOpts).length > 0) {
           await page.emulateMedia(mediaOpts);
+        }
+        if (zoom !== undefined && zoom !== null) {
+          await handle.setRootFontZoom(zoom);
         }
         if (typeof loc === 'string' && loc.length > 0) {
           await page.evaluate((lang) => {
@@ -349,6 +465,112 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
         }
       },
 
+      async setRootFontZoom(zoomPercent) {
+        const pct = Number(zoomPercent);
+        await page.evaluate((p) => {
+          const id = 'mol-bench-zoom-override';
+          let el = document.getElementById(id);
+          if (!Number.isFinite(p) || p === 100) {
+            if (el) el.remove();
+            document.documentElement?.style?.removeProperty('font-size');
+            return;
+          }
+          const px = Math.round((16 * p) / 100);
+          document.documentElement?.style?.setProperty('font-size', `${px}px`, 'important');
+          if (!el) {
+            el = document.createElement('style');
+            el.id = id;
+            (document.head || document.documentElement).appendChild(el);
+          }
+          el.textContent = `html { font-size: ${px}px !important; }`;
+        }, pct);
+      },
+
+      async setCpuThrottling(rate) {
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(rate) || 1 });
+      },
+
+      getTransferBytes() {
+        return cdpTransferBytes > 0 ? cdpTransferBytes : localFulfilledBytes;
+      },
+
+      async getWebGLMetrics() {
+        return page.evaluate(() => window.__benchHostControl?.getWebGLMetrics?.() ?? null);
+      },
+
+      async resetWebGLFrameMetrics() {
+        await page.evaluate((sec) => window.__benchHostControl?.resetWebGLFrameMetrics?.(sec), controlSecret);
+      },
+
+      async getDomMetrics() {
+        return page.evaluate(() => window.__benchHostControl?.getDomMetrics?.() ?? null);
+      },
+
+      async getDomBudgetStats() {
+        return page.evaluate(() => window.__benchHostControl?.getDomBudgetStats?.() ?? null);
+      },
+
+      async resetDomMetrics(opts = {}) {
+        await page.evaluate((pkt) => window.__benchHostControl?.resetDomMetrics?.(pkt), packCtrl(opts || {}));
+      },
+
+      async markDomStep(count = 1) {
+        return page.evaluate((pkt) => window.__benchHostControl?.markDomStep?.(pkt), packCtrl(count));
+      },
+
+      async setDomBypass(flag) {
+        await page.evaluate((pkt) => window.__benchHostControl?.setDomBypass?.(pkt), packCtrl(Boolean(flag)));
+      },
+
+      async getTamperStatus() {
+        return page.evaluate(() => window.__benchHostControl?.getTamperStatus?.() ?? null);
+      },
+
+      async getUnhookedRenderingStatus() {
+        const status = await page.evaluate(() => window.__benchHostControl?.getUnhookedRenderingStatus?.() ?? null);
+        const frameCount = typeof page.frames === 'function' ? page.frames().length : 1;
+        const totalIframes = Math.max(attachedIframeCount, Math.max(0, frameCount - 1), status?.iframe_count || 0);
+        const totalWorkers = Math.max(blockedWorkerRequests, status?.worker_count || 0);
+        if (!status) {
+          const reasons = [];
+          if (totalIframes > 0) reasons.push('iframe_detected');
+          if (totalWorkers > 0) reasons.push('worker_created');
+          return {
+            detected: reasons.length > 0,
+            reasons,
+            iframe_count: totalIframes,
+            worker_count: totalWorkers,
+          };
+        }
+        if (totalIframes > 0) {
+          status.iframe_count = totalIframes;
+          if (!status.reasons.includes('iframe_detected')) status.reasons.push('iframe_detected');
+        }
+        if (totalWorkers > 0) {
+          status.worker_count = totalWorkers;
+          if (!status.reasons.includes('worker_created')) status.reasons.push('worker_created');
+        }
+        status.detected = status.reasons.length > 0;
+        return status;
+      },
+
+      async getToolchainInfo() {
+        const gl = await handle.getWebGLMetrics().catch(() => null);
+        const browserVer = typeof browser.version === 'function' ? browser.version() : null;
+        let pwVer = null;
+        try {
+          const pkgPath = path.resolve(__dirname, '../../../node_modules/playwright-core/package.json');
+          pwVer = JSON.parse(await fs.readFile(pkgPath, 'utf8')).version || null;
+        } catch {
+          // ignore if playwright-core package.json is absent
+        }
+        const pwPrefix = pwVer ? `playwright-core@${pwVer}` : 'playwright-core';
+        return {
+          chromium_version: browserVer ? `${pwPrefix} (chromium ${browserVer})` : pwPrefix,
+          swiftshader_renderer: gl?.renderers?.[0] ?? null,
+        };
+      },
+
       async movePointer(x, y) {
         await page.mouse.move(x, y);
       },
@@ -365,36 +587,36 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       },
 
       async setSeed(newSeed, newParams) {
-        await page.evaluate(([s, p]) => {
-          window.__benchHostControl.setSeed(s, p);
-          window.__bench.setSeed(s);
-        }, [newSeed, newParams]);
+        await page.evaluate((pkt) => {
+          window.__benchHostControl.setSeed(pkt);
+          window.__bench.setSeed(window.__benchHost.seed);
+        }, packCtrl({ s: newSeed, p: newParams }));
       },
 
       async setParams(newParams) {
-        await page.evaluate((p) => {
-          window.__benchHostControl.setParams(p);
-        }, newParams);
+        await page.evaluate((pkt) => {
+          window.__benchHostControl.setParams(pkt);
+        }, packCtrl(newParams));
       },
 
       async seek(tMs) {
-        await page.evaluate((t) => {
-          window.__benchHostControl.freeze(t);
-          window.__bench.seek(t);
-        }, Number(tMs));
+        await page.evaluate((pkt) => {
+          const t = window.__benchHostControl.freeze(pkt);
+          if (typeof t === 'number') window.__bench.seek(t);
+        }, packCtrl(Number(tMs)));
       },
 
       async resume() {
-        await page.evaluate(() => {
-          window.__benchHostControl.resume();
+        await page.evaluate((sec) => {
+          window.__benchHostControl.resume(sec);
           window.__bench.resume();
-        });
+        }, controlSecret);
       },
 
       async resetClock(tMs = 0) {
-        await page.evaluate((t) => {
-          window.__benchHostControl.resetClock(t);
-        }, Number(tMs));
+        await page.evaluate((pkt) => {
+          window.__benchHostControl.resetClock(pkt);
+        }, packCtrl(Number(tMs)));
       },
 
       async clockNow() {
@@ -457,18 +679,18 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       },
 
       async installRafOverride() {
-        await withTimeout(page.evaluate(() => window.__benchHostControl.installRafOverride()), 10_000, 'installRafOverride');
+        await withTimeout(page.evaluate((sec) => window.__benchHostControl.installRafOverride(sec), controlSecret), 10_000, 'installRafOverride');
       },
 
       async uninstallRafOverride() {
-        await withTimeout(page.evaluate(() => window.__benchHostControl.uninstallRafOverride()), 10_000, 'uninstallRafOverride');
+        await withTimeout(page.evaluate((sec) => window.__benchHostControl.uninstallRafOverride(sec), controlSecret), 10_000, 'uninstallRafOverride');
       },
 
       async stepRafVirtual(durationMs, hz, startClockMs = null) {
         return withTimeout(
-          page.evaluate(([dur, rate, start]) => {
-            return window.__benchHostControl.stepRafVirtual(dur, rate, start);
-          }, [Number(durationMs), Number(hz), startClockMs]),
+          page.evaluate((pkt) => {
+            return window.__benchHostControl.stepRafVirtual(pkt);
+          }, packCtrl({ dur: Number(durationMs), rate: Number(hz), start: startClockMs })),
           30_000,
           'stepRafVirtual',
         );

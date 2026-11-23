@@ -67,10 +67,14 @@ export function patchHtml(html, shimPath = "../../shim/bench-host.js") {
 /**
  * Deterministically generates room parameters for a seed from room adapter.
  */
-export async function generateParams(roomName, seed = 1, { hidden = false, repoRoot = null } = {}) {
+export async function generateParams(roomName, seed = 1, { hidden = false, repoRoot = null, version = 1 } = {}) {
   const root = repoRoot || DEFAULT_REPO_ROOT;
   const baseRoom = roomName.split("/")[0].split("-")[0];
-  const adapterPath = path.join(root, "harness", "src", "rooms", `${baseRoom}.mjs`);
+  const adapterDir = version === 2 ? "rooms-v2" : "rooms";
+  let adapterPath = path.join(root, "harness", "src", adapterDir, `${baseRoom}.mjs`);
+  if (!fs.existsSync(adapterPath) && version === 2) {
+    adapterPath = path.join(root, "harness", "src", "rooms", `${baseRoom}.mjs`);
+  }
   if (!fs.existsSync(adapterPath)) {
     return { seed, hidden, room: roomName };
   }
@@ -105,7 +109,14 @@ export function loadGradedResults(resultsDir) {
   const results = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-    if (entry.name === "data.json" || entry.name === "leaderboard.json") continue;
+    if (
+      entry.name === "data.json" ||
+      entry.name === "data-v2.json" ||
+      entry.name === "leaderboard.json" ||
+      entry.name === "efficiency-baselines.json"
+    ) {
+      continue;
+    }
     const fullPath = path.join(resultsDir, entry.name);
     try {
       const parsed = JSON.parse(fs.readFileSync(fullPath, "utf8"));
@@ -1576,12 +1587,16 @@ export function buildGalleryIndexHtml(results = []) {
  */
 export async function buildGallery({
   repoRoot = DEFAULT_REPO_ROOT,
-  resultsDir = path.join(DEFAULT_REPO_ROOT, "results"),
+  resultsDir = null,
   siteDir = path.join(DEFAULT_REPO_ROOT, "site", "gallery"),
-  publicSeed = 1
+  publicSeed = 1,
+  version = 1
 } = {}) {
   const resolvedRepoRoot = path.resolve(repoRoot);
-  const resolvedResultsDir = path.resolve(resultsDir);
+  const v = version === 2 || version === "2" ? 2 : 1;
+  const resolvedResultsDir = path.resolve(
+    resultsDir || path.join(resolvedRepoRoot, v === 2 ? "results-v2" : "results")
+  );
   const resolvedSiteDir = path.resolve(siteDir);
 
   const safeWrite = (filePath, content) => {
@@ -1648,7 +1663,7 @@ export async function buildGallery({
 
   for (const rName of roomNames) {
     try {
-      const p = await generateParams(rName, publicSeed, { hidden: false, repoRoot: resolvedRepoRoot });
+      const p = await generateParams(rName, publicSeed, { hidden: false, repoRoot: resolvedRepoRoot, version: v });
       paramsMap[rName] = p;
       safeWrite(path.join(paramsDir, `${rName}.json`), JSON.stringify(p, null, 2) + "\n");
     } catch {
@@ -1657,7 +1672,7 @@ export async function buildGallery({
   }
 
   // 3. Setup renovation start anchors (site/gallery/anchors/<room>/a5/)
-  const anchorsSrcDir = path.join(resolvedRepoRoot, "rooms");
+  const anchorsSrcDir = path.join(resolvedRepoRoot, v === 2 ? "rooms-v2" : "rooms");
   const anchorsDstDir = path.join(resolvedSiteDir, "anchors");
   if (fs.existsSync(anchorsSrcDir)) {
     for (const rName of ["lobby", "restoration", "atelier"]) {
@@ -1890,12 +1905,14 @@ function copyDirRecursive(srcDir, dstDir, opts = {}) {
 function main() {
   const flags = parseArgs(process.argv.slice(2));
   if (flags.help || flags.h) {
-    console.log("Usage: node harness/src/gallery.mjs [--results <dir>] [--site-dir <dir>]");
+    console.log("Usage: node harness/src/gallery.mjs [--version 1|2] [--results <dir>] [--site-dir <dir>]");
     return;
   }
+  const version = flags.version === "2" || flags.version === 2 ? 2 : 1;
   buildGallery({
-    resultsDir: flags.results || path.join(DEFAULT_REPO_ROOT, "results"),
-    siteDir: flags["site-dir"] || path.join(DEFAULT_REPO_ROOT, "site", "gallery")
+    resultsDir: flags.results || null,
+    siteDir: flags["site-dir"] || path.join(DEFAULT_REPO_ROOT, "site", "gallery"),
+    version
   })
     .then((res) => {
       console.log(
