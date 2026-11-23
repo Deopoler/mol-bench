@@ -83,17 +83,14 @@ function copySubmissionFiltered(srcDir, dstDir) {
     if (EXCLUDED_SUBMISSION_DIRS.has(entry.name) || entry.name.endsWith(".pyc") || entry.name === "selfcheck.json") continue;
     const srcPath = path.join(srcDir, entry.name);
     const dstPath = path.join(dstDir, entry.name);
-    if (entry.isDirectory()) {
+    const st = fs.lstatSync(srcPath);
+    if (st.isSymbolicLink()) {
+      // Never dereference symlinks into the submission copy; scanForLeakage handles runDir symlinks.
+      continue;
+    }
+    if (st.isDirectory()) {
       copySubmissionFiltered(srcPath, dstPath);
-    } else if (entry.isSymbolicLink()) {
-      const real = fs.realpathSync(srcPath);
-      const st = fs.statSync(real);
-      if (st.isDirectory()) {
-        copySubmissionFiltered(real, dstPath);
-      } else {
-        fs.copyFileSync(real, dstPath);
-      }
-    } else {
+    } else if (st.isFile()) {
       fs.copyFileSync(srcPath, dstPath);
     }
   }
@@ -170,23 +167,48 @@ export function scanForLeakage({ runDir, subCopyDir, diffText, changedFiles, rep
   const normRepoBack = path.resolve(repoRoot).replace(/\//g, "\\");
   const repoLowerSlash = normRepoSlash.toLowerCase();
   const repoLowerBack = normRepoBack.toLowerCase();
-  const hiddenPattern = /(?:^|[\s"'`(\[/\\=:])hidden(?:-v2)?[\/\\]/i;
+  const hiddenPattern = /(?:^|[\s"'`(\[/\\=:])(?:hidden-v2\b|hidden[\/\\])|[\/\\]hidden\b/i;
 
-  // 1. Check symlinks in runDir escaping runDir
+  function normalizeStringConcat(text) {
+    return String(text || "").replace(/(['"`])\s*\+\s*\1/g, "");
+  }
+
+  function scanContentString(relLabel, text, sourceLabel) {
+    const normalized = normalizeStringConcat(text);
+    for (const candidate of text === normalized ? [text] : [text, normalized]) {
+      const lower = candidate.toLowerCase();
+      if (hiddenPattern.test(candidate)) {
+        matches.push({
+          file: relLabel,
+          pattern: "hidden/",
+          detail: `${sourceLabel} references hidden/hidden-v2`
+        });
+      }
+      if (lower.includes(repoLowerSlash) || lower.includes(repoLowerBack)) {
+        matches.push({
+          file: relLabel,
+          pattern: "repo_path",
+          detail: `${sourceLabel} references repository path (${normRepoSlash})`
+        });
+      }
+    }
+  }
+
+  // 1. Check symlinks in runDir (flag any symlink inside or escaping runDir)
   function checkSymlinks(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (entry.name === "node_modules" || entry.name === ".venv" || entry.name === ".git") continue;
       const fullPath = path.join(dir, entry.name);
-      if (entry.isSymbolicLink()) {
-        const resolved = fs.realpathSync(fullPath);
-        if (!isInsideDir(resolved, runDir)) {
-          matches.push({
-            file: path.relative(runDir, fullPath).replace(/\\/g, "/"),
-            pattern: "symlink_escape",
-            detail: `Symlink points outside run directory: ${resolved}`
-          });
-        }
-      } else if (entry.isDirectory()) {
+      const st = fs.lstatSync(fullPath);
+      if (st.isSymbolicLink()) {
+        let resolved = "";
+        try { resolved = fs.realpathSync(fullPath); } catch { resolved = "(broken symlink)"; }
+        matches.push({
+          file: path.relative(runDir, fullPath).replace(/\\/g, "/"),
+          pattern: isInsideDir(resolved, runDir) ? "symlink" : "symlink_escape",
+          detail: `Symlink not permitted in run directory: ${resolved}`
+        });
+      } else if (st.isDirectory()) {
         checkSymlinks(fullPath);
       }
     }
@@ -208,26 +230,30 @@ export function scanForLeakage({ runDir, subCopyDir, diffText, changedFiles, rep
       continue;
     }
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
-    const content = line.slice(1);
-    const lower = content.toLowerCase();
-    if (hiddenPattern.test(content)) {
-      matches.push({
-        file: currentDiffFile,
-        pattern: "hidden/",
-        detail: `Added diff line references hidden/`
-      });
-    }
-    if (lower.includes(repoLowerSlash) || lower.includes(repoLowerBack)) {
-      matches.push({
-        file: currentDiffFile,
-        pattern: "repo_path",
-        detail: `Added diff line references repository path (${normRepoSlash})`
-      });
-    }
+    scanContentString(currentDiffFile, line.slice(1), "Added diff line");
   }
 
-  // 3. Scan changed/added files in submission copy (fallback to all non-harmless files if changedFiles empty)
+  // 3. Scan ALL files in submission copy (catches gitignored & binary files as well) + changedFiles
   const filesToScan = new Set(changedFiles || []);
+  function walkSubCopy(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const st = fs.lstatSync(full);
+      if (st.isSymbolicLink()) {
+        matches.push({
+          file: path.relative(subCopyDir, full).replace(/\\/g, "/"),
+          pattern: "symlink",
+          detail: "Symlink found inside submission copy"
+        });
+      } else if (st.isDirectory()) {
+        walkSubCopy(full);
+      } else if (st.isFile()) {
+        filesToScan.add(path.relative(subCopyDir, full).replace(/\\/g, "/"));
+      }
+    }
+  }
+  if (subCopyDir && fs.existsSync(subCopyDir)) walkSubCopy(subCopyDir);
+
   for (const rel of filesToScan) {
     const normRel = rel.replace(/\\/g, "/");
     if (hiddenPattern.test(normRel)) {
@@ -236,21 +262,12 @@ export function scanForLeakage({ runDir, subCopyDir, diffText, changedFiles, rep
     const full = path.join(subCopyDir, normRel);
     if (!fs.existsSync(full) || !fs.statSync(full).isFile()) continue;
     const ext = path.extname(full).toLowerCase();
-    if (BINARY_EXTENSIONS.has(ext)) continue;
     const buf = fs.readFileSync(full);
-    if (buf.includes(0)) continue;
-    const text = buf.toString("utf8");
-    const lower = text.toLowerCase();
-    if (hiddenPattern.test(text)) {
-      matches.push({ file: normRel, pattern: "hidden/", detail: `File content references hidden/` });
+    if (BINARY_EXTENSIONS.has(ext) || buf.includes(0)) {
+      scanContentString(normRel, buf.toString("latin1"), "Binary file bytes");
+      continue;
     }
-    if (lower.includes(repoLowerSlash) || lower.includes(repoLowerBack)) {
-      matches.push({
-        file: normRel,
-        pattern: "repo_path",
-        detail: `File content references repository path (${normRepoSlash})`
-      });
-    }
+    scanContentString(normRel, buf.toString("utf8"), "File content");
   }
 
   // Deduplicate identical (file, pattern) matches
@@ -1128,9 +1145,13 @@ export function collectRun({
     }
   }
 
+  const ceilingDirs = [
+    path.dirname(path.resolve(subCopyDir)),
+    path.dirname(path.resolve(resolvedResultsDir)),
+  ].join(path.delimiter);
   const stdout = execFileSync(process.execPath, gradeArgs, {
     cwd: resolvedRepoRoot,
-    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: "0" },
+    env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: "0", GIT_CEILING_DIRECTORIES: ceilingDirs },
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"]
@@ -1147,8 +1168,21 @@ export function collectRun({
 
   // 7. Merge efficiency, model label, leakage, and metadata into results/<id>.json
   const warnings = [...(graded.warnings || []), ...extraWarnings];
+  let leakageGates = graded.gates ? { ...graded.gates } : {};
+  let leakageAxes = graded.axes ? { ...graded.axes } : graded.axes;
+  let leakageComposite = graded.composite;
   if (leakage.flagged) {
     warnings.push(`Possible leakage detected (${leakage.matches.length} match(es))`);
+    leakageGates["G-leakage"] = {
+      pass: false,
+      detail: `Leakage detected (${leakage.matches.length} match(es)): ${leakage.matches.slice(0, 3).map((m) => `${m.file} [${m.pattern}]`).join(", ")}`
+    };
+    if (leakageAxes && typeof leakageAxes === "object") {
+      for (const ax of ["craft", "visual_quality", "revision"]) {
+        if (ax in leakageAxes && leakageAxes[ax] !== null) leakageAxes[ax] = 0;
+      }
+    }
+    leakageComposite = null;
   }
 
   const finalResult = {
@@ -1158,6 +1192,10 @@ export function collectRun({
     created_at: runMeta.created_at,
     ended_at: endedAt,
     ...graded,
+    gates: leakageGates,
+    axes: leakageAxes,
+    composite: leakageComposite,
+    ...(leakage.flagged ? { invalid: true, invalid_reason: "leakage_detected" } : {}),
     efficiency: makeEfficiency(graded.efficiency),
     leakage,
     diff_file: path.relative(resolvedResultsDir, diffPath).replace(/\\/g, "/"),

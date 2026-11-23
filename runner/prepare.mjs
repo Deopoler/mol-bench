@@ -32,7 +32,7 @@ function parseArgs(argv) {
   return { positional, flags };
 }
 
-function copyTreeFiltered(srcDir, dstDir, shouldInclude) {
+function copyTreeFiltered(srcDir, dstDir, shouldInclude, rootBase = srcDir) {
   if (!fs.existsSync(srcDir)) {
     throw new Error(`Source directory does not exist: ${srcDir}`);
   }
@@ -41,17 +41,13 @@ function copyTreeFiltered(srcDir, dstDir, shouldInclude) {
   for (const entry of entries) {
     const srcPath = path.join(srcDir, entry.name);
     const dstPath = path.join(dstDir, entry.name);
-    if (!shouldInclude(srcPath, entry)) continue;
-    if (entry.isDirectory()) {
-      copyTreeFiltered(srcPath, dstPath, shouldInclude);
-    } else if (entry.isSymbolicLink()) {
-      const real = fs.realpathSync(srcPath);
-      const stat = fs.statSync(real);
-      if (stat.isDirectory()) {
-        copyTreeFiltered(real, dstPath, shouldInclude);
-      } else {
-        fs.copyFileSync(real, dstPath);
-      }
+    const st = fs.lstatSync(srcPath);
+    if (st.isSymbolicLink()) {
+      throw new Error(`Symlink not allowed in source tree: ${srcPath}`);
+    }
+    if (!shouldInclude(srcPath, entry, rootBase)) continue;
+    if (st.isDirectory()) {
+      copyTreeFiltered(srcPath, dstPath, shouldInclude, rootBase);
     } else {
       fs.copyFileSync(srcPath, dstPath);
     }
@@ -251,7 +247,10 @@ export function prepareRun({
       }
       copyTreeFiltered(resolvedStart, runDir, (srcPath, entry) => {
         const rel = path.relative(resolvedStart, srcPath).replace(/\\/g, "/");
-        if (EXCLUDED_START_DIRS.has(entry.name)) return false;
+        const parts = rel.split("/");
+        const lower = entry.name.toLowerCase();
+        if (lower === "hidden" || lower === "hidden-v2") return false;
+        if (parts.length === 1 && EXCLUDED_START_DIRS.has(entry.name)) return false;
         if (rel === "report.json" || rel === "decisions.json" || rel === "selfcheck.json" || rel === ".run.json" || rel === ".bench-room") return false;
         return true;
       });

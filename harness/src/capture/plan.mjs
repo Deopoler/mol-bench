@@ -609,6 +609,17 @@ export async function executePlan(plan, {
   const consoleAll = [];
   const networkAll = [];
   const fontResponsesAll = [];
+  const tamperAll = [];
+  const unhookedReasons = new Set();
+  const unhookedCounts = {
+    worker_count: 0,
+    offscreen_transfers: 0,
+    iframe_count: 0,
+    canvas_2d_count: 0,
+    bitmap_renderer_count: 0,
+    unhooked_canvas_count: 0,
+    webgpu_attempts: 0,
+  };
 
   function collectLogs(handle) {
     if (!handle) return;
@@ -621,6 +632,35 @@ export async function executePlan(plan, {
     for (const f of handle.fontResponses) {
       fontResponsesAll.push(f);
     }
+  }
+
+  async function finishHandle(handle) {
+    if (!handle) return;
+    collectLogs(handle);
+    try {
+      const tamper = await handle.getTamperStatus?.().catch(() => null);
+      if (tamper?.events?.length) {
+        tamperAll.push(...tamper.events);
+      }
+    } catch {
+      // ignore if page already closed
+    }
+    try {
+      const unhooked = await handle.getUnhookedRenderingStatus?.().catch(() => null);
+      if (unhooked) {
+        for (const r of unhooked.reasons || []) unhookedReasons.add(r);
+        unhookedCounts.worker_count = Math.max(unhookedCounts.worker_count, unhooked.worker_count || 0);
+        unhookedCounts.offscreen_transfers = Math.max(unhookedCounts.offscreen_transfers, unhooked.offscreen_transfers || 0);
+        unhookedCounts.iframe_count = Math.max(unhookedCounts.iframe_count, unhooked.iframe_count || 0);
+        unhookedCounts.canvas_2d_count = Math.max(unhookedCounts.canvas_2d_count, unhooked.canvas_2d_count || 0);
+        unhookedCounts.bitmap_renderer_count = Math.max(unhookedCounts.bitmap_renderer_count, unhooked.bitmap_renderer_count || 0);
+        unhookedCounts.unhooked_canvas_count = Math.max(unhookedCounts.unhooked_canvas_count, unhooked.unhooked_canvas_count || 0);
+        unhookedCounts.webgpu_attempts = Math.max(unhookedCounts.webgpu_attempts, unhooked.webgpu_attempts || 0);
+      }
+    } catch {
+      // ignore if page already closed
+    }
+    await handle.close();
   }
 
   // Renovation specs may pin the language protected elements are compared in
@@ -757,8 +797,7 @@ export async function executePlan(plan, {
         gates['G-contract'] = { pass: false, detail: 'Skipped because G-load failed' };
       }
     } finally {
-      collectLogs(initHandle);
-      await initHandle.close();
+      await finishHandle(initHandle);
     }
 
     const canRender = gates['G-load'].pass && gates['G-contract'].pass;
@@ -798,8 +837,7 @@ export async function executePlan(plan, {
           await h.renderFrame();
           return await h.screenshot();
         } finally {
-          collectLogs(h);
-          await h.close();
+          await finishHandle(h);
         }
       }
 
@@ -847,14 +885,14 @@ export async function executePlan(plan, {
         await liveHandle.setSeed(liveSeed, liveParams);
         await liveHandle.resetClock(0);
         await liveHandle.resume();
-        tActual = await liveHandle.page.evaluate((targetMs) => {
+        tActual = await liveHandle.page.evaluate(([targetMs, sec]) => {
           return new Promise((resolve) => {
             let done = false;
             const finish = () => {
               if (done) return;
               done = true;
               const now = window.__benchHost.clock.now();
-              window.__benchHostControl.freeze(now);
+              window.__benchHostControl.freeze(now, sec);
               window.__bench.seek(now);
               resolve(now);
             };
@@ -871,13 +909,12 @@ export async function executePlan(plan, {
             }
             requestAnimationFrame(check);
           });
-        }, requestedT);
+        }, [requestedT, liveHandle.controlSecret]);
         await liveHandle.renderFrame();
         const livePath = path.join(framesDir, '_g_live_live.png');
         liveBuf = await liveHandle.screenshot(livePath);
       } finally {
-        collectLogs(liveHandle);
-        await liveHandle.close();
+        await finishHandle(liveHandle);
       }
 
       // 2) Seek frame at exact tActual in a fresh page
@@ -896,8 +933,7 @@ export async function executePlan(plan, {
         const seekPath = path.join(framesDir, '_g_live_seek.png');
         seekBuf = await seekHandle.screenshot(seekPath);
       } finally {
-        collectLogs(seekHandle);
-        await seekHandle.close();
+        await finishHandle(seekHandle);
       }
 
       const flipResult = measureLiveFlip(path.join(framesDir, '_g_live_seek.png'), path.join(framesDir, '_g_live_live.png'));
@@ -1072,8 +1108,7 @@ export async function executePlan(plan, {
             manifest.samples.push(sampleEntry);
           }
         } finally {
-          collectLogs(handle);
-          await handle.close();
+          await finishHandle(handle);
         }
       }
     }
@@ -1176,8 +1211,7 @@ export async function executePlan(plan, {
           if (seq.mask) seqEntry.mask = seq.mask;
           manifest.sequences.push(seqEntry);
         } finally {
-          collectLogs(handle);
-          await handle.close();
+          await finishHandle(handle);
         }
       }
     }
@@ -1225,8 +1259,7 @@ export async function executePlan(plan, {
               });
             }
           } finally {
-            collectLogs(handle);
-            await handle.close();
+            await finishHandle(handle);
           }
         } else if (kind === 'lifecycle_30' || kind === 'lifecycle') {
           const cycles = Number(step.cycles || 30);
@@ -1301,8 +1334,7 @@ export async function executePlan(plan, {
               },
             };
           } finally {
-            collectLogs(handle);
-            await handle.close();
+            await finishHandle(handle);
           }
         } else if (kind === 'raf_rate' || kind === 'clock_independence') {
           const durationMs = Number(step.durationMs || 5000);
@@ -1327,8 +1359,7 @@ export async function executePlan(plan, {
               const st = await h.state();
               return { hz, info, state: st };
             } finally {
-              collectLogs(h);
-              await h.close();
+              await finishHandle(h);
             }
           }
 
@@ -1388,8 +1419,7 @@ export async function executePlan(plan, {
               },
             };
           } finally {
-            collectLogs(handle);
-            await handle.close();
+            await finishHandle(handle);
           }
         }
       }
@@ -1430,8 +1460,7 @@ export async function executePlan(plan, {
             }
           }
         } finally {
-          collectLogs(handle);
-          await handle.close();
+          await finishHandle(handle);
         }
       }
     }
@@ -1581,6 +1610,44 @@ export async function executePlan(plan, {
       : null;
 
     if (isV2) {
+      const tamperDetected = tamperAll.length > 0;
+      const unhookedList = Array.from(unhookedReasons);
+      const unhookedObj = {
+        detected: unhookedList.length > 0,
+        reasons: unhookedList,
+        ...unhookedCounts,
+      };
+      const expectsWebGL =
+        specMetricIds.has('budget.gpu_work_profile') ||
+        specMetricIds.has('budget.shader_ops') ||
+        specMetricIds.has('budget.render_work') ||
+        specMetricIds.has('budget.render_passes') ||
+        specMetricIds.has('budget.draw_calls') ||
+        Boolean(spec?.webgl_required);
+      const hardBypassReasons = ['worker_created', 'offscreen_canvas_transferred', 'iframe_detected', 'webgpu_context', 'unhooked_canvas'];
+      const hasHardBypass = hardBypassReasons.some((r) => unhookedReasons.has(r));
+      const webglMissingWhenExpected = expectsWebGL && canRender && !webglManifest;
+      const webglHookPass = !hasHardBypass && !(expectsWebGL && (unhookedObj.detected || webglMissingWhenExpected));
+
+      gates['G-tamper'] = {
+        pass: !tamperDetected,
+        detail: tamperDetected
+          ? `Tampering detected (${tamperAll.length} call(s)): ${tamperAll.slice(0, 3).map((e) => e.method).join(', ')}`
+          : 'No host-control tampering detected',
+      };
+      gates['G-webgl-hook'] = {
+        pass: webglHookPass,
+        detail: webglHookPass
+          ? '0 unhooked rendering channels detected'
+          : `Unhooked/bypass rendering detected: ${[...unhookedList, ...(webglMissingWhenExpected ? ['missing_webgl_manifest'] : [])].join(', ')}`,
+      };
+
+      manifest.tamper = {
+        detected: tamperDetected,
+        count: tamperAll.length,
+        events: tamperAll.slice(0, 50),
+      };
+      manifest.unhooked_rendering = unhookedObj;
       manifest.transfer_kb = transferKb;
       manifest.bundle_gz_kb = bundleGzKb;
       if (webglManifest) {

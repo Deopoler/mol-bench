@@ -328,29 +328,33 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
 
   // Sort helper:
   // - v1: composite_raw desc, reliability desc, active_min asc, run_id asc (preserved verbatim)
-  // - v2 (V02-DESIGN §3.2): primary composite_raw desc; if |diff| < 0.05 -> reliability desc ->
-  //       (if same provider_group: lower out+reas tokens; else tie ordered alphabetically by run_id).
+  // - v2: strict weak ordering — quantize composite_raw into 0.05 buckets, then reliability desc ->
+  //       within-provider normalized token ratio asc -> provider_group asc -> tokens_out_reas asc -> run_id asc.
+  const v2Bucket = (val) => (val === null || val === undefined || !Number.isFinite(val))
+    ? -Infinity
+    : Math.floor((val + 1e-9) / 0.05);
+
   const compareRuns = (a, b) => {
     const ac = a.composite_raw;
     const bc = b.composite_raw;
     if (ac === null && bc !== null) return 1;
     if (ac !== null && bc === null) return -1;
     if (version === 2) {
-      if (ac !== null && bc !== null && Math.abs(bc - ac) >= 0.05) {
-        return bc - ac;
-      }
+      const ab = v2Bucket(ac);
+      const bb = v2Bucket(bc);
+      if (bb !== ab) return bb - ab;
       const ar = a.axes_raw.reliability ?? -1;
       const br = b.axes_raw.reliability ?? -1;
       if (br !== ar) return br - ar;
-      if (a.efficiency.provider_group && a.efficiency.provider_group === b.efficiency.provider_group) {
-        const at = a.efficiency.tokens_out_reas ?? Infinity;
-        const bt = b.efficiency.tokens_out_reas ?? Infinity;
-        if (at !== bt) return at - bt;
-      }
-      if (ac !== null && bc !== null && bc !== ac) {
-        // Different providers within 0.05 tie-band: order alphabetically by run_id per §3.2
-        return a.run_id.localeCompare(b.run_id);
-      }
+      const atr = a.efficiency.provider_tok_ratio ?? Infinity;
+      const btr = b.efficiency.provider_tok_ratio ?? Infinity;
+      if (atr !== btr) return atr - btr;
+      const apg = a.efficiency.provider_group || "unknown";
+      const bpg = b.efficiency.provider_group || "unknown";
+      if (apg !== bpg) return apg.localeCompare(bpg);
+      const at = a.efficiency.tokens_out_reas ?? Infinity;
+      const bt = b.efficiency.tokens_out_reas ?? Infinity;
+      if (at !== bt) return at - bt;
       return a.run_id.localeCompare(b.run_id);
     }
     if (ac !== null && bc !== null && bc !== ac) return bc - ac;
@@ -480,17 +484,21 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     if (a.composite_raw === null && b.composite_raw !== null) return 1;
     if (a.composite_raw !== null && b.composite_raw === null) return -1;
     if (version === 2) {
-      if (a.composite_raw !== null && b.composite_raw !== null && Math.abs(b.composite_raw - a.composite_raw) >= 0.05) {
-        return b.composite_raw - a.composite_raw;
-      }
+      const ab = v2Bucket(a.composite_raw);
+      const bb = v2Bucket(b.composite_raw);
+      if (bb !== ab) return bb - ab;
       const ar = a.axes.reliability ?? -1;
       const br = b.axes.reliability ?? -1;
       if (br !== ar) return br - ar;
-      if (a.provider_group && a.provider_group === b.provider_group) {
-        const at = a.avg_out_reas ?? Infinity;
-        const bt = b.avg_out_reas ?? Infinity;
-        if (at !== bt) return at - bt;
-      }
+      const atr = a.avg_tok_ratio ?? Infinity;
+      const btr = b.avg_tok_ratio ?? Infinity;
+      if (atr !== btr) return atr - btr;
+      const apg = a.provider_group || "unknown";
+      const bpg = b.provider_group || "unknown";
+      if (apg !== bpg) return apg.localeCompare(bpg);
+      const at = a.avg_out_reas ?? Infinity;
+      const bt = b.avg_out_reas ?? Infinity;
+      if (at !== bt) return at - bt;
       return a.model.localeCompare(b.model);
     }
     if (a.composite_raw !== null && b.composite_raw !== null && b.composite_raw !== a.composite_raw) {

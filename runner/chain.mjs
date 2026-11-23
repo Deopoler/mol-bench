@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareRun } from "./prepare.mjs";
 import { collectRun, buildV2Efficiency } from "./collect.mjs";
+import { execFileSync } from "node:child_process";
 import { parseVersion, resolveVersionPaths, loadSpec } from "../harness/src/spec.mjs";
 import { gradeSubmission } from "../harness/src/cli.mjs";
 import { round1 } from "../harness/src/score.mjs";
@@ -83,6 +84,12 @@ export function loadChainConfig(room, { version = 2, chainName = "chain", repoRo
 export function shouldAdvanceChain(roundResult) {
   if (!roundResult || typeof roundResult !== "object") {
     return { advance: false, failedNonReportGates: [], reason: "missing_round_result" };
+  }
+  if (roundResult.leakage?.flagged) {
+    return { advance: false, failedNonReportGates: [], reason: "leakage_flagged" };
+  }
+  if (roundResult.invalid) {
+    return { advance: false, failedNonReportGates: [], reason: roundResult.invalid_reason || "invalid_round" };
   }
   if (roundResult.status === "no-submission" || roundResult.status === "collect-error") {
     return { advance: false, failedNonReportGates: [], reason: roundResult.status };
@@ -237,10 +244,14 @@ export async function runChain({
   noCapture = false,
   noPython = false,
   runnerFn = null,
+  agentCmd = null,
 } = {}) {
   if (!room) throw new Error("Missing required <room> argument.");
   if (!runId) throw new Error("Missing required --run-id <id> argument.");
   if (!model) throw new Error("Missing required --model \"<label>\" argument.");
+  if (typeof runnerFn !== "function" && (!agentCmd || typeof agentCmd !== "string")) {
+    throw new Error("runChain requires a runnerFn callback (or --agent-cmd \"<command>\" when invoked from CLI)");
+  }
 
   const v = parseVersion(version);
   const resolvedRepoRoot = path.resolve(repoRoot);
@@ -279,6 +290,19 @@ export async function runChain({
         runDir,
         runMeta,
       });
+    } else if (agentCmd) {
+      execFileSync(agentCmd, {
+        cwd: runDir,
+        shell: true,
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          MOLBENCH_RUN_DIR: runDir,
+          MOLBENCH_RUN_ID: roundRunId,
+          MOLBENCH_ROUND: rInfo.id,
+          MOLBENCH_ROOM: room,
+        },
+      });
     }
 
     const collected = collectRun({
@@ -294,6 +318,11 @@ export async function runChain({
       repoRoot: resolvedRepoRoot,
     });
     roundResults.push(collected.result);
+
+    if (collected.result?.leakage?.flagged) {
+      stoppedReason = `Stopped after ${rInfo.id}: leakage_flagged`;
+      break;
+    }
 
     const adv = shouldAdvanceChain(collected.result);
     if (!adv.advance) {
@@ -475,6 +504,10 @@ async function main() {
   }
 
   const room = positional[0];
+  const agentCmd = flags["agent-cmd"] || flags["runner-cmd"] || null;
+  if (!agentCmd) {
+    throw new Error("CLI chain run requires --agent-cmd \"<command>\" (or use runChain({ runnerFn }) programmatically, or --calibrate)");
+  }
   const out = await runChain({
     room,
     chainName: flags.chain || "chain",
@@ -487,6 +520,7 @@ async function main() {
     hidden: !flags["no-hidden"],
     noCapture: Boolean(flags["no-capture"]),
     noPython: Boolean(flags["no-python"]),
+    agentCmd,
   });
   console.log(JSON.stringify({ resultPath: out.resultPath, composite_chain: out.result.composite_chain, rounds_completed: out.result.rounds_completed }, null, 2));
 }

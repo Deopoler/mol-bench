@@ -273,7 +273,7 @@ test("versioned leaderboard renders existing v0.1 results/*.json unchanged and a
         model: "Claude Sonnet 5.5 (high)",
         gates: { "G-load": { pass: true } },
         axes: { craft: 6.8, visual_quality: 7.0, reliability: 10 },
-        composite: 7.17, // within 0.05 of 7.20! Ties alphabetically by run_id ("aurora__claude..." < "aurora__gemini...")
+        composite: 7.21, // same [7.20, 7.25) v2 bucket as 7.20! Same reliability -> claude < gemini -> ties cleanly
         efficiency: {
           provider_group: "claude",
           cli_source: "claude",
@@ -326,6 +326,125 @@ test("versioned leaderboard renders existing v0.1 results/*.json unchanged and a
     assert.match(html, /__LEADERBOARD_DATASETS__/);
     assert.match(html, /V1 Model/);
     assert.match(html, /Gemini 4 Neon \(High\)/);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test("review fixes: symlink refusal, root-only start exclusions, gitignored/concat leak scan fail-closed, and transitive v2 sort", () => {
+  const tmpBase = makeTmpBase("test-review-fixes-");
+  try {
+    const repo = makeV2FixtureRepo(tmpBase);
+    const runsRoot = path.join(tmpBase, "runs");
+    const resultsV2 = path.join(tmpBase, "results-v2");
+
+    // 1. Root-only EXCLUDED_START_DIRS preserves nested src/metrics/ and src/work/ during handoff
+    const startSnap = path.join(tmpBase, "start-snap");
+    fs.mkdirSync(path.join(startSnap, "metrics"), { recursive: true });
+    fs.writeFileSync(path.join(startSnap, "metrics", "ignored-root.py"), "# root harness dir\n");
+    fs.mkdirSync(path.join(startSnap, "room", "src", "metrics"), { recursive: true });
+    fs.mkdirSync(path.join(startSnap, "room", "src", "work"), { recursive: true });
+    fs.writeFileSync(path.join(startSnap, "room", "src", "metrics", "app-metrics.js"), "export const x = 1;\n");
+    fs.writeFileSync(path.join(startSnap, "room", "src", "work", "jobs.js"), "export const j = 2;\n");
+
+    const { runDir } = prepareRun({
+      room: "aurora",
+      runId: "aurora__nested-dirs",
+      version: 2,
+      startDir: startSnap,
+      root: runsRoot,
+      repoRoot: repo,
+    });
+    assert.equal(fs.existsSync(path.join(runDir, "room", "src", "metrics", "app-metrics.js")), true);
+    assert.equal(fs.existsSync(path.join(runDir, "room", "src", "work", "jobs.js")), true);
+    assert.equal(fs.existsSync(path.join(runDir, "metrics", "ignored-root.py")), false);
+
+    // 2. Symlink in startDir MUST throw (never dereference)
+    const symStart = path.join(tmpBase, "sym-start");
+    fs.mkdirSync(path.join(symStart, "room"), { recursive: true });
+    fs.writeFileSync(path.join(symStart, "room", "ok.js"), "export {};\n");
+    let symlinkCreated = false;
+    try {
+      fs.symlinkSync(path.join(repo, "hidden-v2", "aurora", "grade.json"), path.join(symStart, "room", "sneak.json"));
+      symlinkCreated = true;
+    } catch {
+      // Skip symlink-creation assertion if OS forbids creating symlinks without elevation
+    }
+    if (symlinkCreated) {
+      assert.throws(
+        () => prepareRun({ room: "aurora", runId: "aurora__sym-deny", version: 2, startDir: symStart, root: runsRoot, repoRoot: repo }),
+        /Symlink not allowed/,
+      );
+    }
+
+    // 3. Leakage scan catches gitignored files + concatenated 'hid'+'den-v2' + /hidden without trailing slash and fails closed
+    const leakPrep = prepareRun({
+      room: "aurora",
+      runId: "aurora__leak-fail-closed",
+      version: 2,
+      root: runsRoot,
+      repoRoot: repo,
+    });
+    fs.writeFileSync(path.join(leakPrep.runDir, ".gitignore"), "secret-ignored.js\n");
+    fs.writeFileSync(path.join(leakPrep.runDir, "secret-ignored.js"), "const p = 'hid' + 'den-v2';\n");
+    fs.writeFileSync(path.join(leakPrep.runDir, "room", "index.html"), "<!doctype html><h1>Leaked</h1>\n");
+    fs.writeFileSync(
+      path.join(leakPrep.runDir, "report.json"),
+      JSON.stringify({ schema_version: 1, summary: "Done", deliverables: ["room/index.html", "report.json"], claims: [], blocked: false }),
+    );
+    const leaked = collectRun({
+      runId: "aurora__leak-fail-closed",
+      model: "Leaker",
+      version: 2,
+      hidden: false,
+      noCapture: true,
+      noPython: true,
+      root: runsRoot,
+      resultsDir: resultsV2,
+      repoRoot: repo,
+    });
+    assert.equal(leaked.result.leakage.flagged, true);
+    assert.equal(leaked.result.gates["G-leakage"].pass, false);
+    assert.equal(leaked.result.invalid, true);
+    assert.equal(leaked.result.invalid_reason, "leakage_detected");
+    assert.equal(leaked.result.composite, null);
+
+    // 4. Transitive v2 leaderboard comparator (permutation invariant even across A-B=0.04, B-C=0.04, A-C=0.08 & mixed providers)
+    const lbDir = path.join(tmpBase, "lb-transitivity");
+    const makeRun = (runId, comp, provider, outTok) => ({
+      run_id: runId,
+      room: "aurora",
+      track: "build",
+      bench_version: "0.2.0",
+      model: runId,
+      gates: { "G-load": { pass: true } },
+      axes: { craft: comp, visual_quality: comp, reliability: 10 },
+      composite: comp,
+      efficiency: {
+        provider_group: provider,
+        cli_source: provider === "gemini" ? "agy" : provider,
+        tokens: { input: 1000, output: outTok, reasoning: 0, total: 1000 + outTok },
+      },
+    });
+    const baseItems = [
+      makeRun("run_a_claude_804", 8.04, "claude", 50000),
+      makeRun("run_b_gemini_802", 8.02, "gemini", 40000),
+      makeRun("run_c_claude_800", 8.00, "claude", 20000),
+      makeRun("run_d_gemini_799", 7.99, "gemini", 10000),
+    ];
+    fs.mkdirSync(lbDir, { recursive: true });
+    for (const r of baseItems) fs.writeFileSync(path.join(lbDir, `${r.run_id}.json`), JSON.stringify(r));
+    const loaded = loadResultFiles(lbDir, { version: 2 });
+    const orders = new Set();
+    const perms = [
+      [0, 1, 2, 3], [3, 2, 1, 0], [1, 3, 0, 2], [2, 0, 3, 1], [1, 2, 3, 0], [3, 0, 2, 1],
+    ];
+    for (const p of perms) {
+      const data = buildLeaderboardData(p.map((i) => loaded[i]), { version: 2 });
+      orders.add(data.rooms.aurora.runs.map((r) => r.run_id).join(","));
+      assert.equal(data.rooms.aurora.runs[3].run_id, "run_d_gemini_799", "7.99 in lower bucket must rank last");
+    }
+    assert.equal(orders.size, 1, "v2 leaderboard ordering must be identical across all input permutations");
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }

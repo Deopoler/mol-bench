@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { scoreChain, shouldAdvanceChain, runChain } from "../chain.mjs";
 
@@ -277,8 +278,71 @@ test("runChain executes 1/3, 2/3, and 3/3 handoffs without launching rounds afte
     assert.equal(res3.result.rounds_completed, "3/3");
     assert.equal(res3.result.bench_version, "0.2.0");
     assert.equal(res3.result.track, "chain");
-    assert.ok(res3.result.composite_chain > 5, `expected high composite_chain, got ${res3.result.composite_chain}`);
+    const diagRounds = () => JSON.stringify(
+      (res3.result.round_results || []).map((r) => ({
+        round: r.renovation,
+        gates: r.gates,
+        axes: r.axes,
+        composite: r.composite,
+        leakage: r.leakage,
+        out_of_scope: r.metrics?.["diff.out_of_scope_files"],
+        warnings: r.warnings,
+      })),
+    );
+    assert.ok(res3.result.composite_chain > 5, `expected high composite_chain, got ${res3.result.composite_chain}; rounds=${diagRounds()}`);
     assert.equal(fs.existsSync(res3.resultPath), true);
+
+    // Case 6: simulate dirty parent git repo enclosing runs/ & results-v2/ (as on host work/) -> GIT_CEILING_DIRECTORIES keeps diff clean
+    const dirtyParent = fs.mkdtempSync(path.join(tmpBase, "dirty-host-git-"));
+    execFileSync("git", ["init"], { cwd: dirtyParent, stdio: "ignore" });
+    for (const f of ["x.txt", "y.txt", "z.txt"]) fs.writeFileSync(path.join(dirtyParent, f), "v1\n");
+    execFileSync("git", ["add", "-A"], { cwd: dirtyParent, stdio: "ignore" });
+    execFileSync("git", ["-c", "user.name=T", "-c", "user.email=t@t", "commit", "-m", "base"], { cwd: dirtyParent, stdio: "ignore" });
+    for (const f of ["x.txt", "y.txt", "z.txt"]) fs.writeFileSync(path.join(dirtyParent, f), "dirty-v2\n");
+    const hostRes = await runChain({
+      room: "lobby",
+      runId: "lobby-chain__dirtyhost",
+      model: "Model HostSim",
+      version: 2,
+      root: path.join(dirtyParent, "runs"),
+      resultsDir: path.join(dirtyParent, "results-v2"),
+      repoRoot: repo,
+      hidden: false,
+      noCapture: true,
+      noPython: true,
+      runnerFn: ({ round, runDir }) => writeRoundDeliverables(runDir, round, { validDecisions: true }),
+    });
+    assert.equal(hostRes.result.rounds_completed, "3/3");
+    assert.ok(hostRes.result.composite_chain > 5, `dirty parent git must not pollute renovation diff (got ${hostRes.result.composite_chain})`);
+    assert.equal(hostRes.result.round_results[0].metrics["diff.out_of_scope_files"].raw, 0);
+
+    // Case 4: runChain rejects invocation with neither runnerFn nor agentCmd
+    await assert.rejects(
+      () => runChain({ room: "lobby", runId: "lobby-chain__empty", model: "Model X", version: 2, root: runsRoot, resultsDir, repoRoot: repo }),
+      /requires a runnerFn/,
+    );
+
+    // Case 5: runChain refuses handoff when r1 flags leakage
+    const launchedLeak = [];
+    const leakRes = await runChain({
+      room: "lobby",
+      runId: "lobby-chain__leak",
+      model: "Model Leak",
+      version: 2,
+      root: runsRoot,
+      resultsDir,
+      repoRoot: repo,
+      hidden: false,
+      noCapture: true,
+      noPython: true,
+      runnerFn: ({ round, runDir }) => {
+        launchedLeak.push(round);
+        writeRoundDeliverables(runDir, round, { validDecisions: true });
+        fs.writeFileSync(path.join(runDir, "lobby", "leak.js"), 'const x = "hidden-v2";\n');
+      },
+    });
+    assert.deepEqual(launchedLeak, ["r1"], "chain must refuse handoff to r2 when r1 has leakage");
+    assert.equal(leakRes.result.rounds_completed, "0/3");
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }
