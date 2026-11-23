@@ -5,7 +5,8 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generatePreviewContactSheets } from "../harness/src/cli.mjs";
-import { collectTokens, collectActiveTime } from "./tokens.mjs";
+import { parseVersion, resolveVersionPaths, loadSpec } from "../harness/src/spec.mjs";
+import { collectTokens, collectActiveTime, resolveAgent } from "./tokens.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..");
@@ -169,7 +170,7 @@ export function scanForLeakage({ runDir, subCopyDir, diffText, changedFiles, rep
   const normRepoBack = path.resolve(repoRoot).replace(/\//g, "\\");
   const repoLowerSlash = normRepoSlash.toLowerCase();
   const repoLowerBack = normRepoBack.toLowerCase();
-  const hiddenPattern = /(?:^|[\s"'`(\[/\\=:])hidden[\/\\]/i;
+  const hiddenPattern = /(?:^|[\s"'`(\[/\\=:])hidden(?:-v2)?[\/\\]/i;
 
   // 1. Check symlinks in runDir escaping runDir
   function checkSymlinks(dir) {
@@ -329,12 +330,111 @@ function inferRoomFromRunId(runId) {
   return prefix.replace(/-r\d+$/, "") || "unknown";
 }
 
+export function inferProviderGroup({ model = "", agent = "", tokens = null } = {}) {
+  const m = String(model || "").toLowerCase();
+  const a = String(agent || "").toLowerCase();
+  if (m.includes("argon") || a.includes("argon")) return "argon";
+  if (
+    m.includes("gemini") ||
+    m.includes("neon") ||
+    m.includes("hydrogen") ||
+    m.includes("flash") ||
+    a.includes("agy") ||
+    a.includes("gemini") ||
+    tokens?.source === "agy"
+  ) {
+    return "gemini";
+  }
+  if (
+    m.includes("claude") ||
+    m.includes("haiku") ||
+    m.includes("sonnet") ||
+    m.includes("opus") ||
+    a.includes("claude") ||
+    tokens?.source === "claude"
+  ) {
+    return "claude";
+  }
+  if (
+    m.includes("codex") ||
+    m.includes("gpt") ||
+    a.includes("codex") ||
+    a.includes("gpt") ||
+    tokens?.source === "codex"
+  ) {
+    return "codex";
+  }
+  return tokens?.source || "unknown";
+}
+
+function readEfficiencyBaseline(resultsDir, trackKey, providerGroup) {
+  if (!resultsDir || !trackKey || !providerGroup) return null;
+  const baselinePath = path.join(resultsDir, "efficiency-baselines.json");
+  if (!fs.existsSync(baselinePath)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+    const byTrack = data?.tracks?.[trackKey] ?? data?.[trackKey];
+    const entry = byTrack?.[providerGroup];
+    const val = typeof entry === "number" ? entry : entry?.out_reas_median ?? entry?.median_out_reas ?? entry?.out_reas;
+    return typeof val === "number" && Number.isFinite(val) && val > 0 ? val : null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildV2Efficiency({
+  tokens = null,
+  model = "",
+  agent = null,
+  cliSource = null,
+  activeMin = null,
+  wallMin = null,
+  timeLimitActiveMin = null,
+  timedOut = false,
+  resultsDir = null,
+  trackKey = null
+} = {}) {
+  const resolvedCli = cliSource || tokens?.source || (agent || "agy");
+  const providerGroup = inferProviderGroup({ model, agent: resolvedCli, tokens });
+  const normTokens = tokens
+    ? {
+        input: tokens.input ?? 0,
+        output: tokens.output ?? 0,
+        reasoning: tokens.reasoning ?? 0,
+        cache_read: tokens.cache_read ?? 0,
+        cache_write: tokens.cache_write ?? 0,
+        total: tokens.total ?? ((tokens.input ?? 0) + (tokens.output ?? 0) + (tokens.reasoning ?? 0)),
+        ...(tokens.source ? { source: tokens.source } : {}),
+        ...(tokens.sessions !== undefined ? { sessions: tokens.sessions } : {})
+      }
+    : null;
+
+  const outReas = normTokens ? (normTokens.output || 0) + (normTokens.reasoning || 0) : null;
+  const baseline = readEfficiencyBaseline(resultsDir, trackKey, providerGroup);
+  const providerTokRatio =
+    outReas !== null && baseline !== null && baseline > 0
+      ? Number((outReas / baseline).toFixed(4))
+      : null;
+
+  return {
+    provider_group: providerGroup,
+    cli_source: resolvedCli,
+    active_min: activeMin,
+    wall_min: wallMin,
+    time_limit_active_min: timeLimitActiveMin ?? null,
+    timed_out_active: Boolean(timedOut),
+    tokens: normTokens,
+    provider_tok_ratio: providerTokRatio
+  };
+}
+
 function buildFailedResultPayload({
   runId,
   model,
   room,
   renovation = null,
   track = null,
+  version = 1,
   seed = null,
   createdAt = null,
   endedAt = null,
@@ -343,6 +443,7 @@ function buildFailedResultPayload({
   wallMin = null,
   activeMin = null,
   tokens = null,
+  efficiency = null,
   leakage = null,
   diffFile = null,
   submissionCopy = null,
@@ -354,6 +455,7 @@ function buildFailedResultPayload({
     room: room || inferRoomFromRunId(runId),
     ...(renovation ? { renovation } : {}),
     track: track || (renovation ? "renovation" : "build"),
+    ...(version === 2 ? { bench_version: "0.2.0" } : {}),
     seed: seed ?? null,
     created_at: createdAt,
     ended_at: endedAt,
@@ -363,7 +465,7 @@ function buildFailedResultPayload({
     axes: {},
     composite: null,
     taste: null,
-    efficiency: {
+    efficiency: efficiency || {
       wall_min: wallMin,
       active_min: activeMin,
       tokens
@@ -793,6 +895,7 @@ export function collectRun({
   model,
   root = process.env.MOLBENCH_RUNS || DEFAULT_RUNS_ROOT,
   renovation = null,
+  version = null,
   hidden = true,
   noCapture = false,
   noPython = false,
@@ -802,6 +905,7 @@ export function collectRun({
   interventions = 0,
   repoRoot = DEFAULT_REPO_ROOT,
   resultsDir = null,
+  startDir: explicitStartDir = null,
   claudeDir = undefined,
   codexDir = undefined,
   geminiDir = undefined
@@ -810,7 +914,6 @@ export function collectRun({
   if (!model) throw new Error("Missing required --model \"<label>\" argument.");
 
   const resolvedRepoRoot = path.resolve(repoRoot);
-  const resolvedResultsDir = resultsDir ? path.resolve(resultsDir) : path.join(resolvedRepoRoot, "results");
   const runDir = path.resolve(root, runId);
   if (!fs.existsSync(runDir)) {
     throw new Error(`Run directory does not exist: ${runDir}`);
@@ -823,6 +926,27 @@ export function collectRun({
   const runMeta = JSON.parse(fs.readFileSync(runJsonPath, "utf8"));
   const room = runMeta.room;
   const effectiveRenovation = renovation ?? runMeta.renovation ?? null;
+  const effectiveVersion =
+    version !== null && version !== undefined
+      ? parseVersion(version)
+      : runMeta.version !== undefined
+      ? parseVersion(runMeta.version)
+      : runMeta.bench_version
+      ? parseVersion(runMeta.bench_version)
+      : 1;
+  const versionPaths = resolveVersionPaths(effectiveVersion, resolvedRepoRoot);
+  const resolvedResultsDir = resultsDir ? path.resolve(resultsDir) : versionPaths.resultsDir;
+  const trackKey = effectiveRenovation ? `${room}/${effectiveRenovation}` : room;
+
+  let specTimeLimitActiveMin = runMeta.time_limit_active_min ?? null;
+  if (effectiveVersion === 2 && specTimeLimitActiveMin === null) {
+    try {
+      const sp = loadSpec(room, { renovation: effectiveRenovation, version: 2, repoRoot: resolvedRepoRoot });
+      specTimeLimitActiveMin = sp.time_limit_active_min ?? sp.time_limit_min ?? null;
+    } catch {
+      // ignore if spec unavailable
+    }
+  }
 
   // End time = last modification of a submission file (the agent's last write), not the moment we collect.
   const lastWrite = getLatestRunMtimeMs(runDir);
@@ -862,6 +986,39 @@ export function collectRun({
     extraWarnings.push(`Token collection error: ${err.message}`);
   }
 
+  const resolvedCliSource = tokens?.source || resolveAgent({
+    runDir,
+    runId,
+    repoRoot: resolvedRepoRoot,
+    runsRoot: root,
+    agentOverride: runMeta.agent ?? null
+  });
+  const makeEfficiency = (gradedEff = null) => {
+    if (effectiveVersion === 2) {
+      return {
+        ...(gradedEff || {}),
+        ...buildV2Efficiency({
+          tokens,
+          model,
+          agent: runMeta.agent ?? null,
+          cliSource: resolvedCliSource,
+          activeMin,
+          wallMin,
+          timeLimitActiveMin: specTimeLimitActiveMin,
+          timedOut,
+          resultsDir: resolvedResultsDir,
+          trackKey
+        })
+      };
+    }
+    return {
+      ...(gradedEff || {}),
+      wall_min: wallMin,
+      active_min: activeMin,
+      tokens
+    };
+  };
+
   // 1. Capture git diff from start commit (including untracked files) BEFORE editing .run.json
   const { diffText, changedFiles } = buildGitDiffAndChangedFiles(runDir);
   const submissionChanges = changedFiles.filter(isSubmissionChange);
@@ -886,6 +1043,7 @@ export function collectRun({
       room,
       renovation: effectiveRenovation,
       track: runMeta.track || (effectiveRenovation ? "renovation" : "build"),
+      version: effectiveVersion,
       seed: runMeta.seed ?? null,
       createdAt: runMeta.created_at,
       endedAt,
@@ -894,6 +1052,7 @@ export function collectRun({
       wallMin,
       activeMin,
       tokens,
+      efficiency: makeEfficiency(),
       warnings: extraWarnings
     });
     fs.writeFileSync(resultPath, JSON.stringify(finalResult, null, 2) + "\n", "utf8");
@@ -936,10 +1095,11 @@ export function collectRun({
     repoRoot: resolvedRepoRoot
   });
 
-  // 5. Run `bench grade <room> <copy> --hidden [--renovation r1]`
+  // 5. Run `bench grade <room> <copy> --hidden [--renovation r1] [--version 2]`
   const cliPath = path.join(resolvedRepoRoot, "harness", "src", "cli.mjs");
   const workDir = path.join(resolvedRepoRoot, "work", "collect", runId, room);
   const gradeArgs = [cliPath, "grade", room, subCopyDir];
+  if (effectiveVersion === 2) gradeArgs.push("--version", "2");
   if (hidden) gradeArgs.push("--hidden");
   if (effectiveRenovation) gradeArgs.push("--renovation", effectiveRenovation);
   if (noCapture) gradeArgs.push("--no-capture");
@@ -951,17 +1111,21 @@ export function collectRun({
   gradeArgs.push("--work-dir", workDir);
 
   // 5a. Export the start snapshot (first commit of the run repo) so diff metrics compare against it.
-  const startDir = path.join(resolvedRepoRoot, "work", "collect", runId, "start");
-  try {
-    fs.rmSync(startDir, { recursive: true, force: true });
-    fs.mkdirSync(startDir, { recursive: true });
-    const startCommit = execFileSync("git", ["-C", runDir, "rev-list", "--max-parents=0", "HEAD"], { encoding: "utf8" })
-      .trim().split(/\s+/)[0];
-    execFileSync("git", ["-C", runDir, "--work-tree", startDir, "checkout", startCommit, "--", "."], { stdio: "ignore" });
-    for (const heavy of ["bench", "metrics"]) fs.rmSync(path.join(startDir, heavy), { recursive: true, force: true });
-    gradeArgs.push("--start", startDir);
-  } catch (err) {
-    process.stderr.write(`collect: could not export start snapshot (${err.message}); diff metrics will fail closed\n`);
+  if (explicitStartDir) {
+    gradeArgs.push("--start", path.resolve(explicitStartDir));
+  } else {
+    const startDir = path.join(resolvedRepoRoot, "work", "collect", runId, "start");
+    try {
+      fs.rmSync(startDir, { recursive: true, force: true });
+      fs.mkdirSync(startDir, { recursive: true });
+      const startCommit = execFileSync("git", ["-C", runDir, "rev-list", "--max-parents=0", "HEAD"], { encoding: "utf8" })
+        .trim().split(/\s+/)[0];
+      execFileSync("git", ["-C", runDir, "-c", "core.autocrlf=false", "--work-tree", startDir, "checkout", startCommit, "--", "."], { stdio: "ignore" });
+      for (const heavy of ["bench", "metrics"]) fs.rmSync(path.join(startDir, heavy), { recursive: true, force: true });
+      gradeArgs.push("--start", startDir);
+    } catch (err) {
+      process.stderr.write(`collect: could not export start snapshot (${err.message}); diff metrics will fail closed\n`);
+    }
   }
 
   const stdout = execFileSync(process.execPath, gradeArgs, {
@@ -994,12 +1158,7 @@ export function collectRun({
     created_at: runMeta.created_at,
     ended_at: endedAt,
     ...graded,
-    efficiency: {
-      ...(graded.efficiency || {}),
-      wall_min: wallMin,
-      active_min: activeMin,
-      tokens
-    },
+    efficiency: makeEfficiency(graded.efficiency),
     leakage,
     diff_file: path.relative(resolvedResultsDir, diffPath).replace(/\\/g, "/"),
     submission_copy: path.relative(resolvedResultsDir, subCopyDir).replace(/\\/g, "/"),
@@ -1023,7 +1182,8 @@ export function collectRun({
 function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2));
   const repoRoot = flags["repo-root"] || DEFAULT_REPO_ROOT;
-  const resultsDir = flags["results-dir"] || path.join(repoRoot, "results");
+  const versionFlag = flags.version !== undefined ? parseVersion(flags.version) : null;
+  const resultsDir = flags["results-dir"] || (versionFlag === 2 ? path.join(repoRoot, "results-v2") : path.join(repoRoot, "results"));
   const runsTsvPath = flags["runs-tsv"] || path.join(repoRoot, ".orchestra", "runs.tsv");
   const awakePath = flags["awake-file"] || path.join(repoRoot, ".orchestra", "awake.tsv");
   const nowSec = flags.now !== undefined ? Number(flags.now) : Math.floor(Date.now() / 1000);
@@ -1117,6 +1277,7 @@ function main() {
     lenient: Boolean(flags.lenient),
     timedOut: Boolean(flags["timed-out"]),
     interventions: Number(flags.interventions || 0),
+    version: flags.version ?? null,
     repoRoot,
     resultsDir: flags["results-dir"] || null
   });

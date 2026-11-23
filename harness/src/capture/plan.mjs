@@ -4,10 +4,11 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { startServer } from './server.mjs';
-import { launchBrowser } from './browser.mjs';
+import { launchBrowser, parseViewportSpec } from './browser.mjs';
 import { runProbe } from './probes/index.js';
 import { pixelSha256, pngMeanAbsDiff, median } from './probes/shared.js';
 import { runTests } from './testrunner.mjs';
+import { isV2Spec } from '../score.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CALIBRATION_DIR = path.join(__dirname, 'calibration');
@@ -85,12 +86,24 @@ async function scanRasterGate(submissionDir, spec) {
 }
 
 function variantToPageConfig(variant, base = {}) {
+  const rawViewport = base.viewport || '1440x900';
+  const vpSpec = parseViewportSpec(rawViewport);
+  const rawScheme = base.scheme || base.colorScheme || 'light';
+  const isHighContrast =
+    rawScheme === 'high_contrast' ||
+    variant === 'high_contrast' ||
+    variant === 'prefers_contrast_more';
+
   const cfg = {
-    viewport: base.viewport || '1440x900',
+    viewport: rawViewport,
+    viewportSize: `${vpSpec.width}x${vpSpec.height}`,
     dpr: Number(base.dpr || 1),
-    colorScheme: base.scheme || base.colorScheme || 'light',
+    scheme: rawScheme,
+    colorScheme: rawScheme === 'dark' ? 'dark' : 'light',
+    contrast: isHighContrast ? 'more' : 'no-preference',
     reducedMotion: 'no-preference',
     locale: null,
+    rootFontZoom: vpSpec.zoomPercent ?? (variant === 'zoom200' ? 200 : null),
     pointerNormalized: null,
   };
 
@@ -106,9 +119,220 @@ function variantToPageConfig(variant, base = {}) {
     cfg.locale = 'en-US';
   } else if (variant === 'lang_ko') {
     cfg.locale = 'ko-KR';
+  } else if (variant === 'lang_ja') {
+    cfg.locale = 'ja-JP';
   }
 
   return cfg;
+}
+
+function sortedQuantile(sorted, q) {
+  if (!sorted || sorted.length === 0) return null;
+  if (sorted.length === 1) return sorted[0];
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+/**
+ * Compute interleaved Bracketed Calibration Ratio (BCR) statistics (V02-DESIGN §3.1B).
+ * @param {Array<{ round?: number, c_pre: number, s: number, c_post: number }>} rawRounds
+ */
+export function computeBcrStats(rawRounds = []) {
+  const rounds = rawRounds.map((entry, idx) => {
+    const cPre = Number(entry?.c_pre);
+    const s = Number(entry?.s);
+    const cPost = Number(entry?.c_post);
+    const validC = Number.isFinite(cPre) && Number.isFinite(cPost) && cPre > 0 && cPost > 0;
+    const cBar = validC ? (cPre + cPost) / 2 : null;
+    const drift = cBar !== null && cBar > 0 ? Math.abs(cPost - cPre) / cBar : Infinity;
+    const unstable = !validC || drift > 0.12;
+    const r = cBar !== null && cBar > 0 && Number.isFinite(s) && s >= 0 ? s / cBar : null;
+    return {
+      round: entry?.round ?? idx + 1,
+      c_pre: Number.isFinite(cPre) ? cPre : null,
+      s: Number.isFinite(s) ? s : null,
+      c_post: Number.isFinite(cPost) ? cPost : null,
+      c_bar: cBar,
+      drift: Number.isFinite(drift) ? drift : null,
+      unstable,
+      r,
+    };
+  });
+
+  const unstableRounds = rounds.filter((x) => x.unstable).length;
+  const validCBars = rounds.map((x) => x.c_bar).filter((v) => typeof v === 'number' && Number.isFinite(v)).sort((a, b) => a - b);
+  const medianC = median(validCBars);
+  const q1 = sortedQuantile(validCBars, 0.25);
+  const q3 = sortedQuantile(validCBars, 0.75);
+  const iqrC = q1 !== null && q3 !== null ? q3 - q1 : null;
+  const iqrRatio = medianC !== null && medianC > 0 && iqrC !== null ? iqrC / medianC : Infinity;
+
+  const perfCalUnstable = validCBars.length === 0 || unstableRounds >= 2 || iqrRatio > 0.15;
+  const validRatios = rounds.map((x) => x.r).filter((v) => typeof v === 'number' && Number.isFinite(v));
+  const ratio = perfCalUnstable ? null : median(validRatios);
+  const perfBcrSlow = !perfCalUnstable && ratio !== null && ratio > 2.5;
+
+  return {
+    ratio,
+    perf_cal_unstable: perfCalUnstable,
+    perf_bcr_slow: perfBcrSlow,
+    unstable_rounds: unstableRounds,
+    median_c_bar: medianC,
+    iqr_ratio: Number.isFinite(iqrRatio) ? iqrRatio : null,
+    rounds,
+  };
+}
+
+async function measureDomCalDuration(pageHandle, { steps = 12 } = {}) {
+  return pageHandle.page.evaluate(async (nSteps) => {
+    const waitFrame = () => new Promise((r) => requestAnimationFrame(r));
+    const durations = [];
+    for (let i = 0; i < nSteps; i++) {
+      const t0 = performance.now();
+      if (window.__benchCal && typeof window.__benchCal.runStep === 'function') {
+        window.__benchCal.runStep(i);
+      } else {
+        const chips = Array.from(document.querySelectorAll('[data-bench="filter-bar"] button, [data-bench="filter-bar"] [role="button"]'));
+        if (chips.length > 0) {
+          chips[i % chips.length].click();
+        }
+        const sel = document.querySelector('[data-bench="sort-select"]');
+        if (sel && sel.options && sel.options.length > 0) {
+          sel.selectedIndex = i % sel.options.length;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      await waitFrame();
+      durations.push(performance.now() - t0);
+    }
+    durations.sort((a, b) => a - b);
+    const idx = Math.min(durations.length - 1, Math.floor(durations.length * 0.95));
+    return {
+      p95: durations.length > 0 ? durations[idx] : 0,
+      median: durations.length > 0 ? durations[Math.floor(durations.length / 2)] : 0,
+      steps: durations.length,
+    };
+  }, steps);
+}
+
+/**
+ * Informational Bracketed Calibration Ratio (BCR) runner (V02-DESIGN §3.1B).
+ * Supports `kind: 'webgl'` (`webgl_cal.html`) and `kind: 'dom'` (`dom_cal.html` under 4x CPU throttling).
+ */
+export async function runBcrCalibration({
+  kind = 'webgl',
+  submissionUrl = null,
+  origin = null,
+  localResolver = null,
+  spec = {},
+  defaultSeed = 1,
+  getParams = () => ({}),
+  viewport = '1440x900',
+  rounds = 5,
+  warmupMs = 250,
+  measureMs = 800,
+  domSteps = 12,
+  cooldownMs = 10_000,
+  strictPerf = false,
+  mode = null,
+  measurePairFn = null,
+} = {}) {
+  async function runSingleAttempt() {
+    if (typeof measurePairFn === 'function') {
+      const rawRounds = [];
+      for (let i = 0; i < rounds; i++) {
+        const m = await measurePairFn(i);
+        rawRounds.push({ round: i + 1, ...m });
+      }
+      return computeBcrStats(rawRounds);
+    }
+
+    const calFile = kind === 'dom' ? 'dom_cal.html' : 'webgl_cal.html';
+    const browserMode = mode || (kind === 'webgl' ? 'gpu' : 'swiftshader');
+    let calServer = null;
+    let browserSess = null;
+    try {
+      calServer = await startServer(CALIBRATION_DIR);
+      const calResolver = calServer.loopbackReachable ? null : calServer.resolveFile;
+      browserSess = await launchBrowser({ mode: browserMode });
+
+      const calPage = await browserSess.newPage({
+        origin: calServer.origin,
+        url: `${calServer.origin}/${calFile}`,
+        localResolver: calResolver,
+        viewport,
+        dpr: 1,
+        seed: 1,
+        params: {},
+      });
+      const subPage = await browserSess.newPage({
+        origin,
+        url: submissionUrl,
+        localResolver,
+        viewport,
+        dpr: 1,
+        seed: defaultSeed,
+        params: getParams(defaultSeed, 'normal'),
+        loadTimeoutMs: spec?.load_timeout_ms ?? 15000,
+      });
+
+      if (kind === 'dom') {
+        await calPage.setCpuThrottling(4);
+        await subPage.setCpuThrottling(4);
+        // Warmup
+        await measureDomCalDuration(calPage, { steps: 3 });
+        await measureDomCalDuration(subPage, { steps: 3 });
+      }
+
+      const rawRounds = [];
+      for (let i = 0; i < rounds; i++) {
+        if (kind === 'dom') {
+          const pre = await measureDomCalDuration(calPage, { steps: domSteps });
+          const sub = await measureDomCalDuration(subPage, { steps: domSteps });
+          const post = await measureDomCalDuration(calPage, { steps: domSteps });
+          rawRounds.push({ round: i + 1, c_pre: pre.p95, s: sub.p95, c_post: post.p95 });
+        } else {
+          await subPage.seek(0).catch(() => {});
+          const pre = await measureRafP95(calPage, { warmupMs, measureMs });
+          await calPage.seek(0).catch(() => {});
+          const sub = await measureRafP95(subPage, { warmupMs, measureMs });
+          await subPage.seek(0).catch(() => {});
+          const post = await measureRafP95(calPage, { warmupMs, measureMs });
+          rawRounds.push({ round: i + 1, c_pre: pre.p95, s: sub.p95, c_post: post.p95 });
+        }
+      }
+      return computeBcrStats(rawRounds);
+    } finally {
+      await browserSess?.close().catch(() => {});
+      await calServer?.close().catch(() => {});
+    }
+  }
+
+  let stats = await runSingleAttempt();
+  let retried = false;
+  if (stats.perf_cal_unstable) {
+    retried = true;
+    if (cooldownMs > 0) {
+      await new Promise((r) => setTimeout(r, cooldownMs));
+    }
+    stats = await runSingleAttempt();
+  }
+
+  if (stats.perf_cal_unstable && strictPerf) {
+    const err = new Error(`BCR calibration (${kind}) remained unstable after retry`);
+    err.exitCode = 75;
+    throw err;
+  }
+
+  return {
+    kind,
+    metric_id: kind === 'dom' ? 'perf.interaction_ratio' : 'perf.frame_ratio',
+    retried,
+    ...stats,
+  };
 }
 
 function wrappedAngleDiffDeg(a, b) {
@@ -245,9 +469,16 @@ export async function executePlan(plan, {
   hidden = false,
   noPython = false,
   planTimeoutMs = null,
+  strictPerf = false,
 } = {}) {
   if (!submissionDir) throw new Error('executePlan requires submissionDir');
   if (!workDir) throw new Error('executePlan requires workDir');
+
+  const isV2 = isV2Spec(spec) || Number(spec?._version) === 2 || Boolean(plan?.captureBudgets);
+  const specMetricIds = new Set([
+    ...(Array.isArray(spec?.metrics) ? spec.metrics.map((m) => m?.id).filter(Boolean) : []),
+    ...((spec?.requests || []).flatMap((r) => (r?.metrics || []).map((m) => m?.id)).filter(Boolean)),
+  ]);
 
   // Restoration's functional suite drives multiple seeded mounts and resize,
   // lifecycle, and animation captures. Allow that full plan to finish on
@@ -377,8 +608,15 @@ export async function executePlan(plan, {
     const gates = {};
     const probes = {};
     const drawCalls = [];
+    const renderPassesSamples = [];
+    const webglFrameBudgets = [];
+    let transferBytes = 0;
+    let initDomMetrics = null;
+    let initWebGLMetrics = null;
+    let toolchainInfo = null;
     let tests = [];
     let perf = null;
+    let bcr = null;
     let lighthouse = null;
     // ---- Gate: G-raster (filesystem scan) ----
     gates['G-raster'] = await scanRasterGate(submissionDir, spec);
@@ -392,13 +630,21 @@ export async function executePlan(plan, {
     });
     try {
       gates['G-load'] = { ...initHandle.loadResult };
+      transferBytes = initHandle.getTransferBytes();
+      toolchainInfo = await initHandle.getToolchainInfo().catch(() => null);
       if (gates['G-load'].pass) {
         gates['G-contract'] = await initHandle.checkContract();
         fontsReadyResult = await initHandle.waitForFontsReady(loadTimeoutMs);
         if (gates['G-contract'].pass) {
-          const st = await initHandle.stats().catch(() => null);
-          if (st && typeof st.drawCalls === 'number') {
-            drawCalls.push(st.drawCalls);
+          initDomMetrics = await initHandle.getDomMetrics().catch(() => null);
+          initWebGLMetrics = await initHandle.getWebGLMetrics().catch(() => null);
+          if (isV2 && initWebGLMetrics && initWebGLMetrics.drawCalls > 0) {
+            drawCalls.push(initWebGLMetrics.drawCalls);
+          } else {
+            const st = await initHandle.stats().catch(() => null);
+            if (st && typeof st.drawCalls === 'number') {
+              drawCalls.push(st.drawCalls);
+            }
           }
         }
       } else {
@@ -433,8 +679,10 @@ export async function executePlan(plan, {
           viewport: detCfg.viewport,
           dpr: detCfg.dpr,
           colorScheme: detCfg.colorScheme,
+          contrast: detCfg.contrast,
           reducedMotion: detCfg.reducedMotion,
           locale: detCfg.locale,
+          rootFontZoom: detCfg.rootFontZoom,
           seed: detSeed,
           params: detParams,
         });
@@ -575,7 +823,15 @@ export async function executePlan(plan, {
       for (const frame of plan.frames) {
         const variant = frame.variant || 'normal';
         const cfg = pageConfig(variant, frame);
-        const groupKey = JSON.stringify([cfg.viewport, cfg.dpr, cfg.colorScheme, cfg.reducedMotion, cfg.locale]);
+        const groupKey = JSON.stringify([
+          cfg.viewportSize,
+          cfg.dpr,
+          cfg.colorScheme,
+          cfg.contrast,
+          cfg.reducedMotion,
+          cfg.locale,
+          cfg.rootFontZoom,
+        ]);
         if (!groups.has(groupKey)) groups.set(groupKey, { cfg, frames: [] });
         groups.get(groupKey).frames.push(frame);
       }
@@ -587,8 +843,10 @@ export async function executePlan(plan, {
           viewport: cfg.viewport,
           dpr: cfg.dpr,
           colorScheme: cfg.colorScheme,
+          contrast: cfg.contrast,
           reducedMotion: cfg.reducedMotion,
           locale: cfg.locale,
+          rootFontZoom: cfg.rootFontZoom,
           seed: firstSeed,
           params: getParams(firstSeed, first.variant || 'normal'),
         });
@@ -616,9 +874,23 @@ export async function executePlan(plan, {
             }
 
             await handle.seek(t);
+            if (isV2) {
+              await handle.resetWebGLFrameMetrics().catch(() => {});
+            }
             await handle.renderFrame();
 
-            if (Array.isArray(spec?.metrics) && spec.metrics.some((m) => m.id === 'budget.draw_calls')) {
+            if (isV2) {
+              const glMetrics = await handle.getWebGLMetrics().catch(() => null);
+              if (glMetrics) {
+                webglFrameBudgets.push({ key: frame.key, seed, viewport: cfg.viewport, variant, ...glMetrics });
+                if (specMetricIds.has('budget.draw_calls') && glMetrics.drawCalls > 0) {
+                  drawCalls.push(glMetrics.drawCalls);
+                }
+                if (glMetrics.drawCalls > 0) {
+                  renderPassesSamples.push({ key: frame.key, value: glMetrics.renderPasses });
+                }
+              }
+            } else if (Array.isArray(spec?.metrics) && spec.metrics.some((m) => m.id === 'budget.draw_calls')) {
               const st = await handle.stats().catch(() => null);
               if (st && typeof st.drawCalls === 'number') {
                 drawCalls.push(st.drawCalls);
@@ -634,7 +906,7 @@ export async function executePlan(plan, {
               seed,
               t,
               viewport: cfg.viewport,
-              scheme: cfg.colorScheme,
+              scheme: cfg.scheme,
               variant,
               dpr: cfg.dpr,
               file: relFile,
@@ -648,10 +920,11 @@ export async function executePlan(plan, {
               protectedSelectors.length > 0 &&
               variant === 'normal' &&
               (!compareVps || compareVps.includes(cfg.viewport)) &&
-              (!compareSchemes || compareSchemes.includes(cfg.colorScheme))
+              (!compareSchemes || compareSchemes.includes(cfg.scheme))
             ) {
               const fullRelFile = `frames/_full_${frame.key}.png`;
               await handle.screenshot(path.join(absWorkDir, fullRelFile), { fullPage: true });
+              await handle.setDomBypass(true).catch(() => {});
               const rawBoxes = await handle.page.evaluate((selectors) => {
                 const out = [];
                 for (const sel of selectors) {
@@ -671,7 +944,7 @@ export async function executePlan(plan, {
                   });
                 }
                 return out;
-              }, protectedSelectors);
+              }, protectedSelectors).finally(() => handle.setDomBypass(false).catch(() => {}));
               sampleEntry.full_file = fullRelFile;
               sampleEntry.element_bboxes = rawBoxes.map((item) => ({
                 selector: item.selector,
@@ -749,8 +1022,10 @@ export async function executePlan(plan, {
           viewport: cfg.viewport,
           dpr: cfg.dpr,
           colorScheme: cfg.colorScheme,
+          contrast: cfg.contrast,
           reducedMotion: cfg.reducedMotion,
           locale: cfg.locale,
+          rootFontZoom: cfg.rootFontZoom,
           seed,
           params,
         });
@@ -963,6 +1238,47 @@ export async function executePlan(plan, {
               stepsB: r2.info.steps,
             },
           };
+        } else if (kind === 'nav_transition') {
+          const variant = step.variant || 'normal';
+          const cfg = pageConfig(variant, step);
+          const params = getParams(seed, variant);
+          const handle = await openPage({
+            viewport: cfg.viewport,
+            dpr: cfg.dpr,
+            colorScheme: cfg.colorScheme,
+            contrast: cfg.contrast,
+            reducedMotion: cfg.reducedMotion,
+            locale: cfg.locale,
+            rootFontZoom: cfg.rootFontZoom,
+            seed,
+            params,
+          });
+          try {
+            await handle.setSeed(seed, params);
+            await handle.seek(Number(step.t ?? 0));
+            await handle.renderFrame();
+            const probeArgs = { ...(step.args || {}) };
+            for (const optKey of ['stepMs', 'maxMs', 'threshold', 'stableFrames', 'triggerSelector']) {
+              if (step[optKey] !== undefined && probeArgs[optKey] === undefined) {
+                probeArgs[optKey] = step[optKey];
+              }
+            }
+            const transRes = await runProbe('nav_transition', handle, probeArgs);
+            const rawMs = transRes?.['nav.transition_ms'] ?? null;
+            const isReducedMotion = variant === 'reduced_motion' || String(step.key || '').includes('reduced_motion');
+            const metricKey = isReducedMotion ? 'a11y.reduced_motion_transition_ms' : 'nav.transition_ms';
+            probes[step.key] = {
+              [metricKey]: rawMs,
+              metrics: { [metricKey]: rawMs },
+              details: {
+                ...(transRes?.details || {}),
+                variant,
+              },
+            };
+          } finally {
+            collectLogs(handle);
+            await handle.close();
+          }
         }
       }
     }
@@ -979,8 +1295,10 @@ export async function executePlan(plan, {
           viewport: cfg.viewport,
           dpr: cfg.dpr,
           colorScheme: cfg.colorScheme,
+          contrast: cfg.contrast,
           reducedMotion: cfg.reducedMotion,
           locale: cfg.locale,
+          rootFontZoom: cfg.rootFontZoom,
           seed,
           params,
         });
@@ -988,7 +1306,12 @@ export async function executePlan(plan, {
           await handle.setSeed(seed, params);
           await handle.seek(Number(p.t ?? 0));
           await handle.renderFrame();
-          probes[p.key] = await runProbe(p.probe, handle, p.args || {});
+          await handle.setDomBypass(true).catch(() => {});
+          try {
+            probes[p.key] = await runProbe(p.probe, handle, p.args || {});
+          } finally {
+            await handle.setDomBypass(false).catch(() => {});
+          }
         } finally {
           collectLogs(handle);
           await handle.close();
@@ -1071,6 +1394,99 @@ export async function executePlan(plan, {
       await fs.writeFile(path.join(absWorkDir, 'perf.json'), JSON.stringify(perf, null, 2));
     }
 
+    // ---- Optional informational BCR measurement (V02-DESIGN §3.1B) ----
+    const wantsFrameBcr = plan?.bcr?.kind === 'webgl' || (isV2 && specMetricIds.has('perf.frame_ratio'));
+    const wantsDomBcr = plan?.bcr?.kind === 'dom' || (isV2 && specMetricIds.has('perf.interaction_ratio'));
+    if (canRender && (plan?.bcr?.enabled || wantsFrameBcr || wantsDomBcr)) {
+      const bcrKind = plan?.bcr?.kind || (wantsDomBcr && !wantsFrameBcr ? 'dom' : 'webgl');
+      try {
+        bcr = await runBcrCalibration({
+          kind: bcrKind,
+          submissionUrl: entryUrl,
+          origin: server.origin,
+          localResolver,
+          spec,
+          defaultSeed,
+          getParams,
+          viewport: plan?.bcr?.viewport || defaultViewport,
+          rounds: plan?.bcr?.rounds ?? 5,
+          warmupMs: plan?.bcr?.warmupMs ?? 250,
+          measureMs: plan?.bcr?.measureMs ?? 800,
+          domSteps: plan?.bcr?.domSteps ?? 12,
+          cooldownMs: plan?.bcr?.cooldownMs ?? 10_000,
+          strictPerf: Boolean(strictPerf || plan?.bcr?.strictPerf),
+          mode: plan?.bcr?.mode || null,
+        });
+      } catch (err) {
+        if (err?.exitCode === 75) throw err;
+        bcr = {
+          kind: bcrKind,
+          metric_id: bcrKind === 'dom' ? 'perf.interaction_ratio' : 'perf.frame_ratio',
+          ratio: null,
+          perf_cal_unstable: true,
+          perf_bcr_slow: false,
+          retried: false,
+          error: String(err?.message || err),
+        };
+      }
+      manifest.bcr = bcr;
+      await fs.writeFile(path.join(absWorkDir, 'bcr.json'), JSON.stringify(bcr, null, 2));
+      if (isV2 && specMetricIds.has(bcr.metric_id)) {
+        probes._bcr = {
+          metrics: { [bcr.metric_id]: bcr.ratio },
+          details: bcr,
+        };
+      }
+    }
+
+    // ---- v0.2 WebGL & DOM budget summaries ----
+    const transferKb = Number((transferBytes / 1024).toFixed(4));
+    const webglBudgetSummary = (webglFrameBudgets.length > 0 || initWebGLMetrics)
+      ? {
+          frames: webglFrameBudgets,
+          init: initWebGLMetrics,
+          draw_calls: webglFrameBudgets.length > 0 ? median(webglFrameBudgets.map((x) => x.drawCalls)) : (initWebGLMetrics?.drawCalls ?? 0),
+          render_passes: webglFrameBudgets.length > 0 ? median(webglFrameBudgets.map((x) => x.renderPasses)) : (initWebGLMetrics?.renderPasses ?? 0),
+          vertices_drawn: webglFrameBudgets.length > 0 ? Math.max(...webglFrameBudgets.map((x) => x.verticesDrawn)) : (initWebGLMetrics?.verticesDrawn ?? 0),
+          gl_calls_per_frame: webglFrameBudgets.length > 0 ? Math.max(...webglFrameBudgets.map((x) => x.glCalls)) : (initWebGLMetrics?.glCalls ?? 0),
+          tex_upload_kb: Math.max(
+            initWebGLMetrics?.texUploadKb ?? 0,
+            ...webglFrameBudgets.map((x) => x.texUploadKb ?? 0),
+          ),
+          active_shaders: webglFrameBudgets[0]?.activeShaders?.length
+            ? webglFrameBudgets[0].activeShaders
+            : (initWebGLMetrics?.activeShaders ?? []),
+          linked_programs: webglFrameBudgets[0]?.linkedPrograms?.length
+            ? webglFrameBudgets[0].linkedPrograms
+            : (initWebGLMetrics?.linkedPrograms ?? []),
+        }
+      : null;
+
+    if (isV2) {
+      manifest.transfer_kb = transferKb;
+      if (webglBudgetSummary) {
+        manifest.webgl_budget = webglBudgetSummary;
+      }
+      if (initDomMetrics) {
+        manifest.dom_budget = initDomMetrics;
+      }
+      if (specMetricIds.has('budget.transfer_kb')) {
+        probes._budget_transfer = { metrics: { 'budget.transfer_kb': transferKb } };
+      }
+      if (specMetricIds.has('budget.render_passes') && renderPassesSamples.length > 0) {
+        for (const rps of renderPassesSamples) {
+          probes[`_budget_render_passes_${rps.key}`] = { metrics: { 'budget.render_passes': rps.value } };
+        }
+      }
+      const hasProbeMetric = (mid) => Object.values(probes).some((p) => p && (mid in p || (p.metrics && mid in p.metrics)));
+      if (specMetricIds.has('perf.cls') && initDomMetrics && !hasProbeMetric('perf.cls')) {
+        probes._perf_cls = { metrics: { 'perf.cls': initDomMetrics.cls } };
+      }
+      if (specMetricIds.has('budget.dom_nodes') && initDomMetrics && !hasProbeMetric('budget.dom_nodes')) {
+        probes._budget_dom_nodes = { metrics: { 'budget.dom_nodes': initDomMetrics.domNodes } };
+      }
+    }
+
     // ---- Optional Lighthouse (TODO stub) ----
     if (plan?.lighthouse?.enabled) {
       // TODO: Implement offline Lighthouse runner using pinned node_modules/lighthouse
@@ -1093,6 +1509,11 @@ export async function executePlan(plan, {
       tests,
       drawCalls,
       perf,
+      bcr,
+      transferKb,
+      webglBudget: webglBudgetSummary,
+      domMetrics: initDomMetrics,
+      toolchain: toolchainInfo,
       lighthouse,
       console: consoleAll,
       network: networkAll,

@@ -39,17 +39,33 @@ async function getHostScript() {
 }
 
 /**
- * Parse "WxH" string into { width, height }.
+ * Parse "WxH" or "WxH@zoomNNN" string into { width, height, zoomPercent }.
  */
-export function parseViewport(vp) {
+export function parseViewportSpec(vp) {
   if (vp && typeof vp === 'object' && typeof vp.width === 'number' && typeof vp.height === 'number') {
-    return { width: vp.width, height: vp.height };
+    return {
+      width: vp.width,
+      height: vp.height,
+      zoomPercent: typeof vp.zoomPercent === 'number' ? vp.zoomPercent : null,
+    };
   }
-  const m = /^(\d+)x(\d+)$/i.exec(String(vp || '1440x900').trim());
+  const m = /^(\d+)x(\d+)(?:@zoom(\d+))?$/i.exec(String(vp || '1440x900').trim());
   if (!m) {
     throw new Error(`Invalid viewport string: "${vp}"`);
   }
-  return { width: Number(m[1]), height: Number(m[2]) };
+  return {
+    width: Number(m[1]),
+    height: Number(m[2]),
+    zoomPercent: m[3] ? Number(m[3]) : null,
+  };
+}
+
+/**
+ * Parse "WxH" or "WxH@zoomNNN" string into { width, height }.
+ */
+export function parseViewport(vp) {
+  const { width, height } = parseViewportSpec(vp);
+  return { width, height };
 }
 
 function isUrlAllowed(rawUrl, origin) {
@@ -102,8 +118,10 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
     viewport = '1440x900',
     dpr = 1,
     colorScheme = 'light',
+    contrast = 'no-preference',
     reducedMotion = 'no-preference',
     locale = null,
+    rootFontZoom = null,
     seed = 1,
     params = {},
     blockExternal = true,
@@ -111,11 +129,17 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
     waitForReady = true,
     loadTimeoutMs = 15000,
   } = {}) {
-    const vp = parseViewport(viewport);
+    const vpSpec = parseViewportSpec(viewport);
+    const vp = { width: vpSpec.width, height: vpSpec.height };
+    const effectiveContrast = contrast === 'more' || colorScheme === 'high_contrast' ? 'more' : 'no-preference';
+    const effectiveColorScheme = colorScheme === 'dark' ? 'dark' : 'light';
+    const effectiveZoom = rootFontZoom !== null && rootFontZoom !== undefined ? Number(rootFontZoom) : vpSpec.zoomPercent;
+
     const contextOptions = {
       viewport: vp,
       deviceScaleFactor: Number(dpr) || 1,
-      colorScheme: colorScheme === 'dark' ? 'dark' : 'light',
+      colorScheme: effectiveColorScheme,
+      contrast: effectiveContrast,
       reducedMotion: reducedMotion === 'reduce' ? 'reduce' : 'no-preference',
     };
     if (locale) {
@@ -134,6 +158,29 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
     const consoleLogs = [];
     const networkLogs = [];
     const fontResponses = [];
+    let cdpTransferBytes = 0;
+    let localFulfilledBytes = 0;
+    const cdpRequestUrls = new Map();
+
+    try {
+      await cdp.send('Network.enable');
+      cdp.on('Network.requestWillBeSent', (ev) => {
+        if (ev?.requestId && ev?.request?.url) {
+          cdpRequestUrls.set(ev.requestId, ev.request.url);
+        }
+      });
+      cdp.on('Network.loadingFinished', (ev) => {
+        const len = Number(ev?.encodedDataLength || 0);
+        if (len > 0) {
+          const reqUrl = cdpRequestUrls.get(ev.requestId) || '';
+          if (!origin || isUrlAllowed(reqUrl, origin)) {
+            cdpTransferBytes += len;
+          }
+        }
+      });
+    } catch {
+      // ignore if Network domain unavailable
+    }
 
     page.on('console', (msg) => {
       consoleLogs.push({ type: msg.type(), text: msg.text() });
@@ -160,6 +207,9 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
         }
         if (allowed && localResolver && reqUrl.startsWith(origin)) {
           const resolved = await localResolver(reqUrl);
+          if (resolved.body && typeof resolved.body.length === 'number') {
+            localFulfilledBytes += resolved.body.length;
+          }
           await route.fulfill({
             status: resolved.status,
             contentType: resolved.contentType,
@@ -212,6 +262,20 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       window.__BENCH_HOST_INIT__ = cfg;
     }, initConfig);
     await page.addInitScript({ content: hostScript });
+    if (effectiveZoom && Number.isFinite(effectiveZoom) && effectiveZoom !== 100) {
+      const rootPx = Math.round((16 * effectiveZoom) / 100);
+      await page.addInitScript((px) => {
+        const apply = () => {
+          if (document.documentElement) {
+            document.documentElement.style.setProperty('font-size', `${px}px`, 'important');
+          }
+        };
+        apply();
+        if (typeof document !== 'undefined') {
+          document.addEventListener('DOMContentLoaded', apply, { once: true });
+        }
+      }, rootPx);
+    }
 
     let loadResult = { pass: true, detail: '' };
 
@@ -230,6 +294,9 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
       async goto(targetUrl, { waitForBench = waitForReady, timeoutMs = loadTimeoutMs } = {}) {
         try {
           await page.goto(targetUrl, { waitUntil: 'load', timeout: timeoutMs });
+          if (effectiveZoom && Number.isFinite(effectiveZoom) && effectiveZoom !== 100) {
+            await handle.setRootFontZoom(effectiveZoom);
+          }
           if (waitForBench) {
             await handle.waitForBenchReady(timeoutMs);
           }
@@ -318,16 +385,25 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
         return size;
       },
 
-      async emulate({ reducedMotion: rm, colorScheme: cs, locale: loc } = {}) {
+      async emulate({ reducedMotion: rm, colorScheme: cs, contrast: ct, locale: loc, rootFontZoom: zoom } = {}) {
         const mediaOpts = {};
         if (rm !== undefined) {
           mediaOpts.reducedMotion = rm === 'reduce' || rm === true ? 'reduce' : 'no-preference';
         }
         if (cs !== undefined) {
           mediaOpts.colorScheme = cs === 'dark' ? 'dark' : 'light';
+          if (cs === 'high_contrast' && ct === undefined) {
+            mediaOpts.contrast = 'more';
+          }
+        }
+        if (ct !== undefined) {
+          mediaOpts.contrast = ct === 'more' || ct === true ? 'more' : 'no-preference';
         }
         if (Object.keys(mediaOpts).length > 0) {
           await page.emulateMedia(mediaOpts);
+        }
+        if (zoom !== undefined && zoom !== null) {
+          await handle.setRootFontZoom(zoom);
         }
         if (typeof loc === 'string' && loc.length > 0) {
           await page.evaluate((lang) => {
@@ -347,6 +423,72 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
             window.dispatchEvent(new Event('languagechange'));
           }, loc);
         }
+      },
+
+      async setRootFontZoom(zoomPercent) {
+        const pct = Number(zoomPercent);
+        await page.evaluate((p) => {
+          const id = 'mol-bench-zoom-override';
+          let el = document.getElementById(id);
+          if (!Number.isFinite(p) || p === 100) {
+            if (el) el.remove();
+            document.documentElement?.style?.removeProperty('font-size');
+            return;
+          }
+          const px = Math.round((16 * p) / 100);
+          document.documentElement?.style?.setProperty('font-size', `${px}px`, 'important');
+          if (!el) {
+            el = document.createElement('style');
+            el.id = id;
+            (document.head || document.documentElement).appendChild(el);
+          }
+          el.textContent = `html { font-size: ${px}px !important; }`;
+        }, pct);
+      },
+
+      async setCpuThrottling(rate) {
+        await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(rate) || 1 });
+      },
+
+      getTransferBytes() {
+        return cdpTransferBytes > 0 ? cdpTransferBytes : localFulfilledBytes;
+      },
+
+      async getWebGLMetrics() {
+        return page.evaluate(() => window.__benchHostControl?.getWebGLMetrics?.() ?? null);
+      },
+
+      async resetWebGLFrameMetrics() {
+        await page.evaluate(() => window.__benchHostControl?.resetWebGLFrameMetrics?.());
+      },
+
+      async getDomMetrics() {
+        return page.evaluate(() => window.__benchHostControl?.getDomMetrics?.() ?? null);
+      },
+
+      async resetDomMetrics(opts = {}) {
+        await page.evaluate((o) => window.__benchHostControl?.resetDomMetrics?.(o), opts);
+      },
+
+      async setDomBypass(flag) {
+        await page.evaluate((f) => window.__benchHostControl?.setDomBypass?.(Boolean(f)), flag);
+      },
+
+      async getToolchainInfo() {
+        const gl = await handle.getWebGLMetrics().catch(() => null);
+        const browserVer = typeof browser.version === 'function' ? browser.version() : null;
+        let pwVer = null;
+        try {
+          const pkgPath = path.resolve(__dirname, '../../../node_modules/playwright-core/package.json');
+          pwVer = JSON.parse(await fs.readFile(pkgPath, 'utf8')).version || null;
+        } catch {
+          // ignore if playwright-core package.json is absent
+        }
+        const pwPrefix = pwVer ? `playwright-core@${pwVer}` : 'playwright-core';
+        return {
+          chromium_version: browserVer ? `${pwPrefix} (chromium ${browserVer})` : pwPrefix,
+          swiftshader_renderer: gl?.renderers?.[0] ?? null,
+        };
       },
 
       async movePointer(x, y) {
