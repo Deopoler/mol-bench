@@ -176,6 +176,10 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     });
 
     const gateSummary = summarizeGates(r.gates);
+    const activeMin = r.efficiency?.active_min ?? null;
+    const wallMin = r.efficiency?.wall_min ?? null;
+    const status = r.status || null;
+    const reason = r.reason || null;
 
     return {
       run_id: runId,
@@ -186,6 +190,8 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       track: r.track || (r.renovation ? "renovation" : "build"),
       seed: r.seed ?? null,
       seeds: r.seeds || "public",
+      status,
+      reason,
       composite: round1(r.composite ?? null),
       composite_raw: r.composite ?? null,
       axes,
@@ -193,7 +199,8 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       reliability: axes.reliability,
       taste: round1(r.taste ?? null),
       efficiency: {
-        wall_min: r.efficiency?.wall_min ?? null,
+        active_min: activeMin,
+        wall_min: wallMin,
         tokens_in: r.efficiency?.tokens?.input ?? r.efficiency?.tokens_in ?? null,
         tokens_out: r.efficiency?.tokens?.output ?? r.efficiency?.tokens_out ?? null,
         tokens_total: r.efficiency?.tokens?.total ?? null,
@@ -213,7 +220,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     };
   });
 
-  // Sort helper: composite_raw desc (nulls last), reliability desc, wall_min asc, run_id asc
+  // Sort helper: composite_raw desc (nulls last), reliability desc, active_min (fallback wall_min) asc, run_id asc
   const compareRuns = (a, b) => {
     const ac = a.composite_raw;
     const bc = b.composite_raw;
@@ -223,11 +230,13 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     const ar = a.axes_raw.reliability ?? -1;
     const br = b.axes_raw.reliability ?? -1;
     if (br !== ar) return br - ar;
-    const aw = a.efficiency.wall_min ?? Infinity;
-    const bw = b.efficiency.wall_min ?? Infinity;
+    const aw = (a.efficiency.active_min ?? a.efficiency.wall_min) ?? Infinity;
+    const bw = (b.efficiency.active_min ?? b.efficiency.wall_min) ?? Infinity;
     if (aw !== bw) return aw - bw;
     return a.run_id.localeCompare(b.run_id);
   };
+
+  const isFailedRun = (r) => r.status === "no-submission" || r.status === "collect-error";
 
   // Group runs by room_key
   const roomsMap = new Map();
@@ -250,7 +259,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     rooms[key] = entry;
   }
 
-  // Overall aggregation per model (non-invalid runs; average per room first, then across rooms)
+  // Overall aggregation per model (non-invalid, non-failed runs; average per room first, then across rooms)
   const byModel = new Map();
   for (const run of runs) {
     if (!byModel.has(run.model)) byModel.set(run.model, []);
@@ -259,7 +268,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
 
   const overall = [];
   for (const [model, modelRuns] of byModel.entries()) {
-    const validRuns = modelRuns.filter((r) => !r.invalid);
+    const validRuns = modelRuns.filter((r) => !r.invalid && !isFailedRun(r));
     const byRoom = new Map();
     for (const r of validRuns) {
       if (!byRoom.has(r.room_key)) byRoom.set(r.room_key, []);
@@ -271,6 +280,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     const roomVqs = [];
     const roomRevs = [];
     const roomRels = [];
+    const roomActives = [];
     const roomWalls = [];
     const roomScores = {};
 
@@ -280,6 +290,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       const vqMean = meanOf(rList.map((x) => x.axes_raw.visual_quality));
       const rvMean = meanOf(rList.map((x) => x.axes_raw.revision));
       const rlMean = meanOf(rList.map((x) => x.axes_raw.reliability));
+      const aMean = meanOf(rList.map((x) => x.efficiency.active_min ?? x.efficiency.wall_min));
       const wMean = meanOf(rList.map((x) => x.efficiency.wall_min));
 
       if (cMean !== null) roomComposites.push(cMean);
@@ -287,6 +298,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
       if (vqMean !== null) roomVqs.push(vqMean);
       if (rvMean !== null) roomRevs.push(rvMean);
       if (rlMean !== null) roomRels.push(rlMean);
+      if (aMean !== null) roomActives.push(aMean);
       if (wMean !== null) roomWalls.push(wMean);
 
       roomScores[roomKey] = {
@@ -300,6 +312,7 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     const vqRaw = meanOf(roomVqs);
     const revRaw = meanOf(roomRevs);
     const relRaw = meanOf(roomRels);
+    const activeMean = meanOf(roomActives);
     const wallMean = meanOf(roomWalls);
 
     overall.push({
@@ -313,9 +326,11 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
         reliability: round1(relRaw)
       },
       reliability: round1(relRaw),
+      avg_active_min: activeMean !== null ? Number(activeMean.toFixed(2)) : null,
       avg_wall_min: wallMean !== null ? Number(wallMean.toFixed(2)) : null,
       rooms_count: byRoom.size,
       runs_count: validRuns.length,
+      failed_count: modelRuns.filter(isFailedRun).length,
       invalid_count: modelRuns.length - validRuns.length,
       leakage_count: modelRuns.filter((r) => r.leakage_flagged).length,
       room_scores: roomScores
@@ -334,11 +349,19 @@ export function buildLeaderboardData(loadedResults, opts = {}) {
     return a.model.localeCompare(b.model);
   });
 
+  // Deterministic timestamp derived from loaded runs so repeated builds do not churn git diffs.
+  const runTimestamps = runs
+    .flatMap((r) => [r.ended_at, r.created_at])
+    .filter(Boolean)
+    .map((s) => Date.parse(s))
+    .filter(Number.isFinite);
+  const generatedAt = runTimestamps.length > 0 ? new Date(Math.max(...runTimestamps)).toISOString() : "—";
+
   return {
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     summary: {
       total_runs: runs.length,
-      valid_runs: runs.filter((r) => !r.invalid).length,
+      valid_runs: runs.filter((r) => !r.invalid && !isFailedRun(r)).length,
       models_count: overall.length,
       rooms_count: Object.keys(rooms).length
     },
@@ -364,15 +387,17 @@ export function formatLeaderboardMarkdown(data) {
     lines.push("");
   } else {
     lines.push(
-      "| Rank | Model | Composite | Craft | Visual Quality | Revision | Reliability | Avg Wall (min) | Rooms | Runs |"
+      "| Rank | Model | Composite | Craft | Visual Quality | Revision | Reliability | Avg Active (min) | Rooms | Runs |"
     );
     lines.push("|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|");
     data.overall.forEach((row, idx) => {
-      const wall = row.avg_wall_min === null ? "—" : row.avg_wall_min.toFixed(1);
+      const rank = row.composite === null ? "—" : idx + 1;
+      const activeVal = row.avg_active_min ?? row.avg_wall_min;
+      const active = activeVal === null || activeVal === undefined ? "—" : activeVal.toFixed(1);
       lines.push(
-        `| ${idx + 1} | ${row.model} | ${formatNum(row.composite)} | ${formatNum(row.axes.craft)} | ${formatNum(
+        `| ${rank} | ${row.model} | ${formatNum(row.composite)} | ${formatNum(row.axes.craft)} | ${formatNum(
           row.axes.visual_quality
-        )} | ${formatNum(row.axes.revision)} | ${formatNum(row.reliability)} | ${wall} | ${row.rooms_count} | ${
+        )} | ${formatNum(row.axes.revision)} | ${formatNum(row.reliability)} | ${active} | ${row.rooms_count} | ${
           row.runs_count
         } |`
       );
@@ -393,29 +418,35 @@ export function formatLeaderboardMarkdown(data) {
       lines.push(`### ${roomKey} (${roomObj.track})`);
       lines.push("");
       lines.push(
-        "| Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Wall (min) | Output tok | Total tok | Gates | Previews | Flags |"
+        "| Rank | Run ID | Model | Composite | Craft | Visual Quality | Revision | Reliability | Active (min) | Output tok | Total tok | Gates | Previews | Flags |"
       );
       lines.push("|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|");
       roomObj.runs.forEach((run, idx) => {
-        const wall = run.efficiency.wall_min === null ? "—" : Number(run.efficiency.wall_min).toFixed(1);
+        const isFailed = run.status === "no-submission" || run.status === "collect-error";
+        const rank = isFailed || run.composite === null ? "—" : idx + 1;
+        const activeVal = run.efficiency.active_min ?? run.efficiency.wall_min;
+        const active = activeVal === null || activeVal === undefined ? "—" : Number(activeVal).toFixed(1);
         const outTok = formatTok(run.efficiency.tokens_out);
         const totTok = formatTok(run.efficiency.tokens_total);
-        const gates = `${run.gates.passed}/${run.gates.evaluated}`;
+        const gates = isFailed && run.gates.evaluated === 0 ? "failed" : `${run.gates.passed}/${run.gates.evaluated}`;
         const viewMd = `[View](../gallery/runs/${run.run_id}/)`;
         const previews =
           run.previews.length > 0
             ? `${viewMd}, ` + run.previews.map((p) => `[${p.label}](${p.md_path})`).join(", ")
+            : isFailed
+            ? "—"
             : viewMd;
         const flags = [];
+        if (isFailed) flags.push(run.reason ? `${run.status}:${run.reason}` : run.status);
         if (run.invalid) flags.push(`invalid:${run.invalid_reason || "yes"}`);
         if (run.leakage_flagged) flags.push("possible_leakage");
         if (run.gates.failed.length > 0) flags.push(`fail:${run.gates.failed.join(",")}`);
         lines.push(
-          `| ${idx + 1} | ${run.run_id} | ${run.model} | ${formatNum(run.composite)} | ${formatNum(
+          `| ${rank} | ${run.run_id} | ${run.model} | ${formatNum(run.composite)} | ${formatNum(
             run.axes.craft
           )} | ${formatNum(run.axes.visual_quality)} | ${formatNum(run.axes.revision)} | ${formatNum(
             run.reliability
-          )} | ${wall} | ${outTok} | ${totTok} | ${gates} | ${previews} | ${flags.length > 0 ? flags.join("; ") : "—"} |`
+          )} | ${active} | ${outTok} | ${totTok} | ${gates} | ${previews} | ${flags.length > 0 ? flags.join("; ") : "—"} |`
         );
       });
       lines.push("");
@@ -866,19 +897,24 @@ export function buildLeaderboardHtml(data) {
         }
         const rows = data.overall
           .map((m, idx) => {
+            const rankStr = m.composite === null ? "—" : "#" + (idx + 1);
+            const activeVal = m.avg_active_min ?? m.avg_wall_min;
             const roomBadges = Object.entries(m.room_scores || {})
               .map(([rk, rs]) => '<span class="badge neutral">' + esc(rk) + ": " + esc(fmt(rs.composite)) + "</span>")
               .join(" ");
             return (
               '<tr class="main-row">' +
-              '<td class="rank">#' + (idx + 1) + "</td>" +
-              "<td><strong>" + esc(m.model) + "</strong>" + (m.leakage_count > 0 ? ' <span class="badge bad">leakage:' + m.leakage_count + "</span>" : "") + "</td>" +
+              '<td class="rank">' + rankStr + "</td>" +
+              "<td><strong>" + esc(m.model) + "</strong>" +
+              (m.failed_count > 0 && m.runs_count === 0 ? ' <span class="badge bad">failed:' + m.failed_count + "</span>" : "") +
+              (m.leakage_count > 0 ? ' <span class="badge bad">leakage:' + m.leakage_count + "</span>" : "") +
+              "</td>" +
               '<td class="num"><span class="score-pill">' + esc(fmt(m.composite)) + "</span></td>" +
               '<td class="num">' + esc(fmt(m.axes.craft)) + "</td>" +
               '<td class="num">' + esc(fmt(m.axes.visual_quality)) + "</td>" +
               '<td class="num">' + esc(fmt(m.axes.revision)) + "</td>" +
               '<td class="num">' + esc(fmt(m.reliability)) + "</td>" +
-              '<td class="num">' + esc(fmt(m.avg_wall_min)) + "</td>" +
+              '<td class="num">' + esc(fmt(activeVal)) + "</td>" +
               '<td class="num">' + esc(m.rooms_count) + "</td>" +
               '<td class="num">' + esc(m.runs_count) + "</td>" +
               "<td>" + (roomBadges || "—") + "</td>" +
@@ -889,7 +925,7 @@ export function buildLeaderboardHtml(data) {
 
         wrap.innerHTML =
           "<table><thead><tr>" +
-          "<th>Rank</th><th>Model</th><th class=num>Composite</th><th class=num>Craft</th><th class=num>Visual Quality</th><th class=num>Revision</th><th class=num>Reliability</th><th class=num>Avg Wall (min)</th><th class=num>Rooms</th><th class=num>Runs</th><th>Room Breakdown</th>" +
+          "<th>Rank</th><th>Model</th><th class=num>Composite</th><th class=num>Craft</th><th class=num>Visual Quality</th><th class=num>Revision</th><th class=num>Reliability</th><th class=num>Avg Active (min)</th><th class=num>Rooms</th><th class=num>Runs</th><th>Room Breakdown</th>" +
           "</tr></thead><tbody>" +
           rows +
           "</tbody></table>";
@@ -920,6 +956,7 @@ export function buildLeaderboardHtml(data) {
         if (key === "visual_quality") return run.axes_raw?.visual_quality ?? null;
         if (key === "revision") return run.axes_raw?.revision ?? null;
         if (key === "reliability") return run.axes_raw?.reliability ?? null;
+        if (key === "active_min") return (run.efficiency?.active_min ?? run.efficiency?.wall_min) ?? null;
         if (key === "wall_min") return run.efficiency?.wall_min ?? null;
         if (key === "tokens_out") return run.efficiency?.tokens_out ?? null;
         if (key === "tokens_total") return run.efficiency?.tokens_total ?? null;
@@ -966,7 +1003,7 @@ export function buildLeaderboardHtml(data) {
           ["VQ", "visual_quality", true],
           ["Revision", "revision", true],
           ["Reliability", "reliability", true],
-          ["Wall (m)", "wall_min", true],
+          ["Active (min)", "active_min", true],
           ["Output tok", "tokens_out", true],
           ["Total tok", "tokens_total", true],
           ["Gates", null, false],
@@ -987,8 +1024,13 @@ export function buildLeaderboardHtml(data) {
 
         const tbody = filtered
           .map((run, idx) => {
+            const isFailed = run.status === "no-submission" || run.status === "collect-error";
+            const rankStr = isFailed || run.composite === null ? "—" : "#" + (idx + 1);
+            const activeVal = run.efficiency?.active_min ?? run.efficiency?.wall_min;
             const gateBadge =
-              run.gates.failed.length > 0
+              isFailed && run.gates.evaluated === 0
+                ? '<span class="badge bad">failed</span>'
+                : run.gates.failed.length > 0
                 ? '<span class="badge bad">' + run.gates.passed + "/" + run.gates.evaluated + " fail</span>"
                 : run.gates.evaluated > 0
                 ? '<span class="badge ok">' + run.gates.passed + "/" + run.gates.evaluated + " pass</span>"
@@ -996,20 +1038,23 @@ export function buildLeaderboardHtml(data) {
 
             const viewLink = '<a class="preview-link" href="../gallery/runs/' + esc(run.run_id) + '/" target="_blank" rel="noopener">View ↗</a>';
             const previewHtml =
-              '<div class="preview-links">' +
-              viewLink +
-              (run.previews && run.previews.length > 0
-                ? " " +
-                  run.previews
-                    .map(
-                      (p) =>
-                        '<a class="preview-link" href="' + esc(p.site_path) + '" target="_blank" rel="noopener">' + esc(p.label) + "</a>"
-                    )
-                    .join("")
-                : "") +
-              "</div>";
+              isFailed && (!run.previews || run.previews.length === 0)
+                ? "—"
+                : '<div class="preview-links">' +
+                  viewLink +
+                  (run.previews && run.previews.length > 0
+                    ? " " +
+                      run.previews
+                        .map(
+                          (p) =>
+                            '<a class="preview-link" href="' + esc(p.site_path) + '" target="_blank" rel="noopener">' + esc(p.label) + "</a>"
+                        )
+                        .join("")
+                    : "") +
+                  "</div>";
 
             const flags = [];
+            if (isFailed) flags.push('<span class="badge bad">' + esc(run.status) + "</span>");
             if (run.invalid) flags.push('<span class="badge warn">invalid</span>');
             if (run.leakage_flagged) flags.push('<span class="badge bad">leakage</span>');
             if (flags.length === 0) flags.push('<span class="badge ok">clean</span>');
@@ -1017,7 +1062,7 @@ export function buildLeaderboardHtml(data) {
             const isExpanded = state.expanded.has(run.run_id);
             let html =
               '<tr class="main-row" data-run="' + esc(run.run_id) + '" style="cursor:pointer">' +
-              '<td class="rank">#' + (idx + 1) + "</td>" +
+              '<td class="rank">' + rankStr + "</td>" +
               '<td class="mono">' + esc(run.run_id) + "</td>" +
               '<td><span class="badge neutral">' + esc(run.room_key) + "</span></td>" +
               "<td>" + esc(run.model) + "</td>" +
@@ -1026,7 +1071,7 @@ export function buildLeaderboardHtml(data) {
               '<td class="num">' + esc(fmt(run.axes.visual_quality)) + "</td>" +
               '<td class="num">' + esc(fmt(run.axes.revision)) + "</td>" +
               '<td class="num">' + esc(fmt(run.reliability)) + "</td>" +
-              '<td class="num">' + esc(fmt(run.efficiency.wall_min)) + "</td>" +
+              '<td class="num">' + esc(fmt(activeVal)) + "</td>" +
               '<td class="num">' + esc(fmtTok(run.efficiency.tokens_out)) + "</td>" +
               '<td class="num">' + esc(fmtTok(run.efficiency.tokens_total)) + "</td>" +
               "<td>" + gateBadge + "</td>" +
@@ -1065,12 +1110,15 @@ export function buildLeaderboardHtml(data) {
                 '<tr class="detail-row"><td colspan="15"><div class="detail-grid">' +
                 '<div class="detail-box"><h4>Metadata & Efficiency</h4>' +
                 "<div>Run ID: <span class=mono>" + esc(run.run_id) + "</span></div>" +
+                (run.status ? "<div>Status: <span class=mono>" + esc(run.status) + "</span></div>" : "") +
+                (run.reason ? "<div>Reason: " + esc(run.reason) + "</div>" : "") +
                 "<div>Seeds: " + esc(run.seeds) + (run.seed !== null ? " (seed=" + esc(run.seed) + ")" : "") + "</div>" +
+                "<div>Active min: " + esc(fmt(activeVal, 2)) + "</div>" +
                 "<div>Wall min: " + esc(fmt(run.efficiency.wall_min, 2)) + "</div>" +
                 "<div>Output tok: " + esc(fmtTok(run.efficiency.tokens_out)) + "</div>" +
                 "<div>Total tok: " + esc(fmtTok(run.efficiency.tokens_total)) + "</div>" +
                 "<div>Taste: " + esc(run.taste === null ? "null (human only)" : fmt(run.taste)) + "</div>" +
-                "<div>Live View: <a class='preview-link' href='../gallery/runs/" + esc(run.run_id) + "/' target='_blank' rel='noopener'>Open in Gallery ↗</a></div>" +
+                (isFailed ? "" : "<div>Live View: <a class='preview-link' href='../gallery/runs/" + esc(run.run_id) + "/' target='_blank' rel='noopener'>Open in Gallery ↗</a></div>") +
                 (run.diff_file ? "<div>Diff: <span class=mono>" + esc(run.diff_file) + "</span></div>" : "") +
                 "</div>" +
                 '<div class="detail-box"><h4>Gates</h4>' + (gatesList || "—") + "</div>" +
@@ -1090,7 +1138,7 @@ export function buildLeaderboardHtml(data) {
               state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
             } else {
               state.sortBy = key;
-              state.sortDir = key === "wall_min" || key === "model" || key === "run_id" ? "asc" : "desc";
+              state.sortDir = key === "active_min" || key === "wall_min" || key === "model" || key === "run_id" ? "asc" : "desc";
             }
             renderRuns(state.data);
           });

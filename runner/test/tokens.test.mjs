@@ -13,7 +13,9 @@ import {
   resolveAgent,
   encodeClaudeProjectPath,
   backfillResults,
-  printBackfillTable
+  printBackfillTable,
+  computeActiveMinutes,
+  collectActiveTime
 } from "../tokens.mjs";
 import { formatTok, generateLeaderboard } from "../../harness/src/leaderboard.mjs";
 
@@ -311,6 +313,63 @@ test("leaderboard includes Output tok and Total tok in markdown and html data", 
     const run2 = dataJson.runs.find((x) => x.run_id === "lobby__gpt-6-luna-max");
     assert.equal(run2.efficiency.tokens_out, 615000);
     assert.equal(run2.efficiency.tokens_total, 79600000);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test("computeActiveMinutes caps each consecutive gap at 5 minutes", () => {
+  const min = 60 * 1000;
+  const base = Date.parse("2026-11-21T10:00:00Z");
+  // Gaps: +2m, +2m, +180m (capped at 5m), +2m => 11m
+  const ts = [base, base + 2 * min, base + 4 * min, base + 184 * min, base + 186 * min];
+  assert.equal(computeActiveMinutes(ts), 11);
+  assert.equal(computeActiveMinutes([base]), 0);
+  assert.equal(computeActiveMinutes([]), null);
+});
+
+test("collectActiveTime parses session log timestamps with gap capping and falls back to file mtimes", () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "mol-active-test-"));
+  try {
+    const claudeDir = path.join(tmpBase, "claude");
+    const runDir = path.join(tmpBase, "runs", "aurora__claude-active-1");
+    fs.mkdirSync(runDir, { recursive: true });
+
+    // 1. Session log with timestamps including a 90-minute gap
+    const encoded = encodeClaudeProjectPath(runDir);
+    const projDir = path.join(claudeDir, "projects", encoded);
+    fs.mkdirSync(projDir, { recursive: true });
+    const logLines = [
+      JSON.stringify({ timestamp: "2026-11-21T10:00:00Z", type: "user" }),
+      JSON.stringify({ timestamp: "2026-11-21T10:03:00Z", type: "assistant", message: { id: "m1", usage: { input_tokens: 10, output_tokens: 20 } } }),
+      JSON.stringify({ timestamp: "2026-11-21T11:33:00Z", type: "assistant", message: { id: "m2", usage: { input_tokens: 10, output_tokens: 30 } } }),
+      JSON.stringify({ timestamp: "2026-11-21T11:35:00Z", type: "assistant", message: { id: "m3", usage: { input_tokens: 5, output_tokens: 10 } } })
+    ];
+    fs.writeFileSync(path.join(projDir, "session.jsonl"), logLines.join("\n"));
+
+    const activeFromLog = collectActiveTime({ runDir, agent: "claude", claudeDir });
+    // 3m + 5m (90m capped) + 2m = 10m
+    assert.equal(activeFromLog, 10);
+
+    // 2. Fallback to file mtimes when no session logs exist
+    const fallbackDir = path.join(tmpBase, "runs", "aurora__fallback-mtime");
+    fs.mkdirSync(path.join(fallbackDir, "room"), { recursive: true });
+    const f1 = path.join(fallbackDir, "room", "a.html");
+    const f2 = path.join(fallbackDir, "room", "b.js");
+    const f3 = path.join(fallbackDir, "report.json");
+    fs.writeFileSync(f1, "a");
+    fs.writeFileSync(f2, "b");
+    fs.writeFileSync(f3, "{}");
+
+    const t0 = new Date("2026-11-21T10:00:00Z");
+    const t1 = new Date("2026-11-21T10:02:00Z"); // +2m
+    const t2 = new Date("2026-11-21T11:02:00Z"); // +60m -> capped at 5m
+    fs.utimesSync(f1, t0, t0);
+    fs.utimesSync(f2, t1, t1);
+    fs.utimesSync(f3, t2, t2);
+
+    const activeFromMtime = collectActiveTime({ runDir: fallbackDir, agent: "claude", claudeDir });
+    assert.equal(activeFromMtime, 7);
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }

@@ -110,6 +110,7 @@ export function loadGradedResults(resultsDir) {
     try {
       const parsed = JSON.parse(fs.readFileSync(fullPath, "utf8"));
       if (!parsed || typeof parsed !== "object" || !parsed.room) continue;
+      if (parsed.status === "no-submission" || parsed.status === "collect-error") continue;
       const runId = parsed.run_id || path.basename(entry.name, ".json");
       const roomKey = parsed.renovation ? `${parsed.room}/${parsed.renovation}` : parsed.room;
       results.push({

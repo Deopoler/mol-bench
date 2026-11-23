@@ -80,12 +80,16 @@ Run contestants locally in isolated per-run directories (outside the repo so `hi
    node runner/collect.mjs aurora-codex-01 --model "<label>"
    ```
 
-   `collect.mjs` records `ended_at` in `.run.json`, writes `results/submissions/<id>.diff` (including untracked files), copies the submission (excluding `node_modules`, `.venv`, `bench`, `metrics`, `.git`) to `results/submissions/<id>/`, scans for possible `hidden/` or repo-path leakage, runs `bench grade <room> <copy> --hidden`, writes `results/<id>.json` with `efficiency.wall_min` and `model`, and removes `node_modules` and `.venv` from the run folder.
+   `collect.mjs` records `ended_at` in `.run.json`, computes `efficiency.wall_min` and `efficiency.active_min` (sum of consecutive activity timestamp gaps from session logs or file mtimes, capped at 5 min each), writes `results/submissions/<id>.diff` (including untracked files), copies the submission (excluding `node_modules`, `.venv`, `bench`, `metrics`, `.git`) to `results/submissions/<id>/`, scans for possible `hidden/` or repo-path leakage, runs `bench grade <room> <copy> --hidden`, writes `results/<id>.json` (or marks `"status": "no-submission"` / `"collect-error"` with `composite: null` when no files changed or grading fails), and removes `node_modules` and `.venv` from the run folder.
 
-4. **Generate the leaderboard**:
+4. **Unattended autopilot (`runner/hc/autopilot.sh`)**:
+
+   Tracks per-run awake seconds in `.orchestra/awake.tsv` (capping sleep gaps `> 2*INTERVAL+60` to `INTERVAL`), uses awake time for `OVER` limits and `STUCK_HOURS`, marks collected runs terminal in `.orchestra/runs.tsv` so they are never re-collected, and commits only when `results/*.json` or `results/submissions/` change.
+
+5. **Generate the leaderboard**:
 
    ```bash
    node harness/src/leaderboard.mjs
    ```
 
-   Reads `results/*.json` and writes `results/leaderboard.md`, `site/leaderboard/data.json`, and `site/leaderboard/index.html` (offline, dark/light, responsive, with preview contact sheet links when present).
+   Reads `results/*.json` and writes `results/leaderboard.md`, `site/leaderboard/data.json`, and `site/leaderboard/index.html` (offline, dark/light, responsive, deterministic output showing `Active (min)` with `wall_min` fallback, failed/unranked runs, and preview contact sheet links when present).
