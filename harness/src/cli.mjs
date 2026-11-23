@@ -434,7 +434,10 @@ async function _gradeSubmissionWithAdapter({
   plan.perf.enabled = Boolean(perf);
 
   // Static gates
-  const defaultStart = spec.track === "renovation" ? path.join(versionPaths.roomsDir, spec.room, "anchors", "a5") : null;
+  const hiddenA5 = path.join(versionPaths.hiddenDir, spec.room, "anchors", "a5");
+  const defaultStart = spec.track === "renovation"
+    ? (effectiveVersion >= 2 && fs.existsSync(hiddenA5) ? hiddenA5 : path.join(versionPaths.roomsDir, spec.room, "anchors", "a5"))
+    : null;
   const startDir = start ? path.resolve(start) : defaultStart;
   let sourceComparison = null;
   let comparisonError = null;
@@ -925,10 +928,13 @@ async function runCalibrate(room, flags) {
   }
 
   const roomBase = path.join(versionPaths.roomsDir, room);
+  // v0.2: anchors (solutions) are kept out of the public repo in <hiddenDir>/<room>/anchors when present.
+  const hiddenAnchors = path.join(versionPaths.hiddenDir, room, "anchors");
+  const anchorBase = version >= 2 && fs.existsSync(hiddenAnchors) ? hiddenAnchors : path.join(roomBase, "anchors");
   const candidates = [
     { label: "null", dir: path.join(roomBase, "seed") },
-    { label: "a5", dir: path.join(roomBase, "anchors", "a5") },
-    { label: "a8", dir: path.join(roomBase, "anchors", "a8") }
+    { label: "a5", dir: path.join(anchorBase, "a5") },
+    { label: "a8", dir: path.join(anchorBase, "a8") }
   ];
 
   const attacksDir = path.join(roomBase, "attacks");
