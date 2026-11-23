@@ -189,3 +189,70 @@ def test_redgreen_cli_integration(tmp_path: Path):
     res2 = cli.compute_metrics(m_path, s_path)
     assert res1 == res2
     assert res1["tests.redgreen_verified"]["raw"] == 1.0
+
+
+def test_redgreen_sandboxed_stages_relative_room_harness_imports(tmp_path: Path):
+    """Sandboxed tests importing ../../bench/testing/room-harness.mjs work even when bench/ is absent from submissionDir."""
+    repo_root = Path(__file__).resolve().parents[2]
+    sub = tmp_path / "submission"
+    ref = tmp_path / "reference"
+    muts = tmp_path / "mutants"
+    for d in (sub, ref, muts / "B1", muts / "B2"):
+        (d / "room").mkdir(parents=True, exist_ok=True)
+        (d / "index.html").write_text(
+            "<!doctype html><html><body><script>"
+            "window.__bench = { version: 1, ready: Promise.resolve(), setSeed(){}, seek(){}, resume(){}, "
+            "async renderFrame(){}, state(){ return { ok: true }; }, stats(){ return { drawCalls: 0, triangles: 0 }; } };"
+            "</script></body></html>",
+            encoding="utf-8",
+        )
+    # Break mutant B1 (make room/index.html fail __bench.ready)
+    (muts / "B1" / "index.html").write_text("<!doctype html><html><body>broken</body></html>", encoding="utf-8")
+
+    test_dir = sub / "tests" / "regression"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    # Note: sub/bench/testing/room-harness.mjs does NOT exist (like collected submissions)
+    (test_dir / "b1.test.mjs").write_text(
+        'import test from "node:test";\n'
+        'import assert from "node:assert/strict";\n'
+        'import { openRoom } from "../../bench/testing/room-harness.mjs";\n'
+        'test("B1: loads clean room and fails broken mutant", async () => {\n'
+        '  const r = await openRoom({ loadTimeoutMs: 3000 });\n'
+        '  try { const st = await r.state(); assert.equal(st.ok, true); } finally { await r.close(); }\n'
+        '});\n',
+        encoding="utf-8",
+    )
+    # Fail-closed check: test that tries to read room/ via fs must be rejected by --permission sandbox
+    (test_dir / "b2.test.mjs").write_text(
+        'import test from "node:test";\n'
+        'import fs from "node:fs";\n'
+        'import { openRoom } from "../../bench/testing/room-harness.mjs";\n'
+        'test("B2: fs read must fail closed in --permission sandbox", async () => {\n'
+        '  void openRoom;\n'
+        '  fs.readFileSync("../../index.html", "utf8");\n'
+        '});\n',
+        encoding="utf-8",
+    )
+    report = {
+        "room": {
+            "bugs": [
+                {"report_id": "B1", "root_cause": "B1", "test": "tests/regression/b1.test.mjs"},
+                {"report_id": "B2", "root_cause": "B2", "test": "tests/regression/b2.test.mjs"},
+            ]
+        }
+    }
+    (sub / "report.json").write_text(json.dumps(report), encoding="utf-8")
+
+    res = redgreen.run_redgreen_verification(
+        planted_bugs=["B1", "B2"],
+        submission_dir=sub,
+        reference_dir=ref,
+        mutants_dir=muts,
+        sandboxed=True,
+        timeout_ms=15_000,
+        repo_root=repo_root,
+    )
+    assert res["passed"] == 1
+    assert res["total"] == 2
+    assert res["detail"]["per_bug"]["B1"]["verified"] is True
+    assert res["detail"]["per_bug"]["B2"]["verified"] is False

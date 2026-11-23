@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareRun } from "../prepare.mjs";
-import { collectRun } from "../collect.mjs";
+import { collectRun, scanForLeakage } from "../collect.mjs";
 import {
   loadResultFiles,
   buildLeaderboardData,
@@ -475,6 +475,54 @@ test("review fixes: symlink refusal, root-only start exclusions, gitignored/conc
       assert.equal(data.rooms.aurora.runs[3].run_id, "run_d_gemini_799", "7.99 in lower bucket must rank last");
     }
     assert.equal(orders.size, 1, "v2 leaderboard ordering must be identical across all input permutations");
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test("G-leakage ignores unmodified harness/blender tooling while failing closed on tampered or added harness files", () => {
+  const tmpBase = makeTmpBase("test-harness-leak-");
+  try {
+    const repo = makeV2FixtureRepo(tmpBase);
+    // Add harness/blender/render_submission.py containing help text referencing hidden/atelier/refs
+    fs.mkdirSync(path.join(repo, "harness", "blender"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repo, "harness", "blender", "render_submission.py"),
+      'parser.add_argument("--hidden-refs", help="Optional hidden/atelier/refs directory")\n',
+      "utf8"
+    );
+    fs.mkdirSync(path.join(repo, "metrics3d"), { recursive: true });
+    fs.writeFileSync(path.join(repo, "metrics3d", "evaluate.py"), "x = 1\n", "utf8");
+
+    const runsRoot = path.join(tmpBase, "runs");
+    const resultsV2 = path.join(tmpBase, "results-v2");
+
+    // 1. Clean non-Blender v2 run: prepareRun skips Blender tooling, collectRun passes G-leakage
+    const cleanPrep = prepareRun({ room: "aurora", runId: "aurora__clean-no-blender", version: 2, root: runsRoot, repoRoot: repo });
+    assert.equal(fs.existsSync(path.join(cleanPrep.runDir, "harness", "blender")), false);
+    fs.writeFileSync(path.join(cleanPrep.runDir, "room", "index.html"), "<!doctype html><h1>OK</h1>\n");
+    fs.writeFileSync(path.join(cleanPrep.runDir, "report.json"), JSON.stringify({ schema_version: 1, summary: "Ok", deliverables: ["room/index.html", "report.json"], claims: [], blocked: false }));
+    const cleanOut = collectRun({ runId: "aurora__clean-no-blender", model: "Clean", version: 2, hidden: false, noCapture: true, noPython: true, root: runsRoot, resultsDir: resultsV2, repoRoot: repo });
+    assert.equal(cleanOut.result.leakage.flagged, false);
+    assert.equal(fs.existsSync(path.join(cleanOut.subCopyDir, "harness", "blender")), false);
+
+    // 2. Unmodified harness/blender/render_submission.py in an existing subCopyDir must NOT trigger G-leakage
+    const legacySub = path.join(tmpBase, "legacy-sub");
+    fs.mkdirSync(path.join(legacySub, "harness", "blender"), { recursive: true });
+    fs.copyFileSync(path.join(repo, "harness", "blender", "render_submission.py"), path.join(legacySub, "harness", "blender", "render_submission.py"));
+    const legacyLeak = scanForLeakage({ runDir: legacySub, subCopyDir: legacySub, diffText: "", changedFiles: [], repoRoot: repo });
+    assert.equal(legacyLeak.flagged, false, `Unmodified harness/blender/render_submission.py must not flag leakage: ${JSON.stringify(legacyLeak)}`);
+
+    // 3. Fail closed: adding or modifying a file under harness/blender/ with leakage MUST still fail G-leakage
+    const badPrep = prepareRun({ room: "aurora", runId: "aurora__harness-tamper", version: 2, root: runsRoot, repoRoot: repo });
+    fs.mkdirSync(path.join(badPrep.runDir, "harness", "blender"), { recursive: true });
+    fs.writeFileSync(path.join(badPrep.runDir, "harness", "blender", "sneak.py"), "p = '../hidden-v2/aurora/grade.json'\n");
+    fs.writeFileSync(path.join(badPrep.runDir, "room", "index.html"), "<!doctype html><h1>Bad</h1>\n");
+    fs.writeFileSync(path.join(badPrep.runDir, "report.json"), JSON.stringify({ schema_version: 1, summary: "Ok", deliverables: ["room/index.html", "report.json"], claims: [], blocked: false }));
+    const badOut = collectRun({ runId: "aurora__harness-tamper", model: "Bad", version: 2, hidden: false, noCapture: true, noPython: true, root: runsRoot, resultsDir: resultsV2, repoRoot: repo });
+    assert.equal(badOut.result.leakage.flagged, true, "Added leaking file inside harness/blender must fail G-leakage");
+    assert.equal(badOut.result.gates["G-leakage"].pass, false);
+    assert.equal(badOut.result.invalid, true);
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }
