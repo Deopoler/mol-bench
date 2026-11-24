@@ -4,7 +4,7 @@
   "fail_closed": true,
   "track": "build",
   "title": "Restoration — The Fractured Planetarium",
-  "brief": "A modular Three.js Planetarium (room/src/modules/{tonemap,materials,shadows,cache,seed_loader,post_resize}.js + planetarium.js + main.js) ships with six interacting, masking, lifecycle, and timing bugs selected from a 10-bug modular pool across 4 variants. The agent receives four synthesized vague visitor/curator complaints, must diagnose and fix all six bugs minimally, write black-box behavioral regression tests using bench/testing/room-harness.mjs, and classify all six root causes from a 20-code taxonomy.",
+  "brief": "A modular Three.js Planetarium (room/src/planetarium.js, room/src/main.js, and subsystem modules under room/src/modules/) ships with several interacting, masking, lifecycle, timing, and rendering regressions drawn from a modular bug pool across multiple variants. The agent receives synthesized vague visitor/curator notes (some symptoms may be misleading, masked in multi-stage chains, or completely unreported), must diagnose and fix all underlying defects minimally across room/src/** without breaking normal gallery behaviour, write black-box behavioral regression tests using bench/testing/room-harness.mjs, and classify each root cause from the public taxonomy.",
   "time_limit_min": 75,
   "load_timeout_ms": 20000,
   "max_raster_asset_kb": 256,
@@ -19,40 +19,43 @@
     "tests/regression/"
   ],
   "generator": {
-    "description": "seed selects one of 4 variants from a 10-bug modular pool. Public seeds 1-2 and hidden seeds 3-4 cover all 10 bugs."
+    "description": "seed selects one of 4 variants from a modular bug pool (2 public variants, 2 hidden variants)."
   },
   "state_contract": {
     "activeSeed": "active seed integer after async seed transition settles",
     "focusedIndex": "index of the focused planet (0..6)",
     "orbitAngleDeg": "orbit angle of the reference planet (planet 0), degrees, wrapped to [0, 360)",
     "chartPatches": "array of 12 {x, y} pixel centers of the color-chart patches in the current frame",
-    "probes": "{ bgSrgb, domeCenterSrgb, topBevelSrgb, botBevelSrgb, satinSectorSrgb, mirrorSectorSrgb, focusedAspect, focusedPixelCount, meridianSampleSrgb, contactShadowSrgb, canvasSize, postTargetSize }",
     "camera": "{position:[x,y,z], target:[x,y,z]}",
     "route": "'orrery'"
   },
   "root_cause_codes": [
-    "POSTFX_DOUBLE_TONEMAP",
-    "NORMAL_MAP_GREEN_INVERTED",
-    "PREMULT_ALPHA_DOME_FOG",
-    "DATA_TEXTURE_SRGB_DECODE",
-    "SHADOW_BIAS_ACNE_VS_DETACH",
-    "SHARED_RESOURCE_DISPOSE_TRAP",
     "ASYNC_SEED_RACE",
+    "CAMERA_FOV_RADIANS_MISMATCH",
+    "COLOR_SPACE_MISSING_GAMMA",
+    "DATA_TEXTURE_SRGB_DECODE",
+    "DEPTH_BUFFER_LOGARITHMIC_ZFIGHT",
     "DPR_FBO_RESIZE_DESYNC",
     "FIXED_STEP_SUBSTEP_DRIFT",
-    "SHADER_MEDIUMP_TIME_OVERFLOW",
-    "COLOR_SPACE_MISSING_GAMMA",
-    "TANGENT_BITANGENT_HANDEDNESS",
+    "LIGHT_ATTENUATION_UNIT_MISMATCH",
     "MIPMAP_ANISOTROPY_BLEED",
-    "DEPTH_BUFFER_LOGARITHMIC_ZFIGHT",
-    "SHADOW_FRUSTUM_NEAR_CLIP",
-    "WEBGL_CONTEXT_LOST_LEAK",
+    "NORMAL_MAP_GREEN_INVERTED",
+    "ORBIT_EULER_GIMBAL_LOCK",
+    "POSTFX_DOUBLE_TONEMAP",
+    "POSTFX_VIGNETTE_GAIN_UNDERFLOW",
+    "PREMULT_ALPHA_DOME_FOG",
     "RAF_DUPLICATE_LOOP_SPAWN",
+    "RENDER_TARGET_DEPTH_CLEAR_SKIP",
+    "SHADER_MEDIUMP_TIME_OVERFLOW",
+    "SHADOW_BIAS_ACNE_VS_DETACH",
+    "SHADOW_FRUSTUM_NEAR_CLIP",
+    "SHARED_RESOURCE_DISPOSE_TRAP",
+    "STENCIL_MASK_DOME_OVERFLOW",
+    "TANGENT_BITANGENT_HANDEDNESS",
     "UNIFORM_BUFFER_ALIGNMENT_PAD",
-    "CAMERA_FOV_RADIANS_MISMATCH",
-    "STENCIL_MASK_DOME_OVERFLOW"
+    "WEBGL_CONTEXT_LOST_LEAK"
   ],
-  "root_cause_codes_notes": "20-code public taxonomy given to the agent verbatim (10 active root causes + 10 plausible decoys). Per-bug mappings and grading criteria reside in hidden-v2/restoration/grade.json.",
+  "root_cause_codes_notes": "Neutral 24-code public taxonomy given to the agent verbatim. Per-variant mappings and grading criteria reside in hidden-v2/restoration/grade.json.",
   "capture": {
     "renderer": "swiftshader",
     "dpr": 1,
@@ -64,7 +67,7 @@
       1,
       2
     ],
-    "hidden": "hidden-v2/restoration/grade.json (seeds 3, 4 covering the remaining 2 combinations)"
+    "hidden": "hidden-v2/restoration/grade.json (hidden seeds covering remaining variants and multi-seed generalisation checks)"
   },
   "gates": [
     "G-load",
@@ -91,7 +94,7 @@
         "full": 10,
         "zero": 0
       },
-      "notes": "mean over the 6 planted bugs of each bug's weighted metric score from hidden-v2/restoration/grade.json"
+      "notes": "mean over the planted bugs of each bug's weighted metric score across hidden seeds, viewports, and timestamps"
     },
     {
       "id": "tests.hidden",
@@ -100,7 +103,7 @@
       "score": {
         "type": "ratio"
       },
-      "notes": "full planetarium functional health across hidden seeds/timestamps/remounts"
+      "notes": "hidden do-no-harm preservation checks across normal gallery features, seeds, timestamps, and remounts"
     },
     {
       "id": "tests.redgreen_verified",
@@ -109,7 +112,7 @@
       "score": {
         "type": "ratio"
       },
-      "notes": "black-box mutant-specificity harness against submission, reference, and pre-built full-file mutants/<bug_id>/"
+      "notes": "black-box mutant-specificity harness against submission, reference, and single-bug mutants"
     },
     {
       "id": "rootcause.accuracy",
@@ -118,7 +121,7 @@
       "score": {
         "type": "ratio"
       },
-      "notes": "exact match against 20-code taxonomy (10 active + 10 decoys)"
+      "notes": "exact root-cause code match from the public 24-code taxonomy across all planted defects"
     },
     {
       "id": "diff.change_ratio",
@@ -129,7 +132,7 @@
         "full": 1.8,
         "zero": 6.0
       },
-      "notes": "denominator = sum of comment-stripped ref_fix_lines of the 6 planted bugs"
+      "notes": "denominator = sum of comment-stripped reference fix lines for the planted bugs"
     },
     {
       "id": "diff.out_of_scope_files",
@@ -209,8 +212,10 @@
     }
   ],
   "attacks": [
-    "source-grep-tests: regression tests read room source instead of driving the room -> rejected by G-test-sandbox",
-    "dispose-everything-hack: blanket resource disposal instead of a targeted fix -> breaks later mounts",
-    "symptom-postfx-override: a global post-processing tweak that hides symptoms instead of fixing causes"
+    "source-grep-tests",
+    "dispose-everything-hack",
+    "symptom-postfx-override",
+    "seed-special-case",
+    "broad-rewrite"
   ]
 }

@@ -928,16 +928,19 @@ async function runCalibrate(room, flags) {
   }
 
   const roomBase = path.join(versionPaths.roomsDir, room);
-  // v0.2: anchors (solutions) are kept out of the public repo in <hiddenDir>/<room>/anchors when present.
+  // v0.2: anchors (solutions), buggy null seed, and attacks are kept out of the public repo in <hiddenDir>/<room>/ when present.
   const hiddenAnchors = path.join(versionPaths.hiddenDir, room, "anchors");
   const anchorBase = version >= 2 && fs.existsSync(hiddenAnchors) ? hiddenAnchors : path.join(roomBase, "anchors");
+  const hiddenSeed = path.join(versionPaths.hiddenDir, room, "seed");
+  const nullDir = version >= 2 && fs.existsSync(path.join(hiddenSeed, "room")) ? hiddenSeed : path.join(roomBase, "seed");
   const candidates = [
-    { label: "null", dir: path.join(roomBase, "seed") },
+    { label: "null", dir: nullDir },
     { label: "a5", dir: path.join(anchorBase, "a5") },
     { label: "a8", dir: path.join(anchorBase, "a8") }
   ];
 
-  const attacksDir = path.join(roomBase, "attacks");
+  const hiddenAttacks = path.join(versionPaths.hiddenDir, room, "attacks");
+  const attacksDir = version >= 2 && fs.existsSync(hiddenAttacks) ? hiddenAttacks : path.join(roomBase, "attacks");
   const attackSpecs = spec.attacks || [];
   if (fs.existsSync(attacksDir)) {
     for (const entry of fs.readdirSync(attacksDir)) {

@@ -54,7 +54,9 @@ export function resolveHiddenRestorationDirs(repoRoot = REPO_ROOT) {
     );
   }
   const grade = JSON.parse(fs.readFileSync(gradePath, "utf8"));
-  return { hiddenRoomDir, referenceDir, bugsDir, grade };
+  const patchesPath = path.join(bugsDir, "patches.json");
+  const patches = fs.existsSync(patchesPath) ? JSON.parse(fs.readFileSync(patchesPath, "utf8")) : null;
+  return { hiddenRoomDir, referenceDir, bugsDir, grade, patches };
 }
 
 export function buildFlatBugMap(bugPool, bugModules = {}) {
@@ -87,58 +89,42 @@ export function selectBugsForSeed(seed, bugPoolOrGrade, repoRoot = REPO_ROOT) {
   if (!Array.isArray(ids)) {
     throw new Error(`Missing variant definition for seed ${normSeed} in hidden-v2/restoration/grade.json`);
   }
+  const silentSet = new Set(grade.variant_silent?.[String(normSeed)] || []);
   const bugMap = buildFlatBugMap(bugPool, grade.bug_modules || {});
+  let reportCounter = 0;
   return ids.map((id) => {
     const bug = bugMap.get(id);
     if (!bug) {
       throw new Error(`Missing bug definition "${id}" in bug_pool`);
     }
-    return bug;
+    const isSilent = Boolean(bug.silent || silentSet.has(id));
+    const reportId = isSilent ? null : `R${++reportCounter}`;
+    return {
+      ...bug,
+      silent: isSilent,
+      prompt_report_id: reportId
+    };
   });
 }
 
 /**
- * Render the 4 synthesized curator/visitor notes for the 6 selected bugs.
- * Never names module filenames or root_cause codes.
+ * Render visitor/curator notes ONLY for non-silent bugs using opaque sequential IDs (R1, R2, ...).
+ * Never names module filenames, root_cause codes, or the total bug count.
  */
 export function renderPromptForBugs(basePromptText, selectedBugs, rootCauseCodes = []) {
-  if (!Array.isArray(selectedBugs) || selectedBugs.length !== 6) {
-    throw new Error(`Expected 6 selected bugs for v0.2 restoration, got ${selectedBugs?.length}`);
+  if (!Array.isArray(selectedBugs) || selectedBugs.length === 0) {
+    throw new Error(`Expected non-empty selectedBugs for v0.2 restoration, got ${selectedBugs?.length}`);
   }
-  const [bMasker, bMasked, bShadow, bCache, bTimeA, bViewB] = selectedBugs;
-
-  const notes = [
-    [
-      `1. **Curator Note I — Chamber Haze & Surface Relief (Covers Reports \`${bMasker.id}\`, \`${bMasked.id}\`)**`,
-      `   - **Report \`${bMasker.id}\` (Primary Symptom):**`,
-      `     - **EN:** "${bMasker.report.en}"`,
-      `     - **KO:** "${bMasker.report.ko}"`,
-      `   - **Report \`${bMasked.id}\` (Unmasked After Clearing Chamber Haze):**`,
-      `     - **EN:** "${bMasked.report.en}"`,
-      `     - **KO:** "${bMasked.report.ko}"`
-    ].join("\n"),
-    [
-      `2. **Curator Note II — Armillary Ring Striping & Pedestal Contact Shadow (Covers Report \`${bShadow.id}\`)**`,
-      `   - **Report \`${bShadow.id}\`:**`,
-      `     - **EN:** "${bShadow.report.en}"`,
-      `     - **KO:** "${bShadow.report.ko}"`
-    ].join("\n"),
-    [
-      `3. **Curator Note III — Repeated Gallery Entry & Focus Control (Covers Report \`${bCache.id}\`)**`,
-      `   - **Report \`${bCache.id}\`:**`,
-      `     - **EN:** "${bCache.report.en}"`,
-      `     - **KO:** "${bCache.report.ko}"`
-    ].join("\n"),
-    [
-      `4. **Curator Note IV — Preset Switching, Refresh Rates & Display Scaling (Covers Reports \`${bTimeA.id}\`, \`${bViewB.id}\`)**`,
-      `   - **Report \`${bTimeA.id}\`:**`,
-      `     - **EN:** "${bTimeA.report.en}"`,
-      `     - **KO:** "${bTimeA.report.ko}"`,
-      `   - **Report \`${bViewB.id}\`:**`,
-      `     - **EN:** "${bViewB.report.en}"`,
-      `     - **KO:** "${bViewB.report.ko}"`
-    ].join("\n")
-  ];
+  const reportedBugs = selectedBugs.filter((b) => !b.silent && b.report);
+  const notes = reportedBugs.map((bug, idx) => {
+    const rid = bug.prompt_report_id || `R${idx + 1}`;
+    const heading = bug.report.title ? ` — ${bug.report.title}` : "";
+    return [
+      `${idx + 1}. **Visitor / Curator Note \`${rid}\`${heading}**`,
+      `   - **EN:** "${bug.report.en}"`,
+      `   - **KO:** "${bug.report.ko}"`
+    ].join("\n");
+  });
 
   const reportsBlock = `<!-- VISITOR_REPORTS_START -->\n${notes.join("\n\n")}\n<!-- VISITOR_REPORTS_END -->`;
 
@@ -149,13 +135,15 @@ export function renderPromptForBugs(basePromptText, selectedBugs, rootCauseCodes
 
   if (Array.isArray(rootCauseCodes) && rootCauseCodes.length > 0) {
     const codesJson = JSON.stringify(rootCauseCodes, null, 2);
-    out = out.replace(/```json\s*\[\s*"POSTFX_DOUBLE_TONEMAP"[\s\S]*?\]\s*```/, "```json\n" + codesJson + "\n```");
+    out = out.replace(/```json\s*\[\s*"[A-Z0-9_]+"[\s\S]*?\]\s*```/, "```json\n" + codesJson + "\n```");
   }
   return out;
 }
 
 /**
- * Apply a single bug onto a target workspace directory by full-file module replacement.
+ * Apply a single bug onto a target workspace directory.
+ * Prefers composable hunk replacements from hidden-v2/restoration/bugs/patches.json so multiple bugs
+ * sharing a file compose deterministically; falls back to full-file replacement if patches.json is absent.
  */
 export function applyBugModuleReplacement(
   targetDir,
@@ -163,38 +151,51 @@ export function applyBugModuleReplacement(
   bugsDir = null,
   repoRoot = REPO_ROOT
 ) {
-  const { bugsDir: resolvedBugsDir, grade } = resolveHiddenRestorationDirs(repoRoot);
+  const { bugsDir: resolvedBugsDir, grade, patches } = resolveHiddenRestorationDirs(repoRoot);
   const actualBugsDir = bugsDir || resolvedBugsDir;
-  const targetRelModule = grade.bug_modules?.[bugId];
+  const targetRelModule = patches?.[bugId]?.file || grade.bug_modules?.[bugId];
   if (!targetRelModule) {
-    throw new Error(`Unknown bugId "${bugId}" for full-file module replacement`);
+    throw new Error(`Unknown bugId "${bugId}" for bug application`);
   }
+  const dstPath = path.join(targetDir, targetRelModule);
+  safeMkdirSync(path.dirname(dstPath));
+
+  if (patches && patches[bugId] && Array.isArray(patches[bugId].replacements) && fs.existsSync(dstPath)) {
+    let src = fs.readFileSync(dstPath, "utf8").replace(/\r\n/g, "\n");
+    for (const rep of patches[bugId].replacements) {
+      if (!src.includes(rep.find)) {
+        throw new Error(`Composable patch ${bugId} target snippet not found in ${targetRelModule}`);
+      }
+      src = src.replace(rep.find, rep.replace);
+    }
+    fs.writeFileSync(dstPath, src, "utf8");
+    return dstPath;
+  }
+
   const bugFileSrc = path.join(actualBugsDir, `${bugId}.js`);
   if (!fs.existsSync(bugFileSrc)) {
     throw new Error(`Missing buggy module source file for ${bugId}: ${bugFileSrc}`);
   }
-  const dstPath = path.join(targetDir, targetRelModule);
-  safeMkdirSync(path.dirname(dstPath));
   fs.copyFileSync(bugFileSrc, dstPath);
   return dstPath;
 }
 
 /**
- * Build a single-bug mutant directory from clean hidden-v2/restoration/reference by full-file module replacement.
+ * Build a single-bug mutant directory from clean hidden-v2/restoration/reference.
  */
 export function buildSingleBugMutant({
   bugId,
   outDir,
   repoRoot = REPO_ROOT
 }) {
-  const { referenceDir, bugsDir, grade } = resolveHiddenRestorationDirs(repoRoot);
+  const { referenceDir, bugsDir, grade, patches } = resolveHiddenRestorationDirs(repoRoot);
   const resolvedOut = path.resolve(outDir);
   safeMkdirSync(resolvedOut);
   copyTreeClean(referenceDir, resolvedOut, (_p, entry) => entry.name !== ".git");
   const replacedPath = applyBugModuleReplacement(resolvedOut, bugId, bugsDir, repoRoot);
   return {
     bugId,
-    module: grade.bug_modules?.[bugId],
+    module: patches?.[bugId]?.file || grade.bug_modules?.[bugId],
     outDir: resolvedOut,
     replacedPath
   };
@@ -253,7 +254,7 @@ export function buildVariant({
   // 2. Copy clean reference room files from hidden-v2/restoration/reference
   copyTreeClean(referenceDir, resolvedOut, (_p, entry) => entry.name !== ".git");
 
-  // 3. Apply the 6 selected bugs via full-file module replacement from hidden-v2/restoration/bugs
+  // 3. Apply all selected bugs composably (supports multiple bugs sharing a file)
   for (const bug of selectedBugs) {
     applyBugModuleReplacement(resolvedOut, bug.id, bugsDir, repoRoot);
   }
@@ -273,7 +274,8 @@ export function buildVariant({
     seed: numSeed,
     variantSeed: normalizeVariantSeed(numSeed),
     outDir: resolvedOut,
-    plantedBugs: selectedBugs.map((b) => b.id)
+    plantedBugs: selectedBugs.map((b) => b.id),
+    silentBugs: selectedBugs.filter((b) => b.silent).map((b) => b.id)
   };
 }
 
