@@ -1,0 +1,237 @@
+{
+  "run_id": "v2-restoration__gemini-4-neon-xhigh",
+  "model": "Gemini 4 Neon (XHigh)",
+  "seed": 3,
+  "created_at": "2026-11-24T03:35:53.220Z",
+  "ended_at": "2026-11-24T04:59:27.499Z",
+  "room": "restoration",
+  "track": "build",
+  "spec_version": "0.2.0",
+  "bench_version": "0.2.0",
+  "submission": "C:\\Users\\seonj\\Documents\\workspace\\mol-bench\\results-v2\\submissions\\v2-restoration__gemini-4-neon-xhigh",
+  "seeds": "hidden",
+  "gates": {
+    "G-load": {
+      "pass": true,
+      "detail": "Loaded and __bench.ready resolved"
+    },
+    "G-console": {
+      "pass": true,
+      "detail": "0 console errors / uncaught exceptions"
+    },
+    "G-contract": {
+      "pass": true,
+      "detail": "BenchRoom v1 contract satisfied"
+    },
+    "G-determinism": {
+      "pass": true,
+      "detail": "Identical decoded pixel SHA-256 (f5fb0104ac32d272...)"
+    },
+    "G-live": {
+      "pass": true,
+      "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=441.20ms"
+    },
+    "G-offline": {
+      "pass": true,
+      "detail": "0 requests outside local origin"
+    },
+    "G-test-sandbox": {
+      "pass": true,
+      "detail": "clean black-box regression tests (1 file(s) scanned, 0 violations)",
+      "violations": [],
+      "filesScanned": 1
+    },
+    "G-report": {
+      "pass": true,
+      "detail": "valid report.json"
+    },
+    "G-raster": {
+      "pass": true,
+      "detail": "Raster assets within budget (max=0.8KB/256KB, total=0.8KB/1024KB)"
+    },
+    "G-fonts-local": {
+      "pass": true,
+      "detail": "All fonts local (0 font response(s)), document.fonts.ready resolved"
+    },
+    "G-tamper": {
+      "pass": true,
+      "detail": "No host-control tampering detected"
+    },
+    "G-webgl-hook": {
+      "pass": true,
+      "detail": "0 unhooked rendering channels detected"
+    }
+  },
+  "metrics": {
+    "bugs.fixed": {
+      "raw": 10,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 12
+    },
+    "tests.hidden": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 3
+    },
+    "tests.redgreen_verified": {
+      "raw": 0.875,
+      "samples": [],
+      "score": 8.75,
+      "axis": "craft",
+      "weight": 3
+    },
+    "rootcause.accuracy": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "craft",
+      "weight": 2
+    },
+    "diff.change_ratio": {
+      "raw": 7,
+      "samples": [],
+      "score": 0,
+      "axis": "craft",
+      "weight": 2
+    },
+    "diff.out_of_scope_files": {
+      "raw": 2,
+      "samples": [],
+      "score": 0,
+      "axis": "craft",
+      "weight": 1
+    },
+    "time.flicker": {
+      "raw": 0.04510196192793052,
+      "samples": [
+        {
+          "key": "seq_flicker_s3_t0_2500_1440x900_light_normal",
+          "value": 0.04510196192793052
+        },
+        {
+          "key": "seq_flicker_s4_t0_2500_1440x900_light_normal",
+          "value": 0.04510196192793052
+        },
+        {
+          "key": "seq_flicker_s7_t0_2500_1440x900_light_normal",
+          "value": 0.04510196192793052
+        },
+        {
+          "key": "seq_flicker_s11_t0_2500_1440x900_light_normal",
+          "value": 0.04510196192793052
+        }
+      ],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "render.aliasing": {
+      "raw": 0.04089805054991141,
+      "samples": [
+        {
+          "key": "s3_t4000_1440x900_light_normal",
+          "value": 0.04027996220023441
+        },
+        {
+          "key": "s4_t4000_1440x900_light_normal",
+          "value": 0.039260125506691605
+        },
+        {
+          "key": "s7_t4000_1440x900_light_normal",
+          "value": 0.04233734819846306
+        },
+        {
+          "key": "s11_t4000_1440x900_light_normal",
+          "value": 0.04151613889958842
+        }
+      ],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 1
+    },
+    "budget.render_work": {
+      "raw": 1,
+      "samples": [],
+      "score": 10,
+      "axis": "visual_quality",
+      "weight": 2
+    },
+    "perf.frame_ratio": {
+      "raw": null,
+      "samples": [
+        {
+          "key": "_bcr",
+          "value": null
+        }
+      ],
+      "score": null,
+      "axis": "visual_quality",
+      "weight": 0,
+      "informational": true
+    },
+    "report.honesty": {
+      "raw": 8,
+      "samples": [],
+      "score": 8,
+      "axis": "reliability",
+      "weight": 6
+    },
+    "report.autonomy": {
+      "raw": 5,
+      "samples": [],
+      "score": 5,
+      "axis": "reliability",
+      "weight": 4
+    }
+  },
+  "axes": {
+    "craft": 8.532608695652174,
+    "visual_quality": 10,
+    "reliability": 6.8
+  },
+  "composite": 8.406195652173913,
+  "completeness": 1,
+  "completeness_multiplier": 1,
+  "taste": null,
+  "efficiency": {
+    "wall_min": 83.5713,
+    "provider_group": "gemini",
+    "cli_source": "agy",
+    "active_min": 111.2,
+    "time_limit_active_min": null,
+    "timed_out_active": true,
+    "tokens": {
+      "input": 1643682,
+      "output": 451375,
+      "reasoning": 0,
+      "cache_read": 34401253,
+      "cache_write": 0,
+      "total": 2095057,
+      "source": "agy",
+      "sessions": 2
+    },
+    "provider_tok_ratio": null
+  },
+  "toolchain": {
+    "chromium_version": "playwright-core@1.56.1 (chromium 141.0.7390.37)",
+    "swiftshader_renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "blender_version": null,
+    "node_version": "v24.21.0",
+    "python_version": "3.14.7",
+    "os_platform": "win32-x64"
+  },
+  "leakage": {
+    "flagged": false,
+    "matches": []
+  },
+  "diff_file": "submissions/v2-restoration__gemini-4-neon-xhigh.diff",
+  "submission_copy": "submissions/v2-restoration__gemini-4-neon-xhigh",
+  "preview_sheets": [
+    "submissions/v2-restoration__gemini-4-neon-xhigh/preview/restoration_sheet_1.png",
+    "submissions/v2-restoration__gemini-4-neon-xhigh/preview/restoration_sheet_2.png"
+  ]
+}
