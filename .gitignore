@@ -12,4 +12,4 @@ results/**/node_modules/
 results/**/.venv/
 
 # restoration v0.2 submissions reveal bug fixes: keep local while the room is live
-results-v2/submissions/v2-restoration*
+results-v2/submissions/*restoration*
