@@ -3,7 +3,7 @@
 설계: [`docs/V02-DESIGN.md`](../V02-DESIGN.md) · 확장 규약: [`docs/v02/HOOKS.md`](HOOKS.md)(wp0a 병합 후)
 작업 중인 브랜치는 GitHub에 그대로 올려 둔다(`wp0a`, `wp4`, …). 숨김 채점 자료(`hidden-v2/`)는 올리지 않는다.
 
-마지막 갱신: 2026-11-23 23:55
+마지막 갱신: 2026-11-24 11:17
 
 ## 작업 패키지
 
@@ -24,7 +24,8 @@
 
 - WP-2 aurora·WP-3 lobby: agy Claude 쿼터 초기화(11-25 오후) 뒤 Sonnet 5.5로 시작.
 - restoration: mem/budget 지표를 host.js 계측으로 옮기기, B9 시계를 하네스가 직접 구동(리뷰 잔여 medium/low).
-- Wave 0 카나리: restoration에서 먼저 시작 — Gemini 4 Neon (XHigh) 진행 중, 다음 Gemini 3.8 Flash (High). 결과는 `results-v2/`.
+- restoration 난이도 강화(첫 카나리 Neon XHigh 9.11로 너무 쉬움): 버그 14종 중 변형당 8개, 3단 연쇄 가림, 증상과 원인이 다른 신고, 신고 없는 버그. 보정 null 0 · a5 5.11 · a8 8.20 · 공격 1.45~1.91. 누출·채점 리뷰 중(claude sonnet).
+- Wave 0 카나리 재실행: 강화판 병합 후 Gemini 4 Neon (XHigh) → Gemini 3.8 Flash (High). 결과는 `results-v2/`.
 
 ## 참가 시험 계획
 
