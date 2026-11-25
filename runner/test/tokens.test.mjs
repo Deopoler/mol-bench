@@ -413,3 +413,130 @@ test("collectAgyTokens parses cache_read_tokens, reasoning tokens, and neon/hydr
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }
 });
+
+test("collectAgyTokens and collectActiveTime filter by startedAt/endedAt window and path boundary", () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "mol-agy-window-test-"));
+  try {
+    const geminiDir = path.join(tmpBase, ".gemini");
+    const runDir = path.join(tmpBase, "runs", "v2-restoration__gemini-4-neon-xhigh");
+    fs.mkdirSync(runDir, { recursive: true });
+    const runDirForLog = process.platform === "win32" ? runDir.toLowerCase() : runDir;
+
+    const writeSess = (id, lines) => {
+      const dir = path.join(geminiDir, "antigravity-cli", "brain", id, ".system_generated", "logs");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, "transcript_full.jsonl"), lines.map((l) => JSON.stringify(l)).join("\n"));
+    };
+
+    const startedAt = "2026-11-24T03:35:53.220Z";
+    const endedAt = "2026-11-24T04:59:27.499Z";
+
+    // 1. Earlier session (prehard run that reused the same runDir) -> MUST be excluded
+    writeSess("sess-old-prehard", [
+      { step_index: 0, type: "USER_INPUT", created_at: "2026-11-23T14:26:15Z", content: `Workspace is ${runDirForLog}` },
+      { step_index: 1, type: "PLANNER_RESPONSE", created_at: "2026-11-23T14:30:00Z", input_tokens: 900000, output_tokens: 50000 }
+    ]);
+
+    // 2. Pre-existing conductor session that started BEFORE startedAt even if an event mentions runDir during the window -> MUST be excluded
+    writeSess("sess-conductor-pre", [
+      { step_index: 0, type: "USER_INPUT", created_at: "2026-11-24T03:00:00Z", content: "Conductor init" },
+      { step_index: 1, type: "PLANNER_RESPONSE", created_at: "2026-11-24T04:00:00Z", input_tokens: 80000, output_tokens: 4000, content: `Inspect ${runDirForLog}` }
+    ]);
+
+    // 3. Later debugging session after endedAt + 5m -> MUST be excluded
+    writeSess("sess-later-debug", [
+      { step_index: 0, type: "USER_INPUT", created_at: "2026-11-24T13:00:49Z", content: `Fix bug for ${runDirForLog}` },
+      { step_index: 1, type: "PLANNER_RESPONSE", created_at: "2026-11-24T13:05:00Z", input_tokens: 600000, output_tokens: 60000 }
+    ]);
+
+    // 4. Different run sharing a prefix (or trailing '.2' version suffix) -> MUST NOT match
+    writeSess("sess-prefix-other", [
+      { step_index: 0, type: "USER_INPUT", created_at: "2026-11-24T03:40:00Z", content: `Workspace is ${runDirForLog}-retry` },
+      { step_index: 1, type: "PLANNER_RESPONSE", created_at: "2026-11-24T03:45:00Z", input_tokens: 77777, output_tokens: 777 }
+    ]);
+    writeSess("sess-dot-suffix", [
+      { step_index: 0, type: "USER_INPUT", created_at: "2026-11-24T03:42:00Z", content: `Workspace is ${runDirForLog}.2` },
+      { step_index: 1, type: "PLANNER_RESPONSE", created_at: "2026-11-24T03:46:00Z", input_tokens: 66666, output_tokens: 666 }
+    ]);
+
+    // 5. Actual in-window session (starts at whole-second truncation 220ms before created_at; includes a final reply 10m after endedAt within 30m end tolerance; ignores a resumed event hours later; matches trailing '.' punctuation)
+    writeSess("sess-actual-run", [
+      { step_index: 0, type: "USER_INPUT", created_at: "2026-11-24T03:35:53Z", content: `Workspace is ${runDirForLog}.` },
+      { step_index: 1, type: "PLANNER_RESPONSE", created_at: "2026-11-24T03:38:53Z", input_tokens: 1000, cache_read_tokens: 4000, output_tokens: 200 },
+      { step_index: 2, type: "PLANNER_RESPONSE", created_at: "2026-11-24T05:09:27Z", input_tokens: 500, cache_read_tokens: 1000, output_tokens: 100 },
+      { step_index: 3, type: "PLANNER_RESPONSE", created_at: "2026-11-24T10:00:00Z", input_tokens: 99999, output_tokens: 9999 }
+    ]);
+
+    // 6. Session with no event timestamps whose mtime is >5m after endedAt must not be dropped whole on endMs
+    writeSess("sess-no-ts", [
+      { step_index: 0, type: "USER_INPUT", content: `Inspect ${runDirForLog}` },
+      { step_index: 1, type: "PLANNER_RESPONSE", input_tokens: 50, output_tokens: 10 }
+    ]);
+    const noTsFile = path.join(geminiDir, "antigravity-cli", "brain", "sess-no-ts", ".system_generated", "logs", "transcript_full.jsonl");
+    const lateMtime = new Date("2026-11-24T05:15:00Z");
+    fs.utimesSync(noTsFile, lateMtime, lateMtime);
+
+    const tokens = collectAgyTokens({ runDir, geminiDir, startedAt, endedAt });
+    assert.ok(tokens);
+    assert.equal(tokens.sessions, 2);
+    assert.equal(tokens.input, 1550);
+    assert.equal(tokens.output, 310);
+    assert.equal(tokens.cache_read, 5000);
+    assert.equal(tokens.total, 1860);
+
+    // Active time spans 03:35:53Z -> 03:38:53Z (+3m) -> 05:09:27Z (+90m34s capped at 5m) = 8m (excluding old, late, and resumed events)
+    const activeMin = collectActiveTime({ runDir, agent: "agy", geminiDir, startedAt, endedAt });
+    assert.equal(activeMin, 8);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test("collectOrchestraTokens retains pre-existing conductor agy session and clips events to run window", () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), "mol-orch-agy-window-"));
+  try {
+    const geminiDir = path.join(tmpBase, ".gemini");
+    const claudeDir = path.join(tmpBase, ".claude");
+    const codexDir = path.join(tmpBase, ".codex");
+    const runsRoot = path.join(tmpBase, "runs");
+    const runDir = path.join(runsRoot, "v2-restoration__orchestra-high");
+    fs.mkdirSync(runDir, { recursive: true });
+
+    const startedAt = "2026-11-24T04:00:00Z";
+    const endedAt = "2026-11-24T04:45:00Z";
+
+    const logDir = path.join(geminiDir, "antigravity-cli", "brain", "orch-conductor-agy", ".system_generated", "logs");
+    fs.mkdirSync(logDir, { recursive: true });
+    const logPath = path.join(logDir, "transcript_full.jsonl");
+    fs.writeFileSync(
+      logPath,
+      [
+        // Conductor started 2 hours earlier for a prior task, then ran this run inside the window
+        JSON.stringify({ step_index: 0, type: "USER_INPUT", created_at: "2026-11-24T02:00:00Z", content: "Conductor booted" }),
+        JSON.stringify({ step_index: 1, type: "PLANNER_RESPONSE", created_at: "2026-11-24T02:05:00Z", input_tokens: 90000, output_tokens: 5000 }),
+        JSON.stringify({ step_index: 2, type: "USER_INPUT", created_at: "2026-11-24T04:01:00Z", workspace: runDir, content: `Run ${runDir}` }),
+        JSON.stringify({ step_index: 3, type: "PLANNER_RESPONSE", created_at: "2026-11-24T04:15:00Z", input_tokens: 1200, output_tokens: 300 }),
+        JSON.stringify({ step_index: 4, type: "PLANNER_RESPONSE", created_at: "2026-11-24T06:00:00Z", input_tokens: 70000, output_tokens: 2000 })
+      ].join("\n")
+    );
+    const mtimeInWin = new Date("2026-11-24T04:50:00Z");
+    fs.utimesSync(logPath, mtimeInWin, mtimeInWin);
+
+    const tokens = collectOrchestraTokens({
+      runDir,
+      runsRoot,
+      startedAt,
+      endedAt,
+      claudeDir,
+      codexDir,
+      geminiDir
+    });
+    assert.ok(tokens, "orchestra must not drop pre-existing conductor agy session");
+    assert.equal(tokens.by_agent.agy.sessions, 1);
+    assert.equal(tokens.by_agent.agy.input, 1200);
+    assert.equal(tokens.by_agent.agy.output, 300);
+    assert.equal(tokens.by_agent.agy.total, 1500);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});

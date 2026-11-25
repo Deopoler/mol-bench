@@ -786,17 +786,38 @@ function rerunPythonMetricsIfNeeded(manifestPath, specPath, workDir, repoRoot, r
   const missingAny = neededIds.some((id) => !(id in rawMetrics));
   if (!enriched && !missingAny) return;
 
-  const py = findPythonExecutable(repoRoot);
   const metricsPkgDir = path.join(repoRoot, "metrics");
   const pythonPath = [metricsPkgDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   const outPath = path.join(workDir, "metrics_restoration.json");
   try {
-    execFileSync(py, ["-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath], {
-      cwd: repoRoot,
-      env: { ...process.env, PYTHONPATH: pythonPath },
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"]
-    });
+    const pyHelperPath = path.join(repoRoot, "harness", "src", "python.mjs");
+    if (fs.existsSync(pyHelperPath)) {
+      const py = findPythonExecutable(repoRoot);
+      const pycacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-pycache-"));
+      try {
+        execFileSync(py, ["-B", "-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath], {
+          cwd: repoRoot,
+          env: { ...process.env, PYTHONPATH: pythonPath, PYTHONDONTWRITEBYTECODE: "1", PYTHONPYCACHEPREFIX: pycacheDir },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        });
+      } finally {
+        try { fs.rmSync(pycacheDir, { recursive: true, force: true }); } catch {}
+      }
+    } else {
+      const py = findPythonExecutable(repoRoot);
+      const pycacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "mol-pycache-"));
+      try {
+        execFileSync(py, ["-B", "-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath], {
+          cwd: repoRoot,
+          env: { ...process.env, PYTHONPATH: pythonPath, PYTHONDONTWRITEBYTECODE: "1", PYTHONPYCACHEPREFIX: pycacheDir },
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"]
+        });
+      } finally {
+        try { fs.rmSync(pycacheDir, { recursive: true, force: true }); } catch {}
+      }
+    }
     if (fs.existsSync(outPath)) {
       const pyMetrics = JSON.parse(fs.readFileSync(outPath, "utf8"));
       Object.assign(rawMetrics, pyMetrics);

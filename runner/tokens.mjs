@@ -52,6 +52,168 @@ function isWithinWindow(timeMs, startMs, endMs, bufferMs = 5 * 60 * 1000) {
   return true;
 }
 
+const AGY_START_TOLERANCE_MS = 5000;
+const AGY_END_TOLERANCE_MS = 30 * 60 * 1000;
+
+function isWithinAsymmetricWindow(timeMs, startMs, endMs, startTolMs = AGY_START_TOLERANCE_MS, endTolMs = AGY_END_TOLERANCE_MS) {
+  if (startMs !== null && Number.isFinite(startMs) && timeMs < startMs - startTolMs) return false;
+  if (endMs !== null && Number.isFinite(endMs) && timeMs > endMs + endTolMs) return false;
+  return true;
+}
+
+function containsRunDirBoundary(haystack, needle) {
+  if (!needle) return false;
+  let from = 0;
+  while (true) {
+    const idx = haystack.indexOf(needle, from);
+    if (idx === -1) return false;
+    const after = haystack[idx + needle.length];
+    if (!after || !/[a-z0-9_.-]/i.test(after)) {
+      return true;
+    }
+    if (after === ".") {
+      const afterDot = haystack[idx + needle.length + 1];
+      if (!afterDot || !/[a-z0-9_-]/i.test(afterDot)) {
+        return true;
+      }
+    }
+    from = idx + 1;
+  }
+}
+
+function extractUsageFromNode(rootObj) {
+  let input = 0;
+  let output = 0;
+  let cache_read = 0;
+  let cache_write = 0;
+  let reasoning = 0;
+  let total = 0;
+  let hasUsage = false;
+
+  function walk(node) {
+    if (!node || typeof node !== "object") return;
+    if (typeof node.input_tokens === "number" || typeof node.output_tokens === "number") {
+      hasUsage = true;
+      const reas =
+        typeof node.reasoning_tokens === "number"
+          ? node.reasoning_tokens
+          : typeof node.reasoning_output_tokens === "number"
+            ? node.reasoning_output_tokens
+            : typeof node.thinking_tokens === "number"
+              ? node.thinking_tokens
+              : typeof node.thought_tokens === "number"
+                ? node.thought_tokens
+                : typeof node.thoughts_token_count === "number"
+                  ? node.thoughts_token_count
+                  : 0;
+      input += node.input_tokens || 0;
+      output += node.output_tokens || 0;
+      cache_read += node.cached_tokens ?? node.cache_read_tokens ?? node.cache_read_input_tokens ?? 0;
+      cache_write += node.cache_write_input_tokens ?? node.cache_write_tokens ?? 0;
+      reasoning += reas;
+      total += node.total_tokens ?? ((node.input_tokens || 0) + (node.output_tokens || 0) + reas);
+      return;
+    }
+    for (const k of Object.keys(node)) {
+      walk(node[k]);
+    }
+  }
+
+  walk(rootObj);
+  return { hasUsage, input, output, cache_read, cache_write, reasoning, total };
+}
+
+function collectAgySessionEvents({
+  fullLog,
+  content,
+  startMs = null,
+  endMs = null,
+  startTolMs = AGY_START_TOLERANCE_MS,
+  endTolMs = AGY_END_TOLERANCE_MS,
+  gateSessionOnStart = true
+}) {
+  const parsedEvents = [];
+  let firstTs = null;
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    let obj;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const ts = extractEventTimestampMs(obj);
+    if (ts !== null && (firstTs === null || ts < firstTs)) {
+      firstTs = ts;
+    }
+    parsedEvents.push({ obj, ts });
+  }
+
+  const hasWindow = (startMs !== null && Number.isFinite(startMs)) || (endMs !== null && Number.isFinite(endMs));
+  if (hasWindow && gateSessionOnStart) {
+    if (firstTs !== null) {
+      if (!isWithinAsymmetricWindow(firstTs, startMs, endMs, startTolMs, endTolMs)) {
+        return {
+          included: false,
+          hasUsage: false,
+          input: 0,
+          output: 0,
+          cache_read: 0,
+          cache_write: 0,
+          reasoning: 0,
+          total: 0,
+          timestamps: [],
+          parsedEvents
+        };
+      }
+    } else if (startMs !== null && Number.isFinite(startMs)) {
+      const mtimeMs = fs.statSync(fullLog).mtimeMs;
+      if (mtimeMs < startMs - startTolMs) {
+        return {
+          included: false,
+          hasUsage: false,
+          input: 0,
+          output: 0,
+          cache_read: 0,
+          cache_write: 0,
+          reasoning: 0,
+          total: 0,
+          timestamps: [],
+          parsedEvents
+        };
+      }
+    }
+  }
+
+  let hasUsage = false;
+  let input = 0;
+  let output = 0;
+  let cache_read = 0;
+  let cache_write = 0;
+  let reasoning = 0;
+  let total = 0;
+  const timestamps = [];
+
+  for (const { obj, ts } of parsedEvents) {
+    if (hasWindow && ts !== null && !isWithinAsymmetricWindow(ts, startMs, endMs, startTolMs, endTolMs)) {
+      continue;
+    }
+    if (ts !== null) timestamps.push(ts);
+    const u = extractUsageFromNode(obj);
+    if (u.hasUsage) {
+      hasUsage = true;
+      input += u.input;
+      output += u.output;
+      cache_read += u.cache_read;
+      cache_write += u.cache_write;
+      reasoning += u.reasoning;
+      total += u.total;
+    }
+  }
+
+  return { included: true, hasUsage, input, output, cache_read, cache_write, reasoning, total, timestamps, parsedEvents };
+}
+
 function parseTimestampValue(val) {
   if (val === null || val === undefined) return null;
   if (typeof val === "number") {
@@ -288,6 +450,8 @@ function scanAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt = null, e
   const brainDir = path.join(geminiDir, "antigravity-cli", "brain");
   if (!fs.existsSync(brainDir)) return { tokens: null, timestamps: [] };
 
+  const startMs = parseTimestampValue(startedAt);
+  const endMs = parseTimestampValue(endedAt);
   const normRunDirBack = path.resolve(runDir);
   const normRunDirSlash = normRunDirBack.replace(/\\/g, "/");
 
@@ -313,62 +477,32 @@ function scanAgyTokens({ runDir, geminiDir = getGeminiDir(), startedAt = null, e
         ? (() => {
             const lc = content.toLowerCase();
             return (
-              lc.includes(normRunDirBack.toLowerCase()) ||
-              lc.includes(normRunDirSlash.toLowerCase()) ||
-              lc.includes(normRunDirEscaped.toLowerCase())
+              containsRunDirBoundary(lc, normRunDirBack.toLowerCase()) ||
+              containsRunDirBoundary(lc, normRunDirSlash.toLowerCase()) ||
+              containsRunDirBoundary(lc, normRunDirEscaped.toLowerCase())
             );
           })()
-        : content.includes(normRunDirBack) || content.includes(normRunDirSlash) || content.includes(normRunDirEscaped);
+        : containsRunDirBoundary(content, normRunDirBack) ||
+          containsRunDirBoundary(content, normRunDirSlash) ||
+          containsRunDirBoundary(content, normRunDirEscaped);
     if (!matchesRunDir) {
       continue;
     }
 
-    let fileHasUsage = false;
-    for (const line of content.split(/\r?\n/)) {
-      if (!line.trim()) continue;
-      let obj;
-      try {
-        obj = JSON.parse(line);
-      } catch {
-        continue;
-      }
-
-      const ts = extractEventTimestampMs(obj);
-      if (ts !== null) timestamps.push(ts);
-
-      function walk(node) {
-        if (!node || typeof node !== "object") return;
-        if (typeof node.input_tokens === "number" || typeof node.output_tokens === "number") {
-          fileHasUsage = true;
-          const reas =
-            typeof node.reasoning_tokens === "number"
-              ? node.reasoning_tokens
-              : typeof node.reasoning_output_tokens === "number"
-                ? node.reasoning_output_tokens
-                : typeof node.thinking_tokens === "number"
-                  ? node.thinking_tokens
-                  : typeof node.thought_tokens === "number"
-                    ? node.thought_tokens
-                    : typeof node.thoughts_token_count === "number"
-                      ? node.thoughts_token_count
-                      : 0;
-          input += node.input_tokens || 0;
-          output += node.output_tokens || 0;
-          cache_read += node.cached_tokens ?? node.cache_read_tokens ?? node.cache_read_input_tokens ?? 0;
-          cache_write += node.cache_write_input_tokens ?? node.cache_write_tokens ?? 0;
-          reasoning += reas;
-          total += node.total_tokens ?? ((node.input_tokens || 0) + (node.output_tokens || 0) + reas);
-          return;
-        }
-        for (const k of Object.keys(node)) {
-          walk(node[k]);
-        }
-      }
-      walk(obj);
+    const session = collectAgySessionEvents({ fullLog, content, startMs, endMs });
+    if (!session.included) {
+      continue;
     }
 
-    if (fileHasUsage) {
+    timestamps.push(...session.timestamps);
+    if (session.hasUsage) {
       sessionCount++;
+      input += session.input;
+      output += session.output;
+      cache_read += session.cache_read;
+      cache_write += session.cache_write;
+      reasoning += session.reasoning;
+      total += session.total;
     }
   }
 
@@ -537,89 +671,49 @@ function scanOrchestraTokens({
       if (!fs.existsSync(fullLog)) continue;
 
       const checkTime = fs.statSync(fullLog).mtimeMs;
+      const orchStartMs = startedAt ? parseTimestampValue(startedAt) : null;
+      const orchEndMs = endedAt ? parseTimestampValue(endedAt) : null;
       if (startedAt || endedAt) {
-        if (!isWithinWindow(checkTime, startMs, endMs)) continue;
+        if (!isWithinAsymmetricWindow(checkTime, orchStartMs, orchEndMs, 5 * 60 * 1000, AGY_END_TOLERANCE_MS)) continue;
       }
 
       const content = fs.readFileSync(fullLog, "utf8");
+      const session = collectAgySessionEvents({
+        fullLog,
+        content,
+        startMs: orchStartMs,
+        endMs: orchEndMs,
+        gateSessionOnStart: false
+      });
+      if (!session.included) continue;
+
       let matched = false;
       const normRunsRoot = normalizePath(runsRoot);
       const normRunDir = normalizePath(runDir);
-
-      let fileHasUsage = false;
-      let sessionInput = 0;
-      let sessionOutput = 0;
-      let sessionCacheRead = 0;
-      let sessionCacheWrite = 0;
-      let sessionReasoning = 0;
-      let sessionTotal = 0;
-      const fileTimestamps = [];
-
-      for (const line of content.split(/\r?\n/)) {
-        if (!line.trim()) continue;
-        let obj;
-        try {
-          obj = JSON.parse(line);
-        } catch {
-          continue;
-        }
-
-        const ts = extractEventTimestampMs(obj);
-        if (ts !== null) fileTimestamps.push(ts);
-
-        if (!matched) {
-          const ws = obj.workspace || obj.cwd || obj.content || "";
-          if (typeof ws === "string" && (ws.includes(runsRoot) || ws.includes(normRunsRoot))) {
-            if (matchesOrchestraTarget(ws, runDir, runsRoot) || ws.includes(normRunDir) || ws.includes(path.resolve(runDir))) {
-              matched = true;
-            } else if (ws.includes("wt-")) {
-              matched = true;
-            }
+      for (const { obj } of session.parsedEvents) {
+        const ws = obj.workspace || obj.cwd || obj.content || "";
+        if (typeof ws === "string" && (ws.includes(runsRoot) || ws.includes(normRunsRoot))) {
+          if (matchesOrchestraTarget(ws, runDir, runsRoot) || ws.includes(normRunDir) || ws.includes(path.resolve(runDir))) {
+            matched = true;
+            break;
+          } else if (ws.includes("wt-")) {
+            matched = true;
+            break;
           }
         }
-
-        function walk(node) {
-          if (!node || typeof node !== "object") return;
-          if (typeof node.input_tokens === "number" || typeof node.output_tokens === "number") {
-            fileHasUsage = true;
-            const reas =
-              typeof node.reasoning_tokens === "number"
-                ? node.reasoning_tokens
-                : typeof node.reasoning_output_tokens === "number"
-                  ? node.reasoning_output_tokens
-                  : typeof node.thinking_tokens === "number"
-                    ? node.thinking_tokens
-                    : typeof node.thought_tokens === "number"
-                      ? node.thought_tokens
-                      : typeof node.thoughts_token_count === "number"
-                        ? node.thoughts_token_count
-                        : 0;
-            sessionInput += node.input_tokens || 0;
-            sessionOutput += node.output_tokens || 0;
-            sessionCacheRead += node.cached_tokens ?? node.cache_read_tokens ?? node.cache_read_input_tokens ?? 0;
-            sessionCacheWrite += node.cache_write_input_tokens ?? node.cache_write_tokens ?? 0;
-            sessionReasoning += reas;
-            sessionTotal += node.total_tokens ?? ((node.input_tokens || 0) + (node.output_tokens || 0) + reas);
-            return;
-          }
-          for (const k of Object.keys(node)) {
-            walk(node[k]);
-          }
-        }
-        walk(obj);
       }
 
       if (matched) {
-        timestamps.push(...fileTimestamps);
+        timestamps.push(...session.timestamps);
       }
-      if (matched && fileHasUsage) {
+      if (matched && session.hasUsage) {
         breakdown.agy.sessions++;
-        breakdown.agy.input += sessionInput;
-        breakdown.agy.output += sessionOutput;
-        breakdown.agy.cache_read += sessionCacheRead;
-        breakdown.agy.cache_write += sessionCacheWrite;
-        breakdown.agy.reasoning += sessionReasoning;
-        breakdown.agy.total += sessionTotal;
+        breakdown.agy.input += session.input;
+        breakdown.agy.output += session.output;
+        breakdown.agy.cache_read += session.cache_read;
+        breakdown.agy.cache_write += session.cache_write;
+        breakdown.agy.reasoning += session.reasoning;
+        breakdown.agy.total += session.total;
       }
     }
   }
@@ -678,20 +772,22 @@ export function resolveAgent({
     if (fs.existsSync(tsvPath)) {
       try {
         const lines = fs.readFileSync(tsvPath, "utf8").split(/\r?\n/);
+        let matchedAgent = null;
         for (const line of lines) {
           if (!line.trim()) continue;
           const cols = line.split("\t");
           if (cols[0] === effectiveRunId || cols[1] === effectiveRunId) {
             const col3 = cols[2]?.trim().toLowerCase();
             if (col3) {
-              if (col3.includes("claude")) return "claude";
-              if (col3.includes("codex") || col3.includes("gpt")) return "codex";
-              if (col3.includes("agy") || col3.includes("gemini")) return "agy";
-              if (col3.includes("orchestra")) return "orchestra";
-              return col3;
+              if (col3.includes("claude")) matchedAgent = "claude";
+              else if (col3.includes("codex") || col3.includes("gpt")) matchedAgent = "codex";
+              else if (col3.includes("agy") || col3.includes("gemini")) matchedAgent = "agy";
+              else if (col3.includes("orchestra")) matchedAgent = "orchestra";
+              else matchedAgent = col3;
             }
           }
         }
+        if (matchedAgent) return matchedAgent;
       } catch {
         // ignore
       }

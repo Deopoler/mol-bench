@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { gradeSubmission, generatePreviewContactSheets, parseAttackThreshold } from "../src/cli.mjs";
+import { findPythonExecutable, execSafePythonSync } from "../src/python.mjs";
 import { hasMetric, unregisterMetrics } from "../src/registry.mjs";
 import { openRoom, runSandboxedTest } from "../src/testing/room-harness.mjs";
 import { discoverProbes, listProbes, runProbe, getProbeLoadErrors } from "../src/capture/probes/index.js";
@@ -594,5 +595,41 @@ test("M1 smoke test: mock v2 adapter + mock probe + mock python metric grade end
     await discoverProbes({ forceReload: true });
     unregisterMetrics(["mock.probe_elements", "mock.py_mean_blue", "mock.adapter_bonus", "mock.info_diag"]);
     fs.rmSync(tmpWork, { recursive: true, force: true });
+  }
+});
+
+test("execSafePythonSync ignores spoofed __pycache__ .pyc matching source mtime and size", () => {
+  const tmpPy = fs.mkdtempSync(path.join(os.tmpdir(), "mol-pyc-bypass-"));
+  try {
+    const pyExe = findPythonExecutable(REPO_ROOT);
+    const modPath = path.join(tmpPy, "spoof_mod.py");
+    const spoofSrc = 'def val(): return "SPOOFED"\n';
+    const realSrc = 'def val(): return "REAL_PY"\n';
+    assert.equal(Buffer.byteLength(spoofSrc), Buffer.byteLength(realSrc));
+
+    fs.writeFileSync(modPath, spoofSrc, "utf8");
+    const stBefore = fs.statSync(modPath);
+    // Compile spoofed source to __pycache__/*.pyc under normal Python
+    execFileSync(pyExe, ["-c", "import spoof_mod; assert spoof_mod.val() == 'SPOOFED'"], {
+      cwd: tmpPy,
+      encoding: "utf8"
+    });
+    // Replace .py with real code and restore exact mtime so unhardened Python runs the stale .pyc
+    fs.writeFileSync(modPath, realSrc, "utf8");
+    fs.utimesSync(modPath, stBefore.atime, stBefore.mtime);
+
+    const unhardened = execFileSync(pyExe, ["-c", "import spoof_mod; print(spoof_mod.val())"], {
+      cwd: tmpPy,
+      encoding: "utf8"
+    }).trim();
+    assert.equal(unhardened, "SPOOFED", "precondition: default Python should load mtime/size-matched .pyc");
+
+    const hardened = execSafePythonSync(REPO_ROOT, ["-c", "import spoof_mod; print(spoof_mod.val())"], {
+      cwd: tmpPy,
+      encoding: "utf8"
+    }).trim();
+    assert.equal(hardened, "REAL_PY");
+  } finally {
+    fs.rmSync(tmpPy, { recursive: true, force: true });
   }
 });

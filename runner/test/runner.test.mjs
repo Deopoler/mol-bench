@@ -552,3 +552,90 @@ test("review fixes: gone/idle gating, retry cap, heartbeat, last-run _since_laun
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }
 });
+
+test("prepareRun refuses to reuse an existing run-id unless force is passed", () => {
+  const tmpBase = makeTmpWorkBase("test-runid-guard-");
+  try {
+    const fixtureRepo = makeFixtureRepo(tmpBase);
+    const runsRoot = path.join(tmpBase, "runs");
+    const resultsDir = path.join(fixtureRepo, "results");
+    const orchestraDir = path.join(fixtureRepo, ".orchestra");
+    const runsTsvPath = path.join(orchestraDir, "runs.tsv");
+
+    // 1. Existing runDir refuses
+    const first = prepareRun({
+      room: "aurora",
+      runId: "aurora__dup-dir",
+      root: runsRoot,
+      repoRoot: fixtureRepo
+    });
+    assert.throws(
+      () => prepareRun({ room: "aurora", runId: "aurora__dup-dir", root: runsRoot, repoRoot: fixtureRepo }),
+      /Refusing to reuse run-id "aurora__dup-dir": run directory already exists/
+    );
+
+    // 2. Existing result JSON refuses even if runDir was deleted/renamed
+    fs.rmSync(first.runDir, { recursive: true, force: true });
+    fs.mkdirSync(resultsDir, { recursive: true });
+    fs.writeFileSync(path.join(resultsDir, "aurora__dup-dir.json"), JSON.stringify({ run_id: "aurora__dup-dir" }));
+    assert.throws(
+      () => prepareRun({ room: "aurora", runId: "aurora__dup-dir", root: runsRoot, repoRoot: fixtureRepo }),
+      /Refusing to reuse run-id "aurora__dup-dir": result already exists/
+    );
+
+    // 3. Existing entry in runs.tsv refuses even if both runDir and result JSON are absent
+    fs.rmSync(path.join(resultsDir, "aurora__dup-dir.json"));
+    fs.mkdirSync(orchestraDir, { recursive: true });
+    fs.writeFileSync(runsTsvPath, "aurora__dup-dir\tModel\tagy\tterm1\t/tmp/x\t1000\t60\n", "utf8");
+    assert.throws(
+      () => prepareRun({ room: "aurora", runId: "aurora__dup-dir", root: runsRoot, repoRoot: fixtureRepo }),
+      /Refusing to reuse run-id "aurora__dup-dir": already recorded/
+    );
+
+    // 4. Explicit force: true overrides result/runs.tsv guard
+    const forced = prepareRun({
+      room: "aurora",
+      runId: "aurora__dup-dir",
+      root: runsRoot,
+      repoRoot: fixtureRepo,
+      force: true
+    });
+    assert.equal(fs.existsSync(path.join(forced.runDir, ".run.json")), true);
+
+    // 5. parseRunsTsv & getRunStatusRows take the last row when duplicate rids exist (race-safe FORCE=1 append)
+    fs.writeFileSync(
+      runsTsvPath,
+      [
+        `aurora__dup-dir\tOld Model\tclaude\toldterm\t${forced.runDir}\t1000\t60`,
+        `aurora__dup-dir\tNew Model\tagy\tnewterm\t${forced.runDir}\t2000\t60`
+      ].join("\n") + "\n",
+      "utf8"
+    );
+    const parsedRows = parseRunsTsv(runsTsvPath);
+    assert.equal(parsedRows.length, 1);
+    assert.equal(parsedRows[0].label, "New Model");
+    assert.equal(parsedRows[0].agent, "agy");
+    assert.equal(parsedRows[0].start, 2000);
+    const statusRows = getRunStatusRows({ runsTsvPath, awakePath: path.join(orchestraDir, "awake.tsv"), resultsDir, nowSec: 2100 });
+    assert.equal(statusRows.length, 1);
+    assert.equal(statusRows[0].agent, "agy");
+
+    // 6. prepareRun records venv_manifest (excluding __pycache__/*.pyc) when repoRoot/.venv exists
+    fs.mkdirSync(path.join(fixtureRepo, ".venv", "Lib", "__pycache__"), { recursive: true });
+    fs.writeFileSync(path.join(fixtureRepo, ".venv", "pyvenv.cfg"), "home = test-py\n", "utf8");
+    fs.writeFileSync(path.join(fixtureRepo, ".venv", "Lib", "mod.py"), "x = 1\n", "utf8");
+    fs.writeFileSync(path.join(fixtureRepo, ".venv", "Lib", "__pycache__", "mod.pyc"), "pyc", "utf8");
+    const withVenv = prepareRun({
+      room: "aurora",
+      runId: "aurora__with-venv",
+      root: runsRoot,
+      repoRoot: fixtureRepo
+    });
+    const meta = JSON.parse(fs.readFileSync(path.join(withVenv.runDir, ".run.json"), "utf8"));
+    assert.equal(typeof meta.venv_manifest?.[".venv/pyvenv.cfg"], "string");
+    assert.equal(typeof meta.venv_manifest?.[".venv/Lib/mod.py"], "string");
+    assert.equal(Object.hasOwn(meta.venv_manifest || {}, ".venv/Lib/__pycache__/mod.pyc"), false);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
