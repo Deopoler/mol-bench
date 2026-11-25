@@ -31,6 +31,17 @@ export const GPU_FLAGS = [
   '--enable-precise-memory-info',
 ];
 
+// The GPU capture browser must be headed (real GPU), but it should not pop up on the
+// user's screen. Park the window off-screen and stop Chrome from throttling a window it
+// considers hidden/occluded, so rendering and timing stay identical to a visible window.
+// Set MOL_CAPTURE_VISIBLE=1 to show the window for debugging.
+export const GPU_OFFSCREEN_FLAGS = [
+  '--window-position=-32000,-32000',
+  '--disable-backgrounding-occluded-windows',
+  '--disable-renderer-backgrounding',
+  '--disable-background-timer-throttling',
+];
+
 let cachedHostScript = null;
 async function getHostScript() {
   if (!cachedHostScript) {
@@ -101,7 +112,8 @@ export async function launchBrowser({ mode = 'swiftshader', extraArgs = [], laun
   const { chromium } = await import('playwright');
 
   const isGpu = mode === 'gpu';
-  const args = [...(isGpu ? GPU_FLAGS : SWIFTSHADER_FLAGS), ...extraArgs];
+  const offscreen = isGpu && process.env.MOL_CAPTURE_VISIBLE !== '1' ? GPU_OFFSCREEN_FLAGS : [];
+  const args = [...(isGpu ? GPU_FLAGS : SWIFTSHADER_FLAGS), ...offscreen, ...extraArgs];
   const browser = await chromium.launch({
     headless: !isGpu,
     args,

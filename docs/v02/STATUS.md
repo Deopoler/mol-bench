@@ -3,7 +3,7 @@
 설계: [`docs/V02-DESIGN.md`](../V02-DESIGN.md) · 확장 규약: [`docs/v02/HOOKS.md`](HOOKS.md)(wp0a 병합 후)
 작업 중인 브랜치는 GitHub에 그대로 올려 둔다(`wp0a`, `wp4`, …). 숨김 채점 자료(`hidden-v2/`)는 올리지 않는다.
 
-마지막 갱신: 2026-11-24 12:36
+마지막 갱신: 2026-11-25 23:10
 
 ## 작업 패키지
 
@@ -14,6 +14,8 @@
 | WP-0a | 채점 핵심: fail-closed, `--version 2`, 확장 훅, room-harness | Gemini 4 Neon (High) | ✅ 완료 (리뷰 13건 반영, main) |
 | WP-4 | restoration v0.2 (버그 10종, 변형 4개) | Gemini 4 Argon (High) + 지휘자 마무리 | ✅ 완료 → 강화판으로 교체 |
 | 강화 | restoration 난이도 강화 (버그 14종 중 변형당 8개, 3단 연쇄 가림, 신고 없는 버그, 채점 시드 3·4·7·11) | Gemini 4 Neon (High) | ✅ 완료 (null 0 · a5 5.46 · a8 8.20 · 공격 1.5~1.9, 리뷰 반영, main; 버그 있는 방 원본·공격 예시는 비공개) |
+| 측정 수정 | 범위 밖 파일 오탐(하네스 산출물), agy 토큰 이전 세션 합산, run id 재사용 방지, 채점 python 바이트코드 차단 | Gemini 4 Hydrogen (High) | ✅ 완료 (리뷰 3회 반영, main) |
+| 강화 2차 | restoration 난이도 추가 강화 (목표 Neon XHigh 6~7) | Gemini 4 Neon (High) | 🔄 계획 단계 |
 | WP-0b | 캡처(host.js)·연쇄 수정 실행기·리더보드 | Gemini 4 Hydrogen (High) | ✅ 완료 (리뷰 2회 반영, v0.1 점수 불변 확인, main) |
 | WP-1 | 새 지표·프로브 | Gemini 4 Hydrogen (High) | ✅ 완료 (main) |
 | WP-2 | aurora v0.2 | Claude Sonnet 5.5 (agy) 예정 | ⏳ agy Claude 쿼터 초기화(11-25 오후) 후 |
@@ -25,7 +27,8 @@
 
 - WP-2 aurora·WP-3 lobby: agy Claude 쿼터 초기화(11-25 오후) 뒤 Sonnet 5.5로 시작.
 - restoration: mem/budget 지표를 host.js 계측으로 옮기기, B9 시계를 하네스가 직접 구동(리뷰 잔여 medium/low).
-- Wave 0 카나리 재실행: 강화판으로 Gemini 4 Neon (XHigh) 진행 중 → 다음 Gemini 3.8 Flash (High). 이전판 결과(9.11)는 `results-v2/archive/`.
+- Wave 0 카나리: 강화판 Gemini 4 Neon (XHigh) 재채점 **9.49**(8/8 버그·근본 원인 8/8, 활동 76분) → 목표(6~7)보다 높아 restoration 2차 강화 중. Gemini 3.8 Flash (High) 카나리는 2차 강화 뒤 autopilot으로.
+- 채점용 GPU Chrome은 화면 밖에서 실행(점수 불변 확인, 표시하려면 `MOL_CAPTURE_VISIBLE=1`).
 
 ## 참가 시험 계획
 

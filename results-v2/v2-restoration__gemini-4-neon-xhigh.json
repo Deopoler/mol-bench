@@ -29,7 +29,7 @@
     },
     "G-live": {
       "pass": true,
-      "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=441.20ms"
+      "detail": "Seek vs live FLIP=0.00000 (threshold <= 0.02); MAD proxy=0.00000 at t=453.70ms"
     },
     "G-offline": {
       "pass": true,
@@ -92,16 +92,16 @@
       "weight": 2
     },
     "diff.change_ratio": {
-      "raw": 7,
+      "raw": 0.7954545454545454,
       "samples": [],
-      "score": 0,
+      "score": 10,
       "axis": "craft",
       "weight": 2
     },
     "diff.out_of_scope_files": {
-      "raw": 2,
+      "raw": 0,
       "samples": [],
-      "score": 0,
+      "score": 10,
       "axis": "craft",
       "weight": 1
     },
@@ -174,9 +174,9 @@
       "informational": true
     },
     "report.honesty": {
-      "raw": 8,
+      "raw": 10,
       "samples": [],
-      "score": 8,
+      "score": 10,
       "axis": "reliability",
       "weight": 6
     },
@@ -189,11 +189,11 @@
     }
   },
   "axes": {
-    "craft": 8.532608695652174,
+    "craft": 9.83695652173913,
     "visual_quality": 10,
-    "reliability": 6.8
+    "reliability": 8
   },
-  "composite": 8.406195652173913,
+  "composite": 9.494021739130435,
   "completeness": 1,
   "completeness_multiplier": 1,
   "taste": null,
@@ -201,18 +201,18 @@
     "wall_min": 83.5713,
     "provider_group": "gemini",
     "cli_source": "agy",
-    "active_min": 111.2,
+    "active_min": 76.05,
     "time_limit_active_min": null,
     "timed_out_active": true,
     "tokens": {
-      "input": 1643682,
-      "output": 451375,
+      "input": 1261856,
+      "output": 279154,
       "reasoning": 0,
-      "cache_read": 34401253,
+      "cache_read": 25082290,
       "cache_write": 0,
-      "total": 2095057,
+      "total": 1541010,
       "source": "agy",
-      "sessions": 2
+      "sessions": 1
     },
     "provider_tok_ratio": null
   },
