@@ -10,6 +10,7 @@ import { runProbe } from './probes/index.js';
 import { pixelSha256, pngMeanAbsDiff, median } from './probes/shared.js';
 import { runTests } from './testrunner.mjs';
 import { isV2Spec } from '../score.mjs';
+import { execSafePythonSync } from '../python.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CALIBRATION_DIR = path.join(__dirname, 'calibration');
@@ -17,12 +18,12 @@ const PERF_REFERENCE_PATH = path.resolve(__dirname, '../../perf/reference.json')
 
 export function measureLiveFlip(imageA, imageB, { noPython = false } = {}) {
   if (noPython) return { flip: null, pass: null, detail: 'FLIP not evaluated because Python is disabled' };
-  const pyDir = path.resolve(__dirname, '../../../metrics');
-  const py = [path.resolve(__dirname, '../../../.venv/Scripts/python.exe'), path.resolve(__dirname, '../../../.venv/bin/python')].find((p) => existsSync(p)) || 'python';
+  const repoRoot = path.resolve(__dirname, '../../..');
+  const pyDir = path.resolve(repoRoot, 'metrics');
   try {
-    const flip = Number(execFileSync(py, ['-m', 'molmetrics', 'flip', imageA, imageB], {
-      cwd: path.resolve(__dirname, '../../..'),
-      env: { ...process.env, PYTHONPATH: [pyDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
+    const flip = Number(execSafePythonSync(repoRoot, ['-m', 'molmetrics', 'flip', imageA, imageB], {
+      cwd: repoRoot,
+      env: { PYTHONPATH: [pyDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) },
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe']
     }).trim());
     if (!Number.isFinite(flip)) throw new Error('molmetrics returned a non-number');

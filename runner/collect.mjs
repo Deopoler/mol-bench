@@ -547,10 +547,11 @@ export function parseRunsTsv(runsTsvPath) {
   if (!runsTsvPath || !fs.existsSync(runsTsvPath)) return [];
   const raw = fs.readFileSync(runsTsvPath, "utf8");
   const rows = [];
+  const lastIndexByRid = new Map();
   for (const line of raw.split(/\r?\n/)) {
     if (!line.trim()) continue;
     const cols = line.split("\t");
-    rows.push({
+    const row = {
       rid: cols[0] || "",
       label: cols[1] || "",
       agent: cols[2] || "",
@@ -560,9 +561,16 @@ export function parseRunsTsv(runsTsvPath) {
       limit: Number(cols[6] || 60),
       status: (cols[7] || "").trim(),
       cols
-    });
+    };
+    if (row.rid && lastIndexByRid.has(row.rid)) {
+      rows[lastIndexByRid.get(row.rid)] = null;
+    }
+    if (row.rid) {
+      lastIndexByRid.set(row.rid, rows.length);
+    }
+    rows.push(row);
   }
-  return rows;
+  return rows.filter(Boolean);
 }
 
 export function markRunTerminalInTsv(runsTsvPath, runId, state = "collected") {

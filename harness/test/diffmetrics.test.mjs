@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { compareAllFiles, computeDiffMetrics, countPatchLines } from "../src/diffmetrics.mjs";
+import { buildVenvManifest, compareAllFiles, computeDiffMetrics, countPatchLines } from "../src/diffmetrics.mjs";
 import { checkScope } from "../src/gates.mjs";
 import { scoreSubmission } from "../src/score.mjs";
 
@@ -107,5 +107,97 @@ test("v0.2 excludeWorkspaceArtifacts ignores root harness files only and never h
   } finally {
     fs.rmSync(start, { recursive: true, force: true });
     fs.rmSync(sub, { recursive: true, force: true });
+  }
+});
+
+test("v0.2 excludeWorkspaceArtifacts ignores only known cache files and unmodified .venv while catching hidden edits", () => {
+  const start = tree({ "room/src/app.js": "const a = 1;\n" });
+  const repoRoot = tree({
+    ".venv/pyvenv.cfg": "home = C:\\Python\n",
+    ".venv/Lib/site-packages/ok.py": "x = 1\n"
+  });
+  const sub = tree({
+    "room/src/app.js": "const a = 1;\n",
+    ".venv/pyvenv.cfg": "home = C:\\Python\n",
+    ".venv/Lib/site-packages/ok.py": "x = 1\n",
+    ".venv/Lib/site-packages/__pycache__/ok.cpython-314.pyc": "pyc",
+    ".venv/Lib/site-packages/sitecustomize.py": "import os\n",
+    "__pycache__/mod.cpython-314.pyc": "pyc",
+    "__pycache__/evil.js": "export const x = 1;\n",
+    ".pytest_cache/README.md": "# pytest cache\n",
+    ".pytest_cache/evil.js": "export const y = 1;\n",
+    "metrics/molmetrics/__pycache__/io.pyc": "pyc",
+    "metrics/molmetrics/__pycache__/evil.py": "print('evil')\n",
+    "room/src/__pycache__/sneak.js": "export const cheat = 1;\n",
+    "package.json": "{\"hack\":true}\n"
+  });
+  try {
+    const changed = compareAllFiles(start, sub, { excludeWorkspaceArtifacts: true, repoRoot });
+    assert.deepEqual(changed, [
+      ".pytest_cache/evil.js",
+      ".venv/Lib/site-packages/sitecustomize.py",
+      "__pycache__/evil.js",
+      "metrics/molmetrics/__pycache__/evil.py",
+      "package.json",
+      "room/src/__pycache__/sneak.js"
+    ]);
+    assert.equal(checkScope(changed, ["room/src/**", "report.json"]).outOfScopeCount, 5);
+  } finally {
+    fs.rmSync(start, { recursive: true, force: true });
+    fs.rmSync(sub, { recursive: true, force: true });
+    fs.rmSync(repoRoot, { recursive: true, force: true });
+  }
+});
+
+test("v0.2 .venv manifest in .run.json prevents false positives on repo .venv drift while catching .venv edits", () => {
+  const start = tree({
+    "room/src/app.js": "const a = 1;\n"
+  });
+  const sub = tree({
+    "room/src/app.js": "const a = 1;\n",
+    ".venv/pyvenv.cfg": "home = C:\\PrepareTimePython\n",
+    ".venv/Lib/site-packages/pkg.py": "v = 1\n",
+    ".venv/Lib/site-packages/__pycache__/pkg.cpython-314.pyc": "pyc-runtime"
+  });
+  const venvManifest = buildVenvManifest(path.join(sub, ".venv"));
+  assert.equal(Object.hasOwn(venvManifest, ".venv/Lib/site-packages/pkg.py"), true);
+  assert.equal(Object.hasOwn(venvManifest, ".venv/Lib/site-packages/__pycache__/pkg.cpython-314.pyc"), false);
+  fs.writeFileSync(path.join(sub, ".run.json"), JSON.stringify({ run_id: "x", venv_manifest: venvManifest }));
+
+  // Live repoRoot/.venv drifted after prepare -> manifest must take precedence
+  const driftedRepoRoot = tree({
+    ".venv/pyvenv.cfg": "home = C:\\UpdatedRepoPython\n"
+  });
+  try {
+    assert.deepEqual(
+      compareAllFiles(start, sub, { excludeWorkspaceArtifacts: true, repoRoot: driftedRepoRoot }),
+      []
+    );
+
+    // Tampered .venv file still caught against manifest
+    fs.writeFileSync(path.join(sub, ".venv", "Lib", "site-packages", "pkg.py"), "v = 999\n");
+    assert.deepEqual(
+      compareAllFiles(start, sub, { excludeWorkspaceArtifacts: true, repoRoot: driftedRepoRoot }),
+      [".venv/Lib/site-packages/pkg.py"]
+    );
+
+    // Fallback when venv_manifest is absent (old run): compares against live repoRoot/.venv
+    fs.rmSync(path.join(sub, ".run.json"));
+    const legacySub = tree({
+      "room/src/app.js": "const a = 1;\n",
+      ".venv/pyvenv.cfg": "home = C:\\UpdatedRepoPython\n"
+    });
+    try {
+      assert.deepEqual(
+        compareAllFiles(start, legacySub, { excludeWorkspaceArtifacts: true, repoRoot: driftedRepoRoot }),
+        []
+      );
+    } finally {
+      fs.rmSync(legacySub, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(start, { recursive: true, force: true });
+    fs.rmSync(sub, { recursive: true, force: true });
+    fs.rmSync(driftedRepoRoot, { recursive: true, force: true });
   }
 });

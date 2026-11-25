@@ -6,6 +6,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { scoreChain, shouldAdvanceChain, runChain } from "../chain.mjs";
+import { prepareRun } from "../prepare.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -343,6 +344,42 @@ test("runChain executes 1/3, 2/3, and 3/3 handoffs without launching rounds afte
     });
     assert.deepEqual(launchedLeak, ["r1"], "chain must refuse handoff to r2 when r1 has leakage");
     assert.equal(leakRes.result.rounds_completed, "0/3");
+
+    // Case 7: runChain refuses to reuse a runId whose result already exists unless force is true,
+    // and round results live in chain-rounds/ matching prepareRun's resultsDir guard.
+    assert.equal(fs.existsSync(path.join(resultsDir, "chain-rounds", "lobby-chain__m3__r1.json")), true);
+    assert.throws(
+      () => {
+        fs.rmSync(path.join(runsRoot, "lobby-chain__m3__r1"), { recursive: true, force: true });
+        return prepareRun({
+          room: "lobby",
+          runId: "lobby-chain__m3__r1",
+          renovation: "r1",
+          version: 2,
+          root: runsRoot,
+          resultsDir: path.join(resultsDir, "chain-rounds"),
+          repoRoot: repo,
+        });
+      },
+      /Refusing to reuse run-id "lobby-chain__m3__r1": result already exists/,
+    );
+    await assert.rejects(
+      () =>
+        runChain({
+          room: "lobby",
+          runId: "lobby-chain__m3",
+          model: "Model 3",
+          version: 2,
+          root: runsRoot,
+          resultsDir,
+          repoRoot: repo,
+          hidden: false,
+          noCapture: true,
+          noPython: true,
+          runnerFn: () => {},
+        }),
+      /Refusing to reuse run-id "lobby-chain__m3": result already exists/,
+    );
   } finally {
     fs.rmSync(tmpBase, { recursive: true, force: true });
   }

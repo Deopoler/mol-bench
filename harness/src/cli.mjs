@@ -12,6 +12,7 @@ import { registerMetrics, unregisterMetrics } from "./registry.mjs";
 import { evaluateStaticGates, combineGates, getGitChangedFiles, evaluateAliveGate } from "./gates.mjs";
 import { evaluateHonesty, evaluateAutonomy, evaluateDecisionCorrect } from "./report.mjs";
 import { compareSourceTrees, compareAllFiles, countPatchLines, computeDiffMetrics } from "./diffmetrics.mjs";
+import { findPythonExecutable, execSafePythonSync } from "./python.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_ISOLATED_BENCH =
@@ -44,14 +45,6 @@ function parseArgs(argv) {
     }
   }
   return { positional, flags };
-}
-
-function findPythonExecutable(repoRoot = REPO_ROOT) {
-  const winVenv = path.join(repoRoot, ".venv", "Scripts", "python.exe");
-  if (fs.existsSync(winVenv)) return winVenv;
-  const unixVenv = path.join(repoRoot, ".venv", "bin", "python");
-  if (fs.existsSync(unixVenv)) return unixVenv;
-  return "python";
 }
 
 export function registerAdapterMetrics(adapter) {
@@ -128,8 +121,7 @@ function readPythonVersion(repoRoot) {
   if (_toolchainCache.has(cacheKey)) return _toolchainCache.get(cacheKey);
   let ver = null;
   try {
-    const py = findPythonExecutable(repoRoot);
-    ver = execFileSync(py, ["--version"], {
+    ver = execSafePythonSync(repoRoot, ["--version"], {
       cwd: repoRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"]
@@ -158,12 +150,16 @@ function runPythonMetrics(manifestPath, specPath, outPath, repoRoot = REPO_ROOT,
   const metricsPkgDir = path.join(repoRoot, "metrics");
   const pythonPath = [metricsPkgDir, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   try {
-    execFileSync(py, ["-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath, ...(renovationStartPath ? ["--renovation-start", renovationStartPath] : [])], {
-      cwd: repoRoot,
-      env: { ...process.env, PYTHONPATH: pythonPath },
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"]
-    });
+    execSafePythonSync(
+      repoRoot,
+      ["-m", "molmetrics", "compute", "--manifest", manifestPath, "--spec", specPath, "--out", outPath, ...(renovationStartPath ? ["--renovation-start", renovationStartPath] : [])],
+      {
+        cwd: repoRoot,
+        env: { PYTHONPATH: pythonPath },
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    );
   } catch (err) {
     const stderr = err.stderr ? String(err.stderr).trim() : err.message;
     throw new Error(
@@ -448,7 +444,7 @@ async function _gradeSubmissionWithAdapter({
   const gitChanged = spec.track === "renovation" ? getGitChangedFiles(resolvedSub) : null;
   let changedFiles = gitChanged;
   if (!Array.isArray(changedFiles) && startDir) {
-    try { changedFiles = compareAllFiles(startDir, resolvedSub, { excludeWorkspaceArtifacts: isV2 }); } catch (err) { comparisonError ||= err.message; }
+    try { changedFiles = compareAllFiles(startDir, resolvedSub, { excludeWorkspaceArtifacts: isV2, repoRoot }); } catch (err) { comparisonError ||= err.message; }
   }
   const staticRes = evaluateStaticGates(resolvedSub, spec, { repoRoot, changedFiles });
 
@@ -650,6 +646,7 @@ async function _gradeSubmissionWithAdapter({
         room: spec.room,
         version: effectiveVersion,
         submissionDir: resolvedSub,
+        startDir,
         workDir: resolvedWorkDir,
         repoRoot,
         spec,

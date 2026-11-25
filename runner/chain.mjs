@@ -18,7 +18,7 @@ const DEFAULT_CHAIN_WEIGHTS = [0.25, 0.35, 0.40];
 function parseArgs(argv) {
   const positional = [];
   const flags = {};
-  const booleanFlags = new Set(["hidden", "no-hidden", "no-capture", "no-python", "calibrate", "help", "h"]);
+  const booleanFlags = new Set(["hidden", "no-hidden", "no-capture", "no-python", "calibrate", "force", "help", "h"]);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg.startsWith("--")) {
@@ -243,6 +243,7 @@ export async function runChain({
   hidden = true,
   noCapture = false,
   noPython = false,
+  force = false,
   runnerFn = null,
   agentCmd = null,
 } = {}) {
@@ -257,6 +258,12 @@ export async function runChain({
   const resolvedRepoRoot = path.resolve(repoRoot);
   const versionPaths = resolveVersionPaths(v, resolvedRepoRoot);
   const resolvedResultsDir = resultsDir ? path.resolve(resultsDir) : versionPaths.resultsDir;
+  const chainResultPath = path.join(resolvedResultsDir, `${runId}.json`);
+  if (!force && fs.existsSync(chainResultPath)) {
+    throw new Error(
+      `Refusing to reuse run-id "${runId}": result already exists: ${chainResultPath} (use a new --run-id or pass --force)`
+    );
+  }
   const chainCfg = loadChainConfig(room, { version: v, chainName, repoRoot: resolvedRepoRoot });
 
   const roundResults = [];
@@ -279,6 +286,8 @@ export async function runChain({
       parentRunId: runId,
       root,
       repoRoot: resolvedRepoRoot,
+      resultsDir: path.join(resolvedResultsDir, "chain-rounds"),
+      force,
     });
 
     if (typeof runnerFn === "function") {
@@ -520,6 +529,7 @@ async function main() {
     hidden: !flags["no-hidden"],
     noCapture: Boolean(flags["no-capture"]),
     noPython: Boolean(flags["no-python"]),
+    force: Boolean(flags.force),
     agentCmd,
   });
   console.log(JSON.stringify({ resultPath: out.resultPath, composite_chain: out.result.composite_chain, rounds_completed: out.result.rounds_completed }, null, 2));

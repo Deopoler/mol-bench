@@ -8,12 +8,22 @@
 # Each loop: collect finished/over-limit runs, deny out-of-folder permission prompts (logged as interventions),
 # launch queued jobs up to MAXPAR, regenerate leaderboard/gallery, commit and push results.
 set -u
+to_node_path() {
+  if command -v cygpath >/dev/null; then cygpath -m "$1"; else printf '%s' "$1"; fi
+}
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_N="$(to_node_path "$REPO")"
 cd "$REPO"
 QUEUE=${QUEUE:-$REPO/.orchestra/queue.tsv}
 CONTEST_LOG=${CONTEST_LOG:-$REPO/.orchestra/runs.tsv}
 AWAKE_FILE=${AWAKE_FILE:-$REPO/.orchestra/awake.tsv}
-RESULTS_DIR=${RESULTS_DIR:-$REPO/results}
+V=${MOLBENCH_VERSION:-1}
+DEFAULT_RESULTS="$REPO/results"
+[ "$V" = 2 ] && DEFAULT_RESULTS="$REPO/results-v2"
+RESULTS_DIR=${RESULTS_DIR:-$DEFAULT_RESULTS}
+CONTEST_LOG_N="$(to_node_path "$CONTEST_LOG")"
+AWAKE_FILE_N="$(to_node_path "$AWAKE_FILE")"
+RESULTS_DIR_N="$(to_node_path "$RESULTS_DIR")"
 LOG=${LOG:-$REPO/.orchestra/autopilot.log}
 MAXPAR=${MAXPAR:-3}
 INTERVAL=${INTERVAL:-300}
@@ -77,7 +87,7 @@ run_collect() {
 
 while true; do
   changed=0
-  awake_since_launch=$(node runner/collect.mjs --awake-tick --runs-tsv "$CONTEST_LOG" --awake-file "$AWAKE_FILE" --results-dir "$RESULTS_DIR" --interval "$INTERVAL" ${NOW_EPOCH:+--now "$NOW_EPOCH"} --print-since-launch 2>/dev/null || echo 0)
+  awake_since_launch=$(node runner/collect.mjs --awake-tick --runs-tsv "$CONTEST_LOG_N" --awake-file "$AWAKE_FILE_N" --results-dir "$RESULTS_DIR_N" --interval "$INTERVAL" ${NOW_EPOCH:+--now "$NOW_EPOCH"} --print-since-launch 2>/dev/null || echo 0)
 
   # 1) collect finished or over-limit runs; handle permission prompts
   while read -r rid state elapsed over; do
@@ -94,7 +104,7 @@ while true; do
       fi
     fi
     [ "$state" = error ] && log "$rid ended in ERROR state ($("$HC_BIN" get "$term" 2>/dev/null | grep -o '"msg":"[^"]*"' | head -1))"
-    mode=$(node runner/collect.mjs --check-collect "$rid" --state "$state" --over "${over:-}" --run-dir "$dir" --awake-file "$AWAKE_FILE" --idle-ticks "$IDLE_TICKS" --gone-ticks "$GONE_TICKS" 2>/dev/null || echo skip)
+    mode=$(node runner/collect.mjs --check-collect "$rid" --state "$state" --over "${over:-}" --run-dir "$(to_node_path "$dir")" --awake-file "$AWAKE_FILE_N" --idle-ticks "$IDLE_TICKS" --gone-ticks "$GONE_TICKS" 2>/dev/null || echo skip)
     case "$mode" in
       normal)  run_collect "$rid" "" "collected" ;;
       timeout) run_collect "$rid" "--timeout" "timeout-collected" ;;
@@ -110,10 +120,16 @@ while true; do
       case "$agent" in \#*) echo -e "$agent\t$model\t$effort\t$label\t$room\t$rev\t$qkey\t$need" >> "$QUEUE.next"; continue ;; esac
       if [ "$running" -lt "$MAXPAR" ] && python "$QUOTA" "$qkey" --need "$need" >/dev/null 2>&1; then
         [ "$rev" = "-" ] && rev=""
-        out=$(CONTEST_LOG="$CONTEST_LOG" bash runner/hc/contest.sh "$agent" "$model" "$effort" "$label" "$room" $rev 2>&1 | tail -1)
-        launched_rid=$(echo "$out" | awk '{print $1}')
-        node runner/collect.mjs --awake-launch "$launched_rid" --awake-file "$AWAKE_FILE" ${NOW_EPOCH:+--now "$NOW_EPOCH"} >/dev/null 2>&1 || true
-        log "launched: $label on $room${rev:+-$rev} -> $out"; running=$((running + 1)); awake_since_launch=0
+        out=$(CONTEST_LOG="$CONTEST_LOG" RESULTS_DIR="$RESULTS_DIR" bash runner/hc/contest.sh "$agent" "$model" "$effort" "$label" "$room" $rev 2>&1)
+        rc=$?
+        last_line=$(printf '%s\n' "$out" | tail -1)
+        if [ "$rc" -ne 0 ]; then
+          log "ERROR: launch refused for $label on $room${rev:+-$rev} (rc=$rc), dropping job from queue: $last_line"
+        else
+          launched_rid=$(echo "$last_line" | awk '{print $1}')
+          node runner/collect.mjs --awake-launch "$launched_rid" --awake-file "$AWAKE_FILE_N" ${NOW_EPOCH:+--now "$NOW_EPOCH"} >/dev/null 2>&1 || true
+          log "launched: $label on $room${rev:+-$rev} -> $last_line"; running=$((running + 1)); awake_since_launch=0
+        fi
       else
         echo -e "$agent\t$model\t$effort\t$label\t$room\t$rev\t$qkey\t$need" >> "$QUEUE.next"
       fi
@@ -124,7 +140,7 @@ while true; do
   [ "$changed" = 1 ] && publish
 
   # Record end-of-iteration heartbeat so long active steps (grading/collecting) count in full as awake time.
-  awake_since_launch=$(node runner/collect.mjs --awake-heartbeat --runs-tsv "$CONTEST_LOG" --awake-file "$AWAKE_FILE" --results-dir "$RESULTS_DIR" ${NOW_EPOCH:+--now "$NOW_EPOCH"} --print-since-launch 2>/dev/null || echo "${awake_since_launch:-0}")
+  awake_since_launch=$(node runner/collect.mjs --awake-heartbeat --runs-tsv "$CONTEST_LOG_N" --awake-file "$AWAKE_FILE_N" --results-dir "$RESULTS_DIR_N" ${NOW_EPOCH:+--now "$NOW_EPOCH"} --print-since-launch 2>/dev/null || echo "${awake_since_launch:-0}")
 
   # 3) optional: put the machine to sleep when there is nothing left to do.
   #    Done = no running runs AND (no active queue jobs OR nothing could launch for STUCK_HOURS of awake time after NOT_BEFORE).
@@ -142,7 +158,7 @@ while true; do
           [ -d "$runs_root/$rid" ] || continue
           CONTEST_LOG="$CONTEST_LOG" RESULTS_DIR="$RESULTS_DIR" HC_BIN="$HC_BIN" bash runner/hc/collect.sh "$rid" >/dev/null 2>&1 && log "regraded: $(summary "$rid")"
         done
-        [ -f runner/tokens.mjs ] && node runner/tokens.mjs --backfill --results "$RESULTS_DIR" >/dev/null 2>&1
+        [ -f runner/tokens.mjs ] && node runner/tokens.mjs --backfill --results "$RESULTS_DIR_N" >/dev/null 2>&1
       fi
       publish
       log "all work done (active queue jobs: $active) -> putting the machine to sleep"

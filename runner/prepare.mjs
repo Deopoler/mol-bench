@@ -6,6 +6,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { registerMetrics } from "../harness/src/registry.mjs";
 import { loadSpec, parseVersion, resolveVersionPaths } from "../harness/src/spec.mjs";
+import { buildVenvManifest } from "../harness/src/diffmetrics.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(__dirname, "..");
@@ -16,12 +17,13 @@ const GIT_AUTHOR_EMAIL = "runner@mol-bench.local";
 function parseArgs(argv) {
   const positional = [];
   const flags = {};
+  const booleanFlags = new Set(["help", "h", "force"]);
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) {
+      if (booleanFlags.has(key) || next === undefined || next.startsWith("--")) {
         flags[key] = true;
       } else {
         flags[key] = argv[++i];
@@ -201,6 +203,21 @@ const EXCLUDED_START_DIRS = new Set([
   ".git", "node_modules", ".venv", "bench", "metrics", "work", "preview", "__pycache__", ".pytest_cache", "hidden", "hidden-v2"
 ]);
 
+function runsTsvContainsRunId(runsTsvPath, runId) {
+  if (!runsTsvPath || !fs.existsSync(runsTsvPath) || !runId) return false;
+  try {
+    const raw = fs.readFileSync(runsTsvPath, "utf8");
+    for (const line of raw.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const firstCol = line.split("\t")[0]?.trim();
+      if (firstCol === runId) return true;
+    }
+  } catch {
+    // ignore unreadable registry
+  }
+  return false;
+}
+
 export function prepareRun({
   room,
   runId,
@@ -211,7 +228,10 @@ export function prepareRun({
   chainRound = null,
   parentRunId = null,
   root = process.env.MOLBENCH_RUNS || DEFAULT_RUNS_ROOT,
-  repoRoot = DEFAULT_REPO_ROOT
+  repoRoot = DEFAULT_REPO_ROOT,
+  resultsDir = null,
+  runsTsvPath = null,
+  force = false
 }) {
   if (!room) throw new Error("Missing required <room> argument.");
   if (!runId) throw new Error("Missing required --run-id <id> argument.");
@@ -234,8 +254,30 @@ export function prepareRun({
   }
 
   const runDir = path.resolve(root, runId);
-  if (fs.existsSync(runDir) && fs.readdirSync(runDir).length > 0) {
-    throw new Error(`Run directory already exists and is non-empty: ${runDir}`);
+  const effectiveResultsDir = resultsDir ? path.resolve(resultsDir) : versionPaths.resultsDir;
+  const resultPath = path.join(effectiveResultsDir, `${runId}.json`);
+  const effectiveRunsTsv = runsTsvPath
+    ? path.resolve(runsTsvPath)
+    : path.join(resolvedRepoRoot, ".orchestra", "runs.tsv");
+
+  if (!force) {
+    if (fs.existsSync(runDir)) {
+      throw new Error(
+        `Refusing to reuse run-id "${runId}": run directory already exists: ${runDir} (move/archive it aside or use a new --run-id)`
+      );
+    }
+    if (fs.existsSync(resultPath)) {
+      throw new Error(
+        `Refusing to reuse run-id "${runId}": result already exists: ${resultPath} (use a new --run-id or pass --force)`
+      );
+    }
+    if (runsTsvContainsRunId(effectiveRunsTsv, runId)) {
+      throw new Error(
+        `Refusing to reuse run-id "${runId}": already recorded in ${effectiveRunsTsv} (use a new --run-id or pass --force)`
+      );
+    }
+  } else if (fs.existsSync(runDir) && fs.readdirSync(runDir).length > 0) {
+    throw new Error(`Run directory already exists and is non-empty (move/archive it aside even with --force): ${runDir}`);
   }
   fs.mkdirSync(runDir, { recursive: true });
 
@@ -349,7 +391,9 @@ export function prepareRun({
 
     // 5. node_modules/ and .venv/
     copyHeavyDir(path.join(resolvedRepoRoot, "node_modules"), path.join(runDir, "node_modules"));
-    copyHeavyDir(path.join(resolvedRepoRoot, ".venv"), path.join(runDir, ".venv"));
+    const runVenvDir = path.join(runDir, ".venv");
+    copyHeavyDir(path.join(resolvedRepoRoot, ".venv"), runVenvDir);
+    const venvManifest = buildVenvManifest(runVenvDir);
 
     // 6. .run.json and (for v2) .bench-room
     const runMeta = {
@@ -362,6 +406,7 @@ export function prepareRun({
       ...(parentRunId ? { parent_run_id: parentRunId } : {}),
       seed: effectiveSeed ?? null,
       ...(spec.time_limit_active_min !== undefined ? { time_limit_active_min: spec.time_limit_active_min } : {}),
+      ...(Object.keys(venvManifest).length > 0 ? { venv_manifest: venvManifest } : {}),
       created_at: new Date().toISOString()
     };
     fs.writeFileSync(path.join(runDir, ".run.json"), JSON.stringify(runMeta, null, 2) + "\n", "utf8");
@@ -405,7 +450,7 @@ async function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2));
   if (flags.help || flags.h || positional.length === 0) {
     console.log(
-      "Usage: node runner/prepare.mjs <room> --run-id <id> [--version 1|2] [--renovation r1] [--seed N] [--root <dir>]"
+      "Usage: node runner/prepare.mjs <room> --run-id <id> [--version 1|2] [--renovation r1] [--seed N] [--root <dir>] [--results-dir <dir>] [--runs-tsv <path>] [--force]"
     );
     return;
   }
@@ -427,7 +472,10 @@ async function main() {
     seed: flags.seed ?? null,
     startDir: flags["start-dir"] ?? null,
     root: flags.root || process.env.MOLBENCH_RUNS || DEFAULT_RUNS_ROOT,
-    repoRoot: flags["repo-root"] || DEFAULT_REPO_ROOT
+    repoRoot: flags["repo-root"] || DEFAULT_REPO_ROOT,
+    resultsDir: flags["results-dir"] || null,
+    runsTsvPath: flags["runs-tsv"] || null,
+    force: Boolean(flags.force)
   });
   console.log(runDir);
 }
