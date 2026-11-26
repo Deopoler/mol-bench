@@ -15,7 +15,7 @@
 | WP-4 | restoration v0.2 (버그 10종, 변형 4개) | Gemini 4 Argon (High) + 지휘자 마무리 | ✅ 완료 → 강화판으로 교체 |
 | 강화 | restoration 난이도 강화 (버그 14종 중 변형당 8개, 3단 연쇄 가림, 신고 없는 버그, 채점 시드 3·4·7·11) | Gemini 4 Neon (High) | ✅ 완료 (null 0 · a5 5.46 · a8 8.20 · 공격 1.5~1.9, 리뷰 반영, main; 버그 있는 방 원본·공격 예시는 비공개) |
 | 측정 수정 | 범위 밖 파일 오탐(하네스 산출물), agy 토큰 이전 세션 합산, run id 재사용 방지, 채점 python 바이트코드 차단 | Gemini 4 Hydrogen (High) | ✅ 완료 (리뷰 3회 반영, main) |
-| 강화 2차 | restoration 난이도 추가 강화 (목표 Neon XHigh 6~7) | Gemini 4 Neon (High) | 🔄 계획 단계 |
+| 강화 2차 | restoration 난이도 추가 강화 (목표 Neon XHigh 6~7) | Gemini 4 Neon (High) | ⏸ 구현 완료, 리뷰 전 일시 정지 (작업자 보고: null 0 · a5 4.97 · aMid 6.79 · a8 8.24 · aFull 9.49 · 공격 1.0~1.4) |
 | WP-0b | 캡처(host.js)·연쇄 수정 실행기·리더보드 | Gemini 4 Hydrogen (High) | ✅ 완료 (리뷰 2회 반영, v0.1 점수 불변 확인, main) |
 | WP-1 | 새 지표·프로브 | Gemini 4 Hydrogen (High) | ✅ 완료 (main) |
 | WP-2 | aurora v0.2 | Claude Sonnet 5.5 (agy) 예정 | ⏳ agy Claude 쿼터 초기화(11-25 오후) 후 |
